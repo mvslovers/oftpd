@@ -7,11 +7,10 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 
 1. ~~Codec~~ — done (TSTCMD, TSTDATA; RFC 5024 App. A byte for byte).
 2. ~~Session engine~~ — done (TSTSESS, ten scenarios over a socket pair).
-3. ~~Host driver~~ `host/oftph` — done, loopback checked. **Next: interop
-   with mendelson OFTP2 CE on port 3305 (level 5)** — before anything runs
-   on MVS.
-4. **KSDS smoke test on MVS** through libc370's VSAM API, which has no
-   test of its own.
+3. ~~Host driver~~ `host/oftph` — done; interop with mendelson OFTP2 CE at
+   level 5 in both directions with EERPs (`internals/interop.md`).
+4. ~~KSDS smoke test on MVS~~ — done (`test/mvs/tstksds.c`, JOB02094);
+   inserts need a direct PUT (CLAUDE.md).
 5. **Data set reader/writer** per format (F/V/U/T), checking every write
    and the CLOSE.
 6. **OFTPD**: listener, outbound calls, spool server, parmlib partners,
