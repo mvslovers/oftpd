@@ -1,0 +1,38 @@
+-- test/tso/ispf.lua -- the ISPF dialog: ISPF, More (M), OFTP (O), then
+-- the menu, the monitor and the transfer list. Needs OFTPD running and
+-- the dialog installed (panels in ISPPLIB, OFTPI in ISPLLIB).
+local function show(t, title)
+  print("==== " .. title)
+  print(t:text())
+end
+
+return function(t)
+  t:logon()
+  t:type("ISPF"):enter()
+  t:expect("Primary Option Menu", { timeout = 30 })
+  t:type("M"):enter()
+  t:expect("Additional Products")
+  show(t, "more")
+  t:type("O"):enter()
+  t:expect("OFTP370 - Odette File Transfer", { timeout = 30 })
+  show(t, "menu")
+  t:type("5"):enter()
+  t:expect("OFTP370 - Monitor")
+  show(t, "monitor")
+  t:pf(3)
+  t:expect("OFTP370 - Odette File Transfer")
+  t:type("2"):enter()
+  t:expect("OFTP370 - Transfers")
+  show(t, "transfers")
+  t:pf(3)
+  t:expect("OFTP370 - Odette File Transfer")
+  t:type("3"):enter()
+  t:expect("OFTP370 - Partners")
+  show(t, "partners")
+  t:pf(3)
+  t:pf(3)
+  t:pf(3)
+  t:expect("Primary Option Menu")
+  t:type("X"):enter()
+  t:logoff()
+end
