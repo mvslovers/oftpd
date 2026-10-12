@@ -1,0 +1,46 @@
+schema = 3
+
+[project]
+name = "oftp370"
+version = "0.1.0-dev"
+
+[toolchain]
+mbt = "3.0"
+cc370 = "1.6.1"
+libc370 = "2.10.0"
+
+# No [dependencies] yet: nothing calls crypto370 or anything else.
+
+# Shared code, linked into every module and test: the OFTP codec, the
+# monitor's client interface (used by the utilities and, later, by ISPF
+# dialogs), translation, configuration. Module mains carry no '#'.
+[internal]
+sources = ["src/oftp#*.c"]
+
+# The monitor: a started task, sole owner of the spool and the partner
+# table. AC(1), so it must hold no writable module data.
+[module.OFTPD]
+sources = ["src/oftpd.c"]
+rent = true
+reus = true
+ac = 1
+
+# The TSO command and batch utility: a client of the monitor.
+[module.OFTP]
+sources = ["src/oftp.c"]
+rent = false
+reus = false
+
+[build.host]
+sources = ["src/oftp#*.c"]   # host tests link the shared code as well
+
+[tests]
+rent = false        # mbtcheck.h keeps file-static counters
+reus = false
+
+[test.TSTVER]
+sources = ["test/tstver.c"]
+
+# [distribution] and [smp] follow with the first PROC in samplib/:
+#   [smp] prefix = "TOFT"   -> 0.1.0 is TOFT010, delete = [] (first level)
+# The id is proposed, not yet checked on any stand.

@@ -1,0 +1,11 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    uses: mvslovers/mbt/.github/workflows/release3.yml@main
+    permissions:
+      contents: write

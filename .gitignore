@@ -1,0 +1,6 @@
+build/
+dist/
+.mbt/
+compile_commands.json
+.cache/
+.DS_Store

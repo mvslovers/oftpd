@@ -1,0 +1,12 @@
+name: Build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    uses: mvslovers/mbt/.github/workflows/build3.yml@main
+    with:
+      host_tests: true
