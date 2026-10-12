@@ -1,8 +1,9 @@
 /* TSTKSDS - libc370's VSAM calls against a real KSDS (MVS only)
 **
-** The calls the spool will make: the initial load of an empty cluster,
-** then insert, read by key, update, delete, generic positioning,
-** sequential reading and a duplicate key.
+** The calls the spool makes: the initial load of an empty cluster, then
+** insert (also below the position), read by key, update, delete, generic
+** positioning, sequential reading and a duplicate key. Needs libc370
+** 2.10.1 or later.
 **
 ** Needs DD KSDS: a KSDS with an 8-byte key at offset 0, defined and never
 ** loaded (test/mvs/tstksds.jcl does that). Without PARM='RUN' -- as under
@@ -19,29 +20,6 @@
 #define RECLEN  80
 
 static char rec[RECLEN + 1];
-
-/* A direct PUT: what an insert at an arbitrary key needs. libc370's
-** vswrite() keeps the RPL's OPTCD=SEQ on a dynamic handle, so its PUT is
-** sequential. Measured here side by side.
-*/
-static int
-put_direct(VSFILE *vs, void *r, int len, void *key)
-{
-    unsigned pl[16] = {0};
-    volatile int rc = 0;
-
-    __vsmdfy(vs, r, len, key, 8);
-    __asm__("MODCB RPL=(%0),OPTCD=(DIR,NUP),MF=(G,(%1))"
-            : : "r"(&vs->rpl), "r"(pl) : "1", "14", "15", "memory");
-    __asm__("LA\t2,PUTDDONE\n\t"
-            "PUT\tRPL=(%0)\n"
-   "PUTDDONE\tDS\t0H\n\t"
-            "ST\t15,%1"
-        : : "r"(&vs->rpl), "m"(rc) : "1", "2", "14", "15", "memory");
-    __asm__("MODCB RPL=(%0),OPTCD=(SEQ,UPD),MF=(G,(%1))"
-            : : "r"(&vs->rpl), "r"(pl) : "1", "14", "15", "memory");
-    return rc;
-}
 
 static void
 mkrec(const char *key, const char *text)
@@ -89,27 +67,18 @@ main(int argc, char **argv)
     }
     CHECK_EQ(n, 5, "insert five transfer records");
 
-    /* vswrite: a key below the position, then a duplicate */
+    /* an insert below the position, then a duplicate: libc370 2.10.1
+    ** makes vswrite() a direct PUT on a dynamic handle (libc370#514);
+    ** 2.10.0 answered both with reason 12 */
     mkrec("E0000001", "EERP");
     rc = vswrite(vs, rec, RECLEN, "E0000001", 8);
-    printf("    (vswrite lower key: rc %d reason %d)\n", rc, vs->rsn);
-    CHECK(rc == 8 && vs->rsn == 12, "vswrite of a lower key: out of sequence (12)");
+    printf("    (lower key: rc %d reason %d)\n", rc, vs->rsn);
+    CHECK_EQ(rc, 0, "vswrite of a lower key");
     vsclear(vs);
     mkrec(keys[2], "DUPLICATE");
     rc = vswrite(vs, rec, RECLEN, (void *)keys[2], 8);
-    printf("    (vswrite duplicate: rc %d reason %d)\n", rc, vs->rsn);
-    vsclear(vs);
-
-    /* direct PUT: the same two */
-    mkrec("E0000001", "EERP");
-    rc = put_direct(vs, rec, RECLEN, "E0000001");
-    printf("    (direct lower key: rc %d reason %d)\n", rc, vs->rsn);
-    CHECK_EQ(rc, 0, "direct PUT of a lower key");
-    vsclear(vs);
-    mkrec(keys[2], "DUPLICATE");
-    rc = put_direct(vs, rec, RECLEN, (void *)keys[2]);
-    printf("    (direct duplicate: rc %d reason %d)\n", rc, vs->rsn);
-    CHECK(rc == 8 && vs->rsn == 8, "direct PUT of a duplicate: reason 8");
+    printf("    (duplicate: rc %d reason %d)\n", rc, vs->rsn);
+    CHECK(rc == 8 && vs->rsn == 8, "vswrite of a duplicate: reason 8");
     vsclear(vs);
 
     rc = vsread(vs, buf, RECLEN, (void *)keys[2], 8);
@@ -124,7 +93,7 @@ main(int argc, char **argv)
     CHECK_EQ(vsdelete(vs, buf, RECLEN), 0, "delete the record just read");
     rc = vsread(vs, buf, RECLEN, (void *)keys[1], 8);
     printf("    (vsread deleted key: rc %d reason %d)\n", rc, vs->rsn);
-    CHECK(rc == -2, "deleted key: vsread fails");
+    CHECK(rc == -2 && vs->rsn == 16, "deleted key: vsread says not found (16)");
     vsclear(vs);
     rc = vssteq(vs, buf, RECLEN, (void *)keys[1], 8);
     printf("    (vssteq deleted key: rc %d reason %d)\n", rc, vs->rsn);

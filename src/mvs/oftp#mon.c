@@ -17,6 +17,7 @@
 #include <mvs/wto.h>
 
 #include "oftpdsf.h"
+#include "oftpdsn.h"
 #include "oftpmon.h"
 #include "oftpnet.h"
 #include "oftpsess.h"
@@ -39,37 +40,6 @@ static int
 ptn_index(OFTP_MON *m, const OFTP_PARTNER *p)
 {
     return (int)(p - m->cfg.ptn);
-}
-
-/* A data set name: 1..44 characters, qualifiers of 1..8 starting with a
-** letter or national character
-*/
-static int
-valid_dsn(const char *d)
-{
-    int q = 0, len = 0;
-
-    for (; *d; d++, len++) {
-        char c = *d;
-
-        if (c == '.') {
-            if (q == 0)
-                return 0;
-            q = 0;
-            continue;
-        }
-        if (q == 0 && !((c >= 'A' && c <= 'I') || (c >= 'J' && c <= 'R')
-                        || (c >= 'S' && c <= 'Z') || c == '@' || c == '#'
-                        || c == '$'))
-            return 0;
-        if (!((c >= 'A' && c <= 'I') || (c >= 'J' && c <= 'R')
-              || (c >= 'S' && c <= 'Z') || (c >= '0' && c <= '9')
-              || c == '@' || c == '#' || c == '$' || c == '-'))
-            return 0;
-        if (++q > 8)
-            return 0;
-    }
-    return q > 0 && len <= 44;
 }
 
 static int
@@ -215,10 +185,8 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
 
     (void)peer;
     *retry = 'N';
-    if (strlen(c->m->cfg.inprefix) + 1 + strlen(f->dsn) > 44)
-        return 1;
-    snprintf(final, sizeof(final), "%s.%s", c->m->cfg.inprefix, f->dsn);
-    if (!valid_dsn(final))
+    /* any virtual file name becomes a valid data set name */
+    if (oftp_dsn_map(c->m->cfg.inprefix, f->dsn, "", final) != 0)
         return 1;
 
     /* the same virtual file again: answer its EERP once more */
@@ -235,11 +203,6 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
             return 13;
         }
     }
-    if (exists(final)) {
-        *retry = 'Y';
-        return 13;
-    }
-
     memset(&r, 0, sizeof(r));
     r.dir = SPL_RECV;
     r.state = SPL_ACTIVE;
@@ -258,6 +221,21 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
     if (oftp_spl_add(c->m->spool, &r) != 0) {
         *retry = 'Y';
         return 99;
+    }
+    /* the name is taken: the transfer number makes it unique */
+    if (exists(final)) {
+        char key[9];
+
+        memcpy(key, r.key, 8);
+        key[8] = '\0';
+        if (oftp_dsn_map(c->m->cfg.inprefix, f->dsn, key, final) != 0
+            || exists(final)) {
+            oftp_spl_del(c->m->spool, r.key);
+            *retry = 'Y';
+            return 13;
+        }
+        strcpy(r.local, final);
+        oftp_spl_put(c->m->spool, &r);
     }
     snprintf(c->tmp, sizeof(c->tmp), "%s.%.8s", c->m->cfg.tmpprefix, r.key);
     memset(&opt, 0, sizeof(opt));
@@ -677,7 +655,7 @@ ctl_send(OFTP_MON *m, int s, const char *line)
             *e = '\0';
         snprintf(r.member, sizeof(r.member), "%s", lp + 1);
     }
-    if (!valid_dsn(dsn) || !exists(dsn)) {
+    if (!oftp_dsn_valid(dsn) || !exists(dsn)) {
         oftp_net_puts(s, "502 data set not found");
         return;
     }

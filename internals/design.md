@@ -200,10 +200,10 @@ say; and whether an ACB opened by one TCB can be used from another has not
 been measured. A single owner sidesteps both and makes every spool change
 a sequence that is easy to log.
 
-Measured on MVS (CLAUDE.md, `test/mvs/tstksds.c`): inserts go through a
-direct PUT, because libc370's `vswrite()` on a dynamic handle is
-sequential and cannot insert below its position; existence is tested
-with a POINT (`vssteq()`), which reports "not found" as reason 16.
+Measured on MVS (CLAUDE.md, `test/mvs/tstksds.c`): inserts need libc370
+2.10.1, whose `vswrite()` on a dynamic handle is a direct PUT; existence
+is tested with a POINT (`vssteq()`), which reports "not found" as reason
+16; a never-loaded cluster gets its control record by a sequential load.
 
 ### 3.5 Restart
 

@@ -5,10 +5,10 @@
 ** requests, so whether an ACB may be used from another TCB never comes
 ** up, and every change to the spool happens in one sequence.
 **
-** Inserts use a direct PUT: libc370's vswrite() on a dynamic handle is a
-** sequential PUT and cannot insert below its position (CLAUDE.md,
-** test/mvs/tstksds.c). Existence is tested with vssteq(), which reports
-** a missing key as reason 16.
+** Inserts need libc370 2.10.1 or later: before it, vswrite() on a
+** dynamic handle was a sequential PUT and could not insert below its
+** position (libc370#514). Existence is tested with vssteq(), which
+** reports a missing key as reason 16.
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,26 +47,6 @@ struct oftp_spool {
 };
 
 static const char ctlkey[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-
-/* A direct PUT, then back to sequential update */
-static int
-put_direct(VSFILE *vs, void *r, int len, void *key)
-{
-    unsigned pl[16] = {0};
-    volatile int rc = 0;
-
-    __vsmdfy(vs, r, len, key, 8);
-    __asm__("MODCB RPL=(%0),OPTCD=(DIR,NUP),MF=(G,(%1))"
-            : : "r"(&vs->rpl), "r"(pl) : "1", "14", "15", "memory");
-    __asm__("LA\t2,SPPDONE\n\t"
-            "PUT\tRPL=(%0)\n"
-   "SPPDONE\tDS\t0H\n\t"
-            "ST\t15,%1"
-        : : "r"(&vs->rpl), "m"(rc) : "1", "2", "14", "15", "memory");
-    __asm__("MODCB RPL=(%0),OPTCD=(SEQ,UPD),MF=(G,(%1))"
-            : : "r"(&vs->rpl), "r"(pl) : "1", "14", "15", "memory");
-    return rc;
-}
 
 /* Reads the record with this key into sp->buf: 0, NOTFOUND or ERROR */
 static int
@@ -114,7 +94,7 @@ do_add(OFTP_SPOOL *sp, OFTP_SPREC *rec)
     memcpy(rec->key + 1, num, 7);
     memset(sp->buf, 0, OFTP_SPLRECL);
     memcpy(sp->buf, rec, sizeof(*rec));
-    if (put_direct(sp->vs, sp->buf, OFTP_SPLRECL, rec->key) != 0) {
+    if (vswrite(sp->vs, sp->buf, OFTP_SPLRECL, rec->key, 8) != 0) {
         vsclear(sp->vs);
         return OFTP_SPL_ERROR;
     }
@@ -268,7 +248,7 @@ open_update(OFTP_SPOOL *sp, char *why, int whylen)
         /* loaded once, control record missing: put it back */
         memset(sp->buf, 0, OFTP_SPLRECL);
         memcpy(sp->buf + 8, "0000000", 7);
-        if (put_direct(sp->vs, sp->buf, OFTP_SPLRECL, (void *)ctlkey) == 0)
+        if (vswrite(sp->vs, sp->buf, OFTP_SPLRECL, (void *)ctlkey, 8) == 0)
             return 0;
         snprintf(why, (size_t)whylen,
                  "control record: lookup rc %d reason %d, insert rc %d reason %d",

@@ -18,8 +18,6 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
    MVS, JOB02115); next the listener, outbound calls, the glue between
    spool, data sets and session engine, console commands (ftpd as
    template).
-   - Drop `put_direct()` once libc370#514 (direct PUT in `vswrite()`) is
-     released and the toolchain pin moves to it.
 7. **OFTP SEND / LIST** over the TCP control port.
 
 ## After the MVP
