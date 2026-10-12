@@ -6,6 +6,7 @@ result can be checked rather than believed.
 
 | Date | Partner | Who called | Level | What ran | Result |
 |---|---|---|---|---|---|
+| 2026-10-12 | mendelson 1.1 b53 (workstation) | mendelson | 5 | U file `NOT-CATEGORIZED`, 43 octets, to OFTPD on MVS (dev1, JOB02129) | stored as `IBMUSER.OFTPIN.NOT-CATE`, the 43 octets unchanged (read back through mvsMF); OFTPD's EERP went back in the same session, mendelson deleted its outbound copy; ESID 00 |
 | 2026-10-12 | mendelson 1.1 b53 (workstation) | mendelson | 5 | mendelson sent a file from its outbox to OFTPD on MVS (dev1, JOB02121) | refused by OFTPD with SFNA 01: mendelson's virtual file name `NOT-CATEGORIZED` is not a valid data set qualifier; session ended normally |
 | 2026-10-12 | same | OFTPD on MVS (dev1, JOB02121), `F OFTPD,CALL MENDEL` | 5 | no file; mendelson used the session to send its EERP for `MVS.SAMPLE` | spool record T0000001 DELIVERED |
 | 2026-10-12 | same | OFTPD on MVS (dev1, JOB02119), queued through the control port | 5, buffer 4096, credit 99 | T file `MVS.SAMPLE` from a FB 80 data set, 3 records | ESID 00. mendelson stored 108 octets: the three lines without their trailing blanks, each with CR-LF, in ASCII |
