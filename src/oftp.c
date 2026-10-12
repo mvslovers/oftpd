@@ -1,7 +1,7 @@
 /* OFTP - TSO command and batch utility, a client of the monitor
 **
 **   OFTP SEND PARTNER(name) DSN(data.set[(member)]) [VFN(name)]
-**             [FORMAT(T)] [XLATE] [USER(text)]
+**             [FORMAT(T)] [XLATE] [HOLD] [USER(text)]
 **   OFTP LIST [PARTNER(name)] [STATUS(state)] [MINE]
 **   OFTP SHOW key           OFTP DELETE key
 **   OFTP HOLD key           OFTP RELEASE key        OFTP RETRY key
@@ -14,8 +14,10 @@
 ** of a line continuing it on the next (columns 73-80 are ignored).
 **
 ** Output goes through PUTLINE under the TSO TMP, to SYSPRINT otherwise.
-** Return code: 0 done, 4 refused, 8 error or OFTPD not reached; for
-** SYSIN the highest of them.
+** Return code: 0 done; 4 done with a warning (an empty data set) or
+** refused for now (no such transfer, transfer active); 8 an error in the
+** command or its data set; 12 severe: an unknown partner, OFTPD not
+** reached or not answering. For SYSIN the highest of them.
 **
 ** The requester's userid (from its ACEE) goes with every SEND as the
 ** transfer's owner. During development the control port has no security
@@ -90,6 +92,23 @@ whoami(char *user)
         user[--n] = '\0';
 }
 
+/* The return code for OFTPD's final answer:
+**   200 done                     0     210 done, with a warning     4
+**   4xx refused for now          4     501 unknown partner         12
+**   5xx anything else wrong      8
+*/
+static int
+reply_rc(const char *line)
+{
+    if (strncmp(line, "200", 3) == 0)
+        return 0;
+    if (line[0] == '2' || line[0] == '4' || strncmp(line, "504", 3) == 0)
+        return 4;
+    if (strncmp(line, "501", 3) == 0)
+        return 12;
+    return 8;
+}
+
 /* The commands, with the keyword a lone positional operand stands for */
 static const char *const verbs[][2] = {
     { "SEND", "" },     { "LIST", "" },       { "SHOW", "KEY" },
@@ -120,9 +139,10 @@ command(int argc, char **argv, FILE *out)
     n = (size_t)snprintf(req, sizeof(req), "%s", verb);
     for (i = 1; i < argc; i++) {
         char key[16], val[80];
+        const char *a = argv[i];
 
-        if (operand(argv[i], key, sizeof(key), val, sizeof(val)) != 0) {
-            fprintf(out, "OFTP003E OPERAND TOO LONG: %s\n", argv[i]);
+        if (operand(a, key, sizeof(key), val, sizeof(val)) != 0) {
+            fprintf(out, "OFTP003E OPERAND TOO LONG: %s\n", a);
             return 8;
         }
         upcase(key);
@@ -147,7 +167,8 @@ command(int argc, char **argv, FILE *out)
         if (strcmp(key, "FORMAT") == 0)
             strcpy(key, "FMT");
         upcase(val);
-        if (strcmp(key, "XLATE") == 0 && val[0] == '\0')
+        if ((strcmp(key, "XLATE") == 0 || strcmp(key, "HOLD") == 0)
+            && val[0] == '\0')
             strcpy(val, "Y");
         n += (size_t)snprintf(req + n, sizeof(req) - n, " %s=%s", key, val);
         if (n >= sizeof(req)) {
@@ -160,24 +181,24 @@ command(int argc, char **argv, FILE *out)
 
     if ((s = oftp_net_connect(host, port, 3)) < 0) {
         fprintf(out, "OFTP010E OFTPD NOT REACHED AT %s PORT %d\n", host, port);
-        return 8;
+        return 12;
     }
     if (oftp_net_gets(s, line, sizeof(line), 10) < 0
         || strncmp(line, "220", 3) != 0) {
         fprintf(out, "OFTP011E NO GREETING FROM OFTPD\n");
         oftp_net_close(s);
-        return 8;
+        return 12;
     }
     oftp_net_puts(s, req);
     for (;;) {
         if (oftp_net_gets(s, line, sizeof(line), 60) < 0) {
             fprintf(out, "OFTP012E NO ANSWER FROM OFTPD\n");
-            rc = 8;
+            rc = 12;
             break;
         }
         fprintf(out, "%s\n", strlen(line) > 4 ? line + 4 : line);
         if (line[0] != '1') {
-            rc = line[0] == '2' ? 0 : 4;
+            rc = reply_rc(line);
             break;
         }
     }

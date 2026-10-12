@@ -632,7 +632,8 @@ ctl_send(OFTP_MON *m, int s, const char *line)
     OFTP_SPREC r;
     OFTP_PARTNER *p;
     char partner[16], dsn[60], vfn[40], fmt[4], xl[4], user[12], owner[12];
-    char reply[80];
+    char hold[4], reply[100];
+    int empty;
     char *lp;
     struct tm *tm;
     time_t now = time(NULL);
@@ -644,6 +645,7 @@ ctl_send(OFTP_MON *m, int s, const char *line)
     kw(line, "XLATE", xl, sizeof(xl));
     kw(line, "USER", user, sizeof(user));
     kw(line, "OWNER", owner, sizeof(owner));
+    kw(line, "HOLD", hold, sizeof(hold));
     if ((p = oftp_cfg_find(&m->cfg, partner)) == NULL) {
         oftp_net_puts(s, "501 unknown or disabled partner");
         return;
@@ -672,8 +674,32 @@ ctl_send(OFTP_MON *m, int s, const char *line)
         oftp_net_puts(s, "503 VFN longer than 26");
         return;
     }
+    /* an empty file is queued all the same, with a warning */
+    {
+        RFILE *rf;
+        char q[60], *one;
+        size_t got = 0;
+
+        if (r.member[0])
+            snprintf(q, sizeof(q), "'%s(%s)'", dsn, r.member);
+        else
+            snprintf(q, sizeof(q), "'%s'", dsn);
+        if (ropen(q, 0, &rf) != 0) {
+            oftp_net_puts(s, "502 data set cannot be opened");
+            return;
+        }
+        /* one record, on the heap: this thread's stack is 32 KB */
+        if ((one = malloc((size_t)rf->lrecl + 4)) == NULL) {
+            rclose(rf);
+            oftp_net_puts(s, "451 no storage");
+            return;
+        }
+        empty = rread(rf, one, &got) != 0;
+        free(one);
+        rclose(rf);
+    }
     r.dir = SPL_SEND;
-    r.state = SPL_QUEUED;
+    r.state = hold[0] == 'Y' ? SPL_HELD : SPL_QUEUED;
     r.fmt = fmt[0] == 'T' ? 'T' : 0;
     r.xlate = xl[0] == 'Y' ? 'Y' : 'N';
     strcpy(r.partner, p->peer.name);
@@ -692,13 +718,16 @@ ctl_send(OFTP_MON *m, int s, const char *line)
              tm->tm_min, tm->tm_sec, m->counter);
     unlock(m, 0);
     r.tqueued = (long)now;
-    settext(&r, "queued");
+    settext(&r, r.state == SPL_HELD ? "queued and held" : "queued");
     if (oftp_spl_add(m->spool, &r) != 0) {
         oftp_net_puts(s, "451 spool not available");
         return;
     }
-    snprintf(reply, sizeof(reply), "200 %.8s queued for %s as %s", r.key,
-             r.partner, r.dsn);
+    /* 210: done, with a warning */
+    snprintf(reply, sizeof(reply), "%s %.8s %s for %s as %s%s",
+             empty ? "210" : "200", r.key,
+             r.state == SPL_HELD ? "queued and held" : "queued", r.partner,
+             r.dsn, empty ? " -- the data set is empty" : "");
     oftp_net_puts(s, reply);
     oftp_mon_msg("OFTP230I %.8s QUEUED FOR %s: %s AS %s", r.key, r.partner,
                  dsn, r.dsn);
