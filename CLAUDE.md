@@ -31,11 +31,15 @@ root rule: `X/370` names can collide with IBM product names.
 - **The monitor is the sole owner** of the spool (a VSAM KSDS, one record per
   transfer, also holding the restart state) and of the partner table. The
   utilities never touch them; they ask the monitor.
-- **Utilities reach the monitor over a TCP control port** (loopback). The
-  client side lives in the shared code, so `OFTP`, batch and later ISPF
-  dialogs (libc370 `mvs/ispf.h`) are all the same kind of client. Keep the
-  transport behind one interface: cross-memory may replace it later. The
-  operator uses MODIFY/STOP on the started task.
+- **Utilities reach the monitor by cross-memory — that is the target** —
+  because only there is the caller's identity real. **During development
+  they use a TCP control port without security.** Both carry the same
+  requests; keep the request layer transport-neutral and never treat a TCP
+  caller as authenticated. (The sockets are the Hercules host's, so
+  "loopback" is the PC, not MVS.) The client side lives in the shared code,
+  so `OFTP`, batch and later ISPF dialogs (libc370 `mvs/ispf.h`) are all
+  the same kind of client. The operator uses MODIFY/STOP on the started
+  task.
 
 ## Build
 

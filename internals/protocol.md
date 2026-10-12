@@ -26,7 +26,7 @@ lower case in prose. Where this document says MUST it quotes the RFC's own wordi
 upgrade it. The only sentence in [5024] that literally says "mandatory" about a feature set is
 s10.2: "Support of all cipher suites listed here is mandatory." (see 3.4).
 
-Not verifiable from any primary source I could obtain (flagged again where relevant):
+Not verifiable from any obtainable primary source (flagged again where relevant):
 - the exact text of ODETTE OFTP 1.4 (April 2000) and of OFTP 1.2 (SSIDLEV '1');
 - any rule for when an encoder should use buffer-compression subrecords (minimum run length);
 - concrete timer values (the RFCs define an "inactivity timer" but no duration);
