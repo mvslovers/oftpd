@@ -50,7 +50,7 @@ num(const char *v, long lo, long hi)
 }
 
 static int
-yn(const char *v)
+yesno(const char *v)
 {
     if (strcmp(v, "Y") == 0 || strcmp(v, "YES") == 0)
         return 1;
@@ -141,15 +141,15 @@ partner_kw(OFTP_PARTNER *p, const char *k, const char *v)
         return 0;
     }
     if (strcmp(k, "COMPRESS") == 0)
-        return (b = yn(v)) < 0 ? -1 : (p->peer.cmpr = b, 0);
+        return (b = yesno(v)) < 0 ? -1 : (p->peer.cmpr = b, 0);
     if (strcmp(k, "ENABLED") == 0)
-        return (b = yn(v)) < 0 ? -1 : (p->enabled = b, 0);
+        return (b = yesno(v)) < 0 ? -1 : (p->enabled = b, 0);
     if (strcmp(k, "CALL") == 0)
-        return (b = yn(v)) < 0 ? -1 : (p->call = b, 0);
+        return (b = yesno(v)) < 0 ? -1 : (p->call = b, 0);
     if (strcmp(k, "ADDRESS") == 0)
         return put(p->address, sizeof(p->address), v);
     if (strcmp(k, "XLATE") == 0)
-        return (b = yn(v)) < 0 ? -1 : (p->xlate = b, 0);
+        return (b = yesno(v)) < 0 ? -1 : (p->xlate = b, 0);
     return -2;
 }
 

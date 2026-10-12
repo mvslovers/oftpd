@@ -52,6 +52,10 @@ stand.
 
 ## Rules specific to this project
 
+- **Cross-build before every commit** (`mbt build --all --tests`): the
+  host compiler accepts what cc370 refuses. cc370 treats `yn`, `logf` and
+  the other C99 math names as built-ins, so a static helper of that name
+  fails the MVS build while the host tests pass.
 - **No writable module data in OFTPD.** It is AC(1) and RENT; a writable
   static abends in key 0 (ftpd#101). State lives in a `main()` local reached
   through the GRT. `mbt module-data` must stay clean.
