@@ -126,13 +126,28 @@ Grouped by purpose; field widths are fixed in the header file, not here.
   member; translation (none, or a table name); for received files the
   attributes the data set was created with.
 - **State**: state (3.3); attempt count; time queued, last attempt, last
-  change; last reason code and text; owning userid (who queued it or for
-  whom it was received).
+  change, next attempt; owning userid (who queued it or for whom it was
+  received).
+- **Outcome**: the partner's OFTP reason code (SFNA/EFNA/ESID/NERP) and
+  text **as received**, kept apart from our own local error code. Mixing
+  the two in one field makes "who refused" unanswerable afterwards.
+- **Disposition** (sends): `KEEP` the source (MVP), *later* `DELETE` once
+  the EERP has arrived (never earlier) and `COPY` (a snapshot taken when
+  the send is queued, so the source may change afterwards).
 - **Restart**: last confirmed position (records for F/V, 1K blocks for
   U/T) and whatever is needed to resume the local data set at that point
   (3.5).
 - **EERP**: for sends, whether an EERP or NERP has arrived and when; for
   receives, the key of the `E` record that answers it.
+- **Post-processing** (*later*, but the field exists from the start): state
+  and return code of the job or exit run after a receive.
+
+Besides the key, OFTPD indexes every transfer **by the virtual file's
+identity** (originator, name, date, time with its counter) in memory, for
+duplicate detection (SFNA 13) and for matching an incoming EERP to its
+send. The key itself stays a plain sequence number and never changes
+during a transfer's life. (A key built from the file identity and
+timestamps is a known source of collisions in the same second.)
 
 ### 3.3 States
 
@@ -140,17 +155,24 @@ Send:
 
 ```
 QUEUED --> ACTIVE --> SENT ------> DELIVERED     (EERP received)
-   ^          |         |
-   |          v         +--------> REJECTED      (NERP received)
-   +--- INTERRUPTED                REJECTED      (SFNA/EFNA, retry N)
+   ^  ^       |         |
+   |  |       v         +--------> REJECTED      (NERP received)
+   |  +---- WAITING                REJECTED      (SFNA/EFNA, retry N)
+   |       (retry later)           FAILED        (retries exhausted)
    |
- HELD (operator or user)           FAILED        (retries exhausted)
+ HELD (operator or user)
 ```
 
 - `SENT` means EFPA received: the partner has the file, the end-to-end
-  answer is outstanding.
-- SFNA or EFNA with retry `Y` goes back to `QUEUED` with the attempt count
-  raised.
+  answer is outstanding. `DELIVERED` is the EERP. The two are never
+  folded into one state.
+- `WAITING` is the **system's** hold: after a broken connection, SFNA
+  retry `Y` or EFNA, with a next-attempt time that grows with the attempt
+  count. It clears itself. `HELD` is the **operator's or user's** hold and
+  only a person releases it. An abend during a transfer leaves it `HELD`,
+  not `WAITING`, so a failure that repeats does not loop.
+- An explicit `RETRY` verb resends a `SENT` file (lost EERP) — knowingly,
+  because the partner then sees the same virtual file twice.
 
 Receive:
 
@@ -161,8 +183,9 @@ ACTIVE --> RECEIVED --> CONFIRMED      (EERP sent)
 INTERRUPTED
 ```
 
-- `RECEIVED`: the data set is closed without error, EFPA sent, `E` record
-  written.
+- `RECEIVED`: the data set is closed without error and renamed to its
+  final name (5.2), EFPA sent, `E` record written. The EERP is never sent
+  for a file that is not yet under its final name.
 - `INTERRUPTED` receives that are not resumed within a configurable time
   are cleaned up (data set deleted, record marked).
 
@@ -194,7 +217,9 @@ negotiated per session (`SSIDREST`) and per file (`SFIDREST` / `SFPAACNT`).
 ## 4. The partner table
 
 *Decided* for the MVP: **a parmlib member** (`DD:OFTPPTN`), one entry per
-partner, read at startup and on `F OFTPD,REFRESH`. *Later*: maintenance by
+partner, read at startup and on `F OFTPD,REFRESH`. An entry with an error
+disables that partner with a message; it does not stop OFTPD. A refresh
+never deletes a partner that still has transfers in the spool. *Later*: maintenance by
 command and ISPF (rvsMVS had both a table and commands); whether that
 needs a KSDS is decided then. Each entry has an 8-character partner name,
 the name operators and users type.
@@ -204,8 +229,11 @@ Attributes:
 - **Identity**: partner name; partner's Odette ID; our Odette ID towards
   this partner (default: the local one); the password we expect; the
   password we send; `SSIDUSER` both ways.
-- **Connection**: host and port; may we call (active), may it call (passive);
-  call windows; retry interval and limit.
+- **Connection**: host and port; may we call (active), may it call
+  (passive); an **enabled** flag (a disabled partner is refused and never
+  called, its queue kept); the addresses a call from it may come from
+  (MVP: checked if set); a session cap; call windows and retry interval
+  and limit (*later*).
 - **Protocol**: highest level to offer (5, 4, 2); mode (sender, receiver,
   both); SDEB and credit caps; buffer compression Y/N; restart Y/N.
 - **Files**: default code page translation for T (and optionally F/V);
@@ -245,11 +273,23 @@ boundaries are lost and only the bytes are kept. Recreating the sender's
 exact layout would need the sender to say what it was — possible between
 two oftp370 systems through `SFIDUSER` or the 2.0 description, *later*.
 
+**Written under a temporary name, renamed at the end.** A file being
+received goes to `<temp prefix>.T<transfer number>`; only after the CLOSE
+succeeded is it renamed to its final name, and only then is EFPA sent.
+A half-received file therefore never carries a name anyone might pick up.
+
 **Data set name** (MVP): the virtual file name as the protocol gives it
 (`SFIDDSN`), under a configurable prefix: `OFTP.IN` + `PAYROLL.DATA` →
 `OFTP.IN.PAYROLL.DATA`. If that is not a valid data set name, SFNA 01
 (invalid filename, retry N); if the data set exists, SFNA 13 (duplicate
-file, retry Y). *Later*: a naming pattern per partner with symbols such
+file, retry Y). This is built as the **default receive rule**: *later*,
+rules keyed by partner (or any) and virtual file name (with wildcards)
+choose the name pattern, replace or not, translation, space and the
+post-processing job — the MVP's prefix + name is simply the rule that
+matches everything.
+
+V files with an LRECL above 32752 are refused with SFNA 05 (no spanned
+records in the MVP). *Later*: a naming pattern per partner with symbols such
 as `&PARTNER`, `&DATE`, `&TIME`, `&SEQ` (rvsMVS could be configured so).
 
 Before EFPA: every write and the CLOSE must have succeeded (a full volume
@@ -308,7 +348,19 @@ real.
 
 Until then the client sends its userid and OFTPD believes it. That is a
 development shortcut, not a security model, and the TCP transport is not
-to be offered as one. A password check over TCP (RACINIT) can be added if
+to be offered as one.
+
+**The check itself** is the same for both transports: OFTPD builds an ACEE
+for the requester's userid without a password (RACINIT, possible because
+OFTPD is APF) and checks READ on the data set to be sent — and for
+post-processing, on the job library. Under RAKF a missing profile means
+"allowed", so the check alone does not protect; the installation must
+define the profiles, and the documentation says so. A user exit may
+replace the check *later*; whatever is shipped **refuses by default**.
+
+**With OFTPD down, nothing can be queued.** That is intended: OFTPD is
+the only writer of the spool. If it bites, a drop data set that OFTPD
+reads at startup can be added later. A password check over TCP (RACINIT) can be added if
 the TCP transport ever has to live longer than planned.
 
 ### 7.2 Utilities
@@ -341,6 +393,17 @@ P OFTPD                       (stop accepting, end sessions at the next
                                file boundary, close the spool)
 ```
 
+Stopping a session or OFTPD comes in three strengths: **graceful** (at the
+next file boundary), **cancel** (now; the transfer goes to `WAITING`) and
+**break** (now, and the transfer goes to `HELD`).
+
+**Messages**: `OFTPnnnnS`, S one of `I W E` and `P` for messages that go
+to the log only and never to the console. Number ranges per component
+(monitor, session, spool, control port, utility). Every session message
+starts with the partner name, so a log of several sessions can be read.
+The log is a SYSOUT data set; the console sees only what an operator must
+act on.
+
 ## 9. Phases
 
 1. Codec and session engine on the host (tests against the RFC examples),
@@ -365,3 +428,25 @@ P OFTPD                       (stop accepting, end sessions at the next
   TCP without security during development (section 7).
 - **Q8** (*later*) Virtual local Odette IDs (several per installation);
   the MVP has one.
+
+## 11. Lessons from a mature product
+
+The design was checked against the documentation and libraries of
+rvsMVS 6.2 (the maintainer's former product), studied for concepts only.
+Adopted above: separate system and operator holds, `SENT` apart from
+`DELIVERED`, raw partner reason codes, receive under a temporary name,
+duplicate detection by file identity, receive rules with the MVP's naming
+as the default, disposition after EERP, a log-only message class, three
+stop strengths, a partner enabled flag.
+
+Deliberately not adopted:
+
+- **Utilities writing the spool directly**, with the monitor rescanning it.
+  It allowed queuing while the monitor was down, and cost two decades of
+  contention fixes on a shared KSDS. OFTPD stays the only writer.
+- **A spool key built from name and timestamps**; uniqueness from
+  timestamps was a recurring source of bugs.
+- **Checks that fail open**: an exit shipped as accept-all.
+- **Many transports** (X.25, SNA, BSC, XOT, tape, RJE), several security
+  and compression layers, a keyword matrix for every attribute.
+- **A journal that stops the monitor when full.**
