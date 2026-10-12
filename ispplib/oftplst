@@ -2,16 +2,16 @@
  % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)
  + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)
  _ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT)
- @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT)
+ @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT) CAPS(OFF)
 )BODY
 %-------------------------- OFTP370 - Transfers ----------------------------
 %Command ===>_ZCMD                                         %Scroll ===>_Z   +
 + Partner_OFTFPTN +  Status_OFTFST    +  Mine only_Z+  (Y/N)
 @OFTMSG
 + S show  H hold  R release  T retry  D delete
-+  Key      Dir  Status    Partner  Virtual file name          Data set
++  Key      D Status    Partner  Virtual file name          Data set
 )MODEL
-_Z@Z       @Z   @Z        @Z       @Z                         @Z
+_Z@Z       @Z@Z        @Z       @Z                         @Z
 )INIT
   .ZVARS = '(ZSCROLL OFTFMIN OS OK OD OT OP OV ON)'
   &ZSCROLL = PAGE

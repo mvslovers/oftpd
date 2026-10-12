@@ -20,7 +20,18 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 7. ~~OFTP utility~~ — SEND, LIST, SHOW, DELETE, HOLD, RELEASE, RETRY, CALL,
    PARTNERS from TSO and batch (`samplib/oftpbat`, JOB02133/JOB02137).
 
+8. ~~ISPF dialog~~ — OFTPI under ISPF M -> O on dev1: menu, send, transfers
+   (S/H/R/T/D), partners (C, S), configure (edit + REFRESH), monitor;
+   `test/tso/ispf.lua` drives it over TN3270 (green 2026-10-12). Panels in
+   `ispplib/`; dev1 has them in SYSGEN.ISPF.PLIB, OFTP370.DEV.LINKLIB in
+   ISPLLIB (SYS1.CMDPROC(ISPF), backup ISPFBAK; ISPMORE backup ISPMOREB).
+
 ## Next
+
+- Dialog: `S` (show) and Configure not yet driven by the TN3270 test; the
+  data set column of the transfer list is cut at column 80.
+- `[distribution.library]` for `ispplib/`, installation notes for the
+  dialog (ISPPLIB/ISPLLIB, ISPMORE).
 
 - Log to a SYSOUT data set instead of every line by WTO; a log-only
   message class (design 8).

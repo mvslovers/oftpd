@@ -1,7 +1,7 @@
 )ATTR
  % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)
  + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)
- @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT)
+ @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT) CAPS(OFF)
 )BODY
 %------------------------- OFTP370 - Transfer -----------------------------
 +

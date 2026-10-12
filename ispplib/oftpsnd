@@ -2,7 +2,7 @@
  % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)
  + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)
  _ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT)
- @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT)
+ @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT) CAPS(OFF)
 )BODY
 %------------------------ OFTP370 - Send a Data Set ------------------------
 +

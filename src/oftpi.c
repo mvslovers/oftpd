@@ -23,7 +23,7 @@ typedef struct vars {
     char oftptn[8], oftdsn[54], oftvfn[26], oftfmt[1], oftxlt[1];
     char ofthld[1], oftusr[8];
     char oftfptn[8], oftfst[10], oftfmin[1];
-    char os[1], ok[8], od[4], ot[9], op[8], ov[26], on[44];
+    char os[1], ok[8], od[1], ot[9], op[8], ov[26], on[44];
     char pn[8], pi[25], pe[8], pb[4], pl[1], ph[30];
     char l[6][76];
     char oftcdsn[54];
@@ -155,7 +155,7 @@ add_transfer(void *ctx, const char *line)
 
     PUT(d, os, "");
     col(line, 0, 7, f);   PUT(d, ok, f);
-    col(line, 9, 12, f);  PUT(d, od, f);
+    col(line, 9, 9, f);   PUT(d, od, f);     /* S(END) or R(ECV) */
     col(line, 14, 22, f); PUT(d, ot, f);
     col(line, 24, 31, f); PUT(d, op, f);
     col(line, 33, 58, f); PUT(d, ov, f);
@@ -190,7 +190,7 @@ show(DLG *d, const char *key)
 static void
 transfers(DLG *d)
 {
-    char fp[9], fs[11], fm[2], sel[2], key[9], req[120];
+    char fp[9], fs[11], fm[2], sel[2], key[9], req[120], keep[77];
     size_t n;
     int rc;
 
@@ -210,7 +210,10 @@ transfers(DLG *d)
 
         oftp_isp_exec("TBCREATE OFTPTRN NAMES(OS OK OD OT OP OV ON) "
                       "NOWRITE REPLACE");
+        GET(d, oftmsg, keep);
         ask(d, req, add_transfer, d);
+        if (keep[0])                    /* an action's answer stays */
+            PUT(d, oftmsg, keep);
         oftp_isp_exec("TBTOP OFTPTRN");
         PUT(d, os, "");
         rc = oftp_isp_exec("TBDISPL OFTPTRN PANEL(OFTPLST)");
@@ -219,6 +222,7 @@ transfers(DLG *d)
         oftp_isp_exec("TBEND OFTPTRN");
         if (rc >= 8)
             return;
+        PUT(d, oftmsg, "");
         if (sel[0] == '\0' || key[0] == '\0')
             continue;                   /* new filters, or just Enter */
         switch (sel[0]) {
@@ -274,7 +278,7 @@ add_partner(void *ctx, const char *line)
 static void
 partners(DLG *d, int selecting)
 {
-    char sel[2], name[9], req[40];
+    char sel[2], name[9], req[40], keep[77];
     int rc;
 
     if (!selecting)
@@ -282,7 +286,10 @@ partners(DLG *d, int selecting)
     for (;;) {
         oftp_isp_exec("TBCREATE OFTPPTN NAMES(OS PN PI PE PB PL PH) "
                       "NOWRITE REPLACE");
+        GET(d, oftmsg, keep);
         ask(d, "PARTNERS", add_partner, d);
+        if (keep[0])
+            PUT(d, oftmsg, keep);
         oftp_isp_exec("TBTOP OFTPPTN");
         PUT(d, os, "");
         rc = oftp_isp_exec("TBDISPL OFTPPTN PANEL(OFTPPTL)");
@@ -292,8 +299,10 @@ partners(DLG *d, int selecting)
         if (rc >= 8) {
             if (selecting)
                 PUT(d, oftptn, "");
+            PUT(d, oftmsg, "");
             return;
         }
+        PUT(d, oftmsg, "");
         if (sel[0] == '\0' || name[0] == '\0')
             continue;
         if (sel[0] == 'S' && selecting) {
