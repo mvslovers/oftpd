@@ -200,6 +200,11 @@ say; and whether an ACB opened by one TCB can be used from another has not
 been measured. A single owner sidesteps both and makes every spool change
 a sequence that is easy to log.
 
+Measured on MVS (CLAUDE.md, `test/mvs/tstksds.c`): inserts go through a
+direct PUT, because libc370's `vswrite()` on a dynamic handle is
+sequential and cannot insert below its position; existence is tested
+with a POINT (`vssteq()`), which reports "not found" as reason 16.
+
 ### 3.5 Restart
 
 *Later* — the MVP offers and accepts `SSIDREST=N`. OFTP restart is

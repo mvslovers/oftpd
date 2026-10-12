@@ -60,8 +60,18 @@ stand.
   libc370 has no ASCII/EBCDIC tables — take ftpd's.
 - **Check every write and the close** before confirming a file (EFPA/EERP):
   a full volume shows up only at CLOSE (libc370 consumer notes).
-- **libc370's VSAM API has no test of its own.** Prove each call we use
-  against a real KSDS before building on it.
+- **libc370's VSAM on a KSDS, measured** (`test/mvs/tstksds.c`, dev1
+  JOB02094): `vswrite()` on a dynamic handle is a *sequential* PUT, so an
+  insert below the current position fails with reason 12, and so does a
+  duplicate key -- the two cannot be told apart. A direct PUT
+  (`OPTCD=DIR,NUP`, then back to `SEQ,UPD`) inserts anywhere and reports a
+  duplicate as reason 8. `vsread()` with a key that is not there returns
+  -2 with reason 88 (the GET after a failed POINT); `vssteq()` reports the
+  not-found itself, rc 8 reason 16. The spool inserts with a direct PUT and
+  tests for a key with `vssteq()`. The initial load of an empty cluster
+  needs a sequential OUT open first. Any other call: measure before use.
+- **VSAM space on dev1**: `PUB000` (catalog `UCPUB000`) has no room for a
+  suballocated cluster; a test cluster is defined `UNIQUE`.
 - Socket traps (libc370 sockets reference, ftpd): no `setsockopt`, a
   blocking `connect()` gives up after about 1 s, a blocking `recv()` waits
   for all `len` bytes, socket numbers are system-wide and survive the
