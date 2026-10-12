@@ -27,10 +27,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <mvs/racf.h>
-
 #include "oftp.h"
-#include "oftpnet.h"
+#include "oftpcli.h"
 
 static void
 upcase(char *s)
@@ -73,40 +71,11 @@ operand(const char *arg, char *key, size_t kcap, char *val, size_t vcap)
     return 0;
 }
 
-/* The userid of this address space's ACEE, "" when there is none */
+/* Each answer line of OFTPD, as it comes */
 static void
-whoami(char *user)
+show(void *ctx, const char *text)
 {
-    ACEE *acee = racf_get_acee();
-    unsigned n;
-
-    user[0] = '\0';
-    if (acee == NULL)
-        return;
-    n = (unsigned char)acee->aceeuser[0];
-    if (n > 8)
-        n = 8;
-    memcpy(user, acee->aceeuser + 1, n);
-    user[n] = '\0';
-    while (n > 0 && user[n - 1] == ' ')
-        user[--n] = '\0';
-}
-
-/* The return code for OFTPD's final answer:
-**   200 done                     0     210 done, with a warning     4
-**   4xx refused for now          4     501 unknown partner         12
-**   5xx anything else wrong      8
-*/
-static int
-reply_rc(const char *line)
-{
-    if (strncmp(line, "200", 3) == 0)
-        return 0;
-    if (line[0] == '2' || line[0] == '4' || strncmp(line, "504", 3) == 0)
-        return 4;
-    if (strncmp(line, "501", 3) == 0)
-        return 12;
-    return 8;
+    fprintf((FILE *)ctx, "%s\n", text);
 }
 
 /* The commands, with the keyword a lone positional operand stands for */
@@ -120,9 +89,9 @@ static const char *const verbs[][2] = {
 static int
 command(int argc, char **argv, FILE *out)
 {
-    char req[300], host[64] = "127.0.0.1", line[256], verb[12], me[9];
+    char req[300], host[64] = "127.0.0.1", final[256], verb[12], me[9];
     const char *pos = NULL;
-    int port = 3306, i, s, rc = 0, mine = 0;
+    int port = 3306, i, rc, mine = 0;
     size_t n;
 
     snprintf(verb, sizeof(verb), "%s", argv[0]);
@@ -134,7 +103,7 @@ command(int argc, char **argv, FILE *out)
         fprintf(out, "OFTP002E UNKNOWN COMMAND %s\n", argv[0]);
         return 8;
     }
-    whoami(me);
+    oftp_cli_whoami(me);
 
     n = (size_t)snprintf(req, sizeof(req), "%s", verb);
     for (i = 1; i < argc; i++) {
@@ -179,30 +148,11 @@ command(int argc, char **argv, FILE *out)
     if ((strcmp(verb, "SEND") == 0 || mine) && me[0])
         n += (size_t)snprintf(req + n, sizeof(req) - n, " OWNER=%s", me);
 
-    if ((s = oftp_net_connect(host, port, 3)) < 0) {
-        fprintf(out, "OFTP010E OFTPD NOT REACHED AT %s PORT %d\n", host, port);
-        return 12;
-    }
-    if (oftp_net_gets(s, line, sizeof(line), 10) < 0
-        || strncmp(line, "220", 3) != 0) {
-        fprintf(out, "OFTP011E NO GREETING FROM OFTPD\n");
-        oftp_net_close(s);
-        return 12;
-    }
-    oftp_net_puts(s, req);
-    for (;;) {
-        if (oftp_net_gets(s, line, sizeof(line), 60) < 0) {
-            fprintf(out, "OFTP012E NO ANSWER FROM OFTPD\n");
-            rc = 12;
-            break;
-        }
-        fprintf(out, "%s\n", strlen(line) > 4 ? line + 4 : line);
-        if (line[0] != '1') {
-            rc = reply_rc(line);
-            break;
-        }
-    }
-    oftp_net_close(s);
+    rc = oftp_cli_request(host, port, req, show, out, final, sizeof(final));
+    if (rc == 12)
+        fprintf(out, "OFTP010E %s\n", final);
+    else
+        fprintf(out, "%s\n", final);
     return rc;
 }
 

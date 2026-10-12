@@ -1,0 +1,28 @@
+)ATTR
+ % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)
+ + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)
+ _ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT)
+ @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT)
+)BODY
+%-------------------- OFTP370 - Odette File Transfer -----------------------
+%Option ===>_Z +
++
+%  1 +Send       +Queue a data set for a partner
+%  2 +Transfers  +List; S show, H hold, R release, T retry, D delete
+%  3 +Partners   +List the partners; C call one now
+%  4 +Configure  +Edit the partner table, then OFTPD reloads it
+%  5 +Monitor    +OFTPD: Odette ID, ports, sessions, spool
+%  X +Exit
++
++
++
+@OFTMSG
++
++  OFTPD control port:@OFTHOST                                       +
++                     @OFTPORT+
+)INIT
+  .ZVARS = '(OFTOPT)'
+  .CURSOR = OFTOPT
+)PROC
+  VER (&OFTOPT,LIST,1,2,3,4,5,X)
+)END

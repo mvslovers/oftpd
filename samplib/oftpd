@@ -17,12 +17,13 @@
 //*              /F OFTPD,D Q            (the spool)
 //*              /F OFTPD,D S            (sessions)
 //*              /F OFTPD,CALL partner   (call a partner now)
+//*              /F OFTPD,REFRESH        (read the partner member again)
 //* Stopping:    /P OFTPD
 //*
 //OFTPD    EXEC PGM=OFTPD,REGION=8M,TIME=1440
 //STEPLIB  DD  DISP=SHR,DSN=@LINKLIB@
 //OFTPPRM  DD  DSN=&D(&M),DISP=SHR,FREE=CLOSE
-//OFTPPTN  DD  DSN=&D(&P),DISP=SHR,FREE=CLOSE
+//OFTPPTN  DD  DSN=&D(&P),DISP=SHR
 //OFTPSPL  DD  DSN=&S,DISP=OLD
 //SYSPRINT DD  SYSOUT=*
 //STDOUT   DD  SYSOUT=*

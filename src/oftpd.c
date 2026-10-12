@@ -3,7 +3,7 @@
 ** DD OFTPPRM  the monitor's settings      DD OFTPPTN  the partners
 ** DD OFTPSPL  the spool, a KSDS KEYS(8 0) RECORDSIZE(512 512)
 **
-** Operator: F OFTPD,D P | D Q | D S | CALL partner     P OFTPD
+** Operator: F OFTPD,D P | D Q | D S | CALL partner | REFRESH     P OFTPD
 **
 ** The startup order follows FTPD: console set-up while main is the only
 ** task, then APF, then the banner. The monitor block is a main() local:
@@ -25,29 +25,6 @@ static void
 cfgmsg(void *ctx, const char *line)
 {
     oftp_mon_msg("OFTP010W %s: %s", (const char *)ctx, line);
-}
-
-/* Reads one member through its DD; -1 when the DD cannot be opened */
-static int
-read_member(OFTP_CONFIG *c, const char *dd, int partner)
-{
-    char name[16], line[256];
-    FILE *fp;
-    int n = 0;
-
-    snprintf(name, sizeof(name), "DD:%s", dd);
-    if ((fp = fopen(name, "r")) == NULL)
-        return -1;
-    while (fgets(line, sizeof(line), fp) != NULL) {
-        size_t len = strlen(line);
-
-        /* fixed records: columns 73-80 are sequence numbers */
-        if (len > 72)
-            line[72] = '\0';
-        oftp_cfg_line(c, partner, line, ++n, cfgmsg, (void *)dd);
-    }
-    fclose(fp);
-    return 0;
 }
 
 static void
@@ -83,7 +60,7 @@ main(int argc, char **argv)
     }
     memcpy(m->eye, "OFTPMON ", 8);
     oftp_cfg_defaults(&m->cfg);
-    if (read_member(&m->cfg, "OFTPPRM", 0) != 0) {
+    if (oftp_mon_load(&m->cfg, "OFTPPRM", 0) != 0) {
         oftp_mon_msg("OFTP011E DD OFTPPRM CANNOT BE OPENED");
         return 8;
     }
@@ -91,7 +68,7 @@ main(int argc, char **argv)
         oftp_mon_msg("OFTP012E OFTPPRM HAS NO ODETTEID");
         return 8;
     }
-    if (read_member(&m->cfg, "OFTPPTN", 1) != 0)
+    if (oftp_mon_load(&m->cfg, "OFTPPTN", 1) != 0)
         oftp_mon_msg("OFTP013W DD OFTPPTN CANNOT BE OPENED, NO PARTNERS");
     on = oftp_cfg_finish(&m->cfg, cfgmsg, (void *)"OFTPPTN");
     oftp_mon_msg("OFTP014I ODETTE ID %s, %d OF %d PARTNERS ENABLED",

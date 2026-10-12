@@ -16,6 +16,7 @@
 #include <mvs/rfile.h>
 #include <mvs/wto.h>
 
+#include "oftp.h"
 #include "oftpdsf.h"
 #include "oftpdsn.h"
 #include "oftpmon.h"
@@ -900,6 +901,45 @@ ctl_partners(OFTP_MON *m, int s)
 }
 
 static void
+ctl_status(OFTP_MON *m, int s)
+{
+    OFTP_SPREC r;
+    char last[8], out[160];
+    int cnt[128], i, on = 0, total = 0;
+
+    memset(cnt, 0, sizeof(cnt));
+    last[0] = '\0';
+    while (oftp_spl_next(m->spool, last, &r) == 0) {
+        memcpy(last, r.key, 8);
+        cnt[(unsigned char)r.state & 0x7F]++;
+        total++;
+    }
+    for (i = 0; i < m->cfg.nptn; i++)
+        if (m->cfg.ptn[i].enabled)
+            on++;
+    snprintf(out, sizeof(out), "100 Odette ID %s, OFTP port %d, control port %d",
+             m->cfg.odetteid, m->cfg.port, m->cfg.ctlport);
+    oftp_net_puts(s, out);
+    snprintf(out, sizeof(out), "100 sessions %d of %d, partners %d of %d enabled",
+             m->nsess, m->cfg.maxsess, on, m->cfg.nptn);
+    oftp_net_puts(s, out);
+    snprintf(out, sizeof(out), "100 spool %d: queued %d, waiting %d, held %d, "
+             "active %d, sent %d", total, cnt[SPL_QUEUED & 0x7F],
+             cnt[SPL_WAITING & 0x7F], cnt[SPL_HELD & 0x7F],
+             cnt[SPL_ACTIVE & 0x7F], cnt[SPL_SENT & 0x7F]);
+    oftp_net_puts(s, out);
+    snprintf(out, sizeof(out), "100 delivered %d, rejected %d, failed %d, "
+             "received %d, confirmed %d", cnt[SPL_DELIVERED & 0x7F],
+             cnt[SPL_REJECTED & 0x7F], cnt[SPL_FAILED & 0x7F],
+             cnt[SPL_RECEIVED & 0x7F], cnt[SPL_CONFIRMED & 0x7F]);
+    oftp_net_puts(s, out);
+    snprintf(out, sizeof(out), "100 received files go to %s, %s",
+             m->cfg.inprefix, oftp_version());
+    oftp_net_puts(s, out);
+    oftp_net_puts(s, "200 status");
+}
+
+static void
 ctl_call(OFTP_MON *m, int s, const char *line)
 {
     OFTP_PARTNER *p;
@@ -959,12 +999,107 @@ ctl_thread(void *arg1, void *arg2)
                 ctl_call(m, s, line);
             else if (strncmp(line, "PARTNERS", 8) == 0)
                 ctl_partners(m, s);
+            else if (strncmp(line, "STATUS", 6) == 0)
+                ctl_status(m, s);
+            else if (strncmp(line, "REFRESH", 7) == 0) {
+                char out[80];
+                int on = oftp_mon_refresh(m);
+
+                if (on < 0)
+                    oftp_net_puts(s, "451 partner member cannot be read");
+                else {
+                    snprintf(out, sizeof(out), "200 partners reloaded, %d enabled", on);
+                    oftp_net_puts(s, out);
+                }
+            }
             else
                 oftp_net_puts(s, "500 unknown request");
         }
         oftp_net_close(s);
     }
     return 0;
+}
+
+/* ---- configuration ----------------------------------------------- */
+
+static void
+cfgmsg(void *ctx, const char *line)
+{
+    oftp_mon_msg("OFTP010W %s: %s", (const char *)ctx, line);
+}
+
+int
+oftp_mon_load(OFTP_CONFIG *c, const char *dd, int partner)
+{
+    char name[16], line[256];
+    FILE *fp;
+    int n = 0;
+
+    snprintf(name, sizeof(name), "DD:%s", dd);
+    if ((fp = fopen(name, "r")) == NULL)
+        return -1;
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        /* fixed records: columns 73-80 are sequence numbers */
+        if (strlen(line) > 72)
+            line[72] = '\0';
+        oftp_cfg_line(c, partner, line, ++n, cfgmsg, (void *)dd);
+    }
+    fclose(fp);
+    return 0;
+}
+
+int
+oftp_mon_refresh(OFTP_MON *m)
+{
+    OFTP_CONFIG *n;
+    int i, j, on = 0, added = 0, dropped = 0;
+
+    if ((n = malloc(sizeof(*n))) == NULL)
+        return -1;
+    *n = m->cfg;                        /* the monitor settings as they are */
+    n->nptn = 0;
+    n->errors = 0;
+    if (oftp_mon_load(n, "OFTPPTN", 1) != 0) {
+        free(n);
+        return -1;
+    }
+    oftp_cfg_finish(n, cfgmsg, (void *)"OFTPPTN");
+
+    lock(m, 0);
+    for (i = 0; i < m->cfg.nptn; i++) {
+        OFTP_PARTNER *o = &m->cfg.ptn[i];
+
+        for (j = 0; j < n->nptn; j++)
+            if (strcmp(n->ptn[j].peer.name, o->peer.name) == 0)
+                break;
+        if (j == n->nptn) {
+            if (o->enabled)
+                dropped++;
+            o->enabled = 0;
+        } else {
+            *o = n->ptn[j];
+            n->ptn[j].peer.name[0] = '\0';     /* taken */
+        }
+    }
+    for (j = 0; j < n->nptn; j++) {
+        if (n->ptn[j].peer.name[0] == '\0')
+            continue;
+        if (m->cfg.nptn >= OFTP_MAXPTN) {
+            oftp_mon_msg("OFTP015W PARTNER %s NOT ADDED, TABLE FULL",
+                         n->ptn[j].peer.name);
+            continue;
+        }
+        m->cfg.ptn[m->cfg.nptn++] = n->ptn[j];
+        added++;
+    }
+    for (i = 0; i < m->cfg.nptn; i++)
+        if (m->cfg.ptn[i].enabled)
+            on++;
+    unlock(m, 0);
+    free(n);
+    oftp_mon_msg("OFTP016I PARTNERS RELOADED: %d ENABLED, %d NEW, %d DISABLED",
+                 on, added, dropped);
+    return on;
 }
 
 /* ---- start, stop, recovery, console ------------------------------ */
@@ -1121,6 +1256,9 @@ oftp_mon_command(OFTP_MON *m, const char *cmd)
             ecb_post(&m->wake, 0);
             oftp_mon_msg("OFTP121I CALL OF %s REQUESTED", p->peer.name);
         }
+    } else if (strcmp(verb, "REFRESH") == 0) {
+        if (oftp_mon_refresh(m) < 0)
+            oftp_mon_msg("OFTP017E DD OFTPPTN CANNOT BE READ");
     } else
         oftp_mon_msg("OFTP199E UNKNOWN COMMAND: %s", cmd);
 }

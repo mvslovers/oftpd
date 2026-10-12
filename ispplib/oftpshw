@@ -1,0 +1,16 @@
+)ATTR
+ % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)
+ + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)
+ @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT)
+)BODY
+%------------------------- OFTP370 - Transfer -----------------------------
++
+@OFTL1
+@OFTL2
+@OFTL3
+@OFTL4
+@OFTL5
+@OFTL6
++
++  Enter or END to return to the list.
+)END

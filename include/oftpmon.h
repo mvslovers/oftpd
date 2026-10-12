@@ -37,6 +37,19 @@ extern void oftp_mon_stop(OFTP_MON *m)                  asm("OFTPMSTP");
 /* Puts transfers left ACTIVE by an earlier run back in order */
 extern void oftp_mon_recover(OFTP_MON *m)               asm("OFTPMREC");
 
+/* Reads a configuration member through DD dd into c (partner 0: the
+** monitor member, 1: the partner member); -1 when the DD cannot be opened
+*/
+extern int  oftp_mon_load(OFTP_CONFIG *c, const char *dd, int partner)
+                                                        asm("OFTPMLOD");
+
+/* Reads DD OFTPPTN again and merges it: partners are updated in place
+** and new ones appended; one no longer in the member is disabled, never
+** removed (a session may still use it). Returns the partners enabled, or
+** -1 when the member cannot be read.
+*/
+extern int  oftp_mon_refresh(OFTP_MON *m)               asm("OFTPMRFR");
+
 /* A MODIFY command's text */
 extern void oftp_mon_command(OFTP_MON *m, const char *cmd)
                                                         asm("OFTPMCMD");

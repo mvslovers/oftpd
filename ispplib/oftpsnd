@@ -1,0 +1,33 @@
+)ATTR
+ % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)
+ + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)
+ _ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT)
+ @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT)
+)BODY
+%------------------------ OFTP370 - Send a Data Set ------------------------
++
++  Partner   ===>_OFTPTN  +       (? for a list)
++  Data set  ===>_OFTDSN                                       +
++                (fully qualified, without quotes; member in parentheses)
++  Virtual   ===>_OFTVFN                    +
++  file name     (at most 26 characters; blank: the data set or member)
++
++  Text      ===>_Z+  (Y: format T, EBCDIC to ASCII with CR-LF per record)
++  Translate ===>_Z+  (Y: translate F, V and U data)
++  Hold      ===>_Z+  (Y: queue it held; release it from the list)
++  User data ===>_OFTUSR  +
++
+@OFTMSG
++
++  Enter to queue the file, END to leave.
+)INIT
+  .ZVARS = '(OFTFMT OFTXLT OFTHLD)'
+  .CURSOR = OFTPTN
+)PROC
+  VER (&OFTPTN,NONBLANK)
+  IF (&OFTPTN NE ?)
+    VER (&OFTDSN,NONBLANK)
+  VER (&OFTFMT,LIST,Y,N)
+  VER (&OFTXLT,LIST,Y,N)
+  VER (&OFTHLD,LIST,Y,N)
+)END

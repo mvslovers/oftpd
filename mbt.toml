@@ -36,6 +36,13 @@ reus = false
 [build.host]
 sources = ["src/oftp#*.c"]   # host tests link the shared code as well
 
+# The ISPF dialog: a command under ISPF, from the ISPLLIB concatenation
+# (it loads ISPLINK from there), its panels in ispplib/.
+[module.OFTPI]
+sources = ["src/oftpi.c"]
+rent = false
+reus = false
+
 [tests]
 rent = false        # mbtcheck.h keeps file-static counters
 reus = false

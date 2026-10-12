@@ -1,0 +1,23 @@
+)ATTR
+ % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)
+ + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)
+ _ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT)
+ @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT)
+)BODY
+%-------------------- OFTP370 - Configure the Partners ---------------------
++
++  Partner member ===>_OFTCDSN                                       +
++                   (the data set and member OFTPD reads as OFTPPTN,
++                    without quotes, for example SYS2.PARMLIB(OFTPPTN0))
++
++  Enter edits the member. When the edit ends, OFTPD reads it again:
++  changed partners are updated, new ones added, removed ones disabled.
++
+@OFTMSG
++
++  END to leave without editing.
+)INIT
+  .CURSOR = OFTCDSN
+)PROC
+  VER (&OFTCDSN,NONBLANK)
+)END
