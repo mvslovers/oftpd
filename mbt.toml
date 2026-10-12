@@ -41,6 +41,10 @@ reus = false
 [test.TSTVER]
 sources = ["test/tstver.c"]
 
+[test.TSTSESS]           # two engines joined by a socket pair; POSIX
+sources = ["test/tstsess.c"]
+mvs = false
+
 # [distribution] and [smp] follow with the first PROC in samplib/:
 #   [smp] prefix = "TOFT"   -> 0.1.0 is TOFT010, delete = [] (first level)
 # The id is proposed, not yet checked on any stand.
