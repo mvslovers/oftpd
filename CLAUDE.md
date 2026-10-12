@@ -68,8 +68,9 @@ stand.
   duplicate as reason 8. `vsread()` with a key that is not there returns
   -2 with reason 88 (the GET after a failed POINT); `vssteq()` reports the
   not-found itself, rc 8 reason 16. The spool inserts with a direct PUT and
-  tests for a key with `vssteq()`. The initial load of an empty cluster
-  needs a sequential OUT open first. Any other call: measure before use.
+  tests for a key with `vssteq()`. The test loads the empty cluster through
+  a sequential OUT open; whether UPD works on a never-loaded cluster is not
+  measured. Any other call: measure before use.
 - **VSAM space on dev1**: `PUB000` (catalog `UCPUB000`) has no room for a
   suballocated cluster; a test cluster is defined `UNIQUE`.
 - Socket traps (libc370 sockets reference, ftpd): no `setsockopt`, a
