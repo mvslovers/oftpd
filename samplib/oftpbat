@@ -1,0 +1,24 @@
+//OFTPBAT  JOB (OFTP),'OFTP UTILITY',CLASS=A,MSGCLASS=H
+//* ------------------------------------------------------------------
+//* The OFTP utility in batch and under the TSO TMP. Edit the library
+//* and the names, then submit.
+//* ------------------------------------------------------------------
+//BATCH    EXEC PGM=OFTP
+//STEPLIB  DD  DISP=SHR,DSN=@LINKLIB@
+//SYSPRINT DD  SYSOUT=*
+//SYSIN    DD  *
+* queue a file, look at the spool, show the new transfer
+SEND PARTNER(MENDEL) DSN('IBMUSER.OFTP370.SAMPLE') -
+     VFN(BATCH.TEST2) FORMAT(T)
+LIST MINE
+PARTNERS
+SHOW T9999999
+/*
+//TSO      EXEC PGM=IKJEFT01,DYNAMNBR=20
+//STEPLIB  DD  DISP=SHR,DSN=@LINKLIB@
+//SYSTSPRT DD  SYSOUT=*
+//SYSTSIN  DD  *
+OFTP LIST STATUS(DELIVERED)
+OFTP SHOW T0000001
+OFTP CALL MENDEL
+/*

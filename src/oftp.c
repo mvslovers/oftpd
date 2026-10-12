@@ -1,18 +1,31 @@
 /* OFTP - TSO command and batch utility, a client of the monitor
 **
-**   OFTP SEND PARTNER(name) DSN(data.set.name) [VFN(name)] [FORMAT(T)]
-**             [XLATE] [USER(id)]
-**   OFTP LIST [PARTNER(name)]
+**   OFTP SEND PARTNER(name) DSN(data.set[(member)]) [VFN(name)]
+**             [FORMAT(T)] [XLATE] [USER(text)]
+**   OFTP LIST [PARTNER(name)] [STATUS(state)] [MINE]
+**   OFTP SHOW key           OFTP DELETE key
+**   OFTP HOLD key           OFTP RELEASE key        OFTP RETRY key
+**   OFTP CALL partner       OFTP PARTNERS
 **
 ** Common operands: HOST(address) PORT(n), default 127.0.0.1 and 3306 --
-** the control port of OFTPD. KEYWORD=VALUE is accepted as well as
-** KEYWORD(VALUE). Return code 0 done, 4 refused, 8 OFTPD not reached.
+** OFTPD's control port. KEYWORD=VALUE works as well as KEYWORD(VALUE).
+** Without a command (EXEC PGM=OFTP and no PARM) the commands are read
+** from SYSIN, one per line, '*' in column 1 a comment, a '-' at the end
+** of a line continuing it on the next (columns 73-80 are ignored).
 **
-** During development the control port has no security (CLAUDE.md).
+** Output goes through PUTLINE under the TSO TMP, to SYSPRINT otherwise.
+** Return code: 0 done, 4 refused, 8 error or OFTPD not reached; for
+** SYSIN the highest of them.
+**
+** The requester's userid (from its ACEE) goes with every SEND as the
+** transfer's owner. During development the control port has no security
+** and believes it (CLAUDE.md).
 */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <mvs/racf.h>
 
 #include "oftp.h"
 #include "oftpnet.h"
@@ -36,7 +49,7 @@ operand(const char *arg, char *key, size_t kcap, char *val, size_t vcap)
     if (p == NULL) {
         snprintf(key, kcap, "%s", arg);
         val[0] = '\0';
-        return 0;
+        return strlen(arg) < kcap ? 0 : -1;
     }
     kl = (size_t)(p - arg);
     if (kl >= kcap)
@@ -58,29 +71,58 @@ operand(const char *arg, char *key, size_t kcap, char *val, size_t vcap)
     return 0;
 }
 
-int
-main(int argc, char **argv)
+/* The userid of this address space's ACEE, "" when there is none */
+static void
+whoami(char *user)
 {
-    char req[256], host[64] = "127.0.0.1", line[256];
-    int port = 3306, i, s, rc = 0;
+    ACEE *acee = racf_get_acee();
+    unsigned n;
+
+    user[0] = '\0';
+    if (acee == NULL)
+        return;
+    n = (unsigned char)acee->aceeuser[0];
+    if (n > 8)
+        n = 8;
+    memcpy(user, acee->aceeuser + 1, n);
+    user[n] = '\0';
+    while (n > 0 && user[n - 1] == ' ')
+        user[--n] = '\0';
+}
+
+/* The commands, with the keyword a lone positional operand stands for */
+static const char *const verbs[][2] = {
+    { "SEND", "" },     { "LIST", "" },       { "SHOW", "KEY" },
+    { "DELETE", "KEY" }, { "HOLD", "KEY" },   { "RELEASE", "KEY" },
+    { "RETRY", "KEY" },  { "CALL", "PARTNER" }, { "PARTNERS", "" },
+};
+
+/* One command: argv[0] the verb. Returns its RC. */
+static int
+command(int argc, char **argv, FILE *out)
+{
+    char req[300], host[64] = "127.0.0.1", line[256], verb[12], me[9];
+    const char *pos = NULL;
+    int port = 3306, i, s, rc = 0, mine = 0;
     size_t n;
 
-    if (argc < 2) {
-        printf("OFTP001E USAGE: OFTP SEND PARTNER(..) DSN(..) | OFTP LIST\n");
+    snprintf(verb, sizeof(verb), "%s", argv[0]);
+    upcase(verb);
+    for (i = 0; i < (int)(sizeof(verbs) / sizeof(verbs[0])); i++)
+        if (strcmp(verb, verbs[i][0]) == 0)
+            pos = verbs[i][1];
+    if (pos == NULL) {
+        fprintf(out, "OFTP002E UNKNOWN COMMAND %s\n", argv[0]);
         return 8;
     }
-    snprintf(req, sizeof(req), "%s", argv[1]);
-    upcase(req);
-    if (strcmp(req, "SEND") != 0 && strcmp(req, "LIST") != 0) {
-        printf("OFTP002E UNKNOWN REQUEST %s\n", argv[1]);
-        return 8;
-    }
-    n = strlen(req);
-    for (i = 2; i < argc; i++) {
+    whoami(me);
+
+    n = (size_t)snprintf(req, sizeof(req), "%s", verb);
+    for (i = 1; i < argc; i++) {
         char key[16], val[80];
 
         if (operand(argv[i], key, sizeof(key), val, sizeof(val)) != 0) {
-            printf("OFTP003E OPERAND TOO LONG: %s\n", argv[i]);
+            fprintf(out, "OFTP003E OPERAND TOO LONG: %s\n", argv[i]);
             return 8;
         }
         upcase(key);
@@ -92,6 +134,16 @@ main(int argc, char **argv)
             port = atoi(val);
             continue;
         }
+        if (strcmp(key, "MINE") == 0 && val[0] == '\0') {
+            mine = 1;
+            continue;
+        }
+        /* a lone word after SHOW, CALL, ...: the key or the partner */
+        if (val[0] == '\0' && pos[0] && strchr(argv[i], '(') == NULL
+            && strchr(argv[i], '=') == NULL) {
+            snprintf(val, sizeof(val), "%s", key);
+            snprintf(key, sizeof(key), "%s", pos);
+        }
         if (strcmp(key, "FORMAT") == 0)
             strcpy(key, "FMT");
         upcase(val);
@@ -99,34 +151,126 @@ main(int argc, char **argv)
             strcpy(val, "Y");
         n += (size_t)snprintf(req + n, sizeof(req) - n, " %s=%s", key, val);
         if (n >= sizeof(req)) {
-            printf("OFTP003E REQUEST TOO LONG\n");
+            fprintf(out, "OFTP003E COMMAND TOO LONG\n");
             return 8;
         }
     }
+    if ((strcmp(verb, "SEND") == 0 || mine) && me[0])
+        n += (size_t)snprintf(req + n, sizeof(req) - n, " OWNER=%s", me);
 
     if ((s = oftp_net_connect(host, port, 3)) < 0) {
-        printf("OFTP010E OFTPD NOT REACHED AT %s PORT %d\n", host, port);
+        fprintf(out, "OFTP010E OFTPD NOT REACHED AT %s PORT %d\n", host, port);
         return 8;
     }
     if (oftp_net_gets(s, line, sizeof(line), 10) < 0
         || strncmp(line, "220", 3) != 0) {
-        printf("OFTP011E NO GREETING FROM OFTPD\n");
+        fprintf(out, "OFTP011E NO GREETING FROM OFTPD\n");
         oftp_net_close(s);
         return 8;
     }
     oftp_net_puts(s, req);
     for (;;) {
         if (oftp_net_gets(s, line, sizeof(line), 60) < 0) {
-            printf("OFTP012E NO ANSWER FROM OFTPD\n");
+            fprintf(out, "OFTP012E NO ANSWER FROM OFTPD\n");
             rc = 8;
             break;
         }
-        printf("%s\n", strlen(line) > 4 ? line + 4 : line);
+        fprintf(out, "%s\n", strlen(line) > 4 ? line + 4 : line);
         if (line[0] != '1') {
             rc = line[0] == '2' ? 0 : 4;
             break;
         }
     }
     oftp_net_close(s);
+    return rc;
+}
+
+/* Splits a SYSIN line into words; '...' keeps its blanks */
+static int
+words(char *line, char **w, int max)
+{
+    int n = 0, q = 0;
+    char *p = line;
+
+    while (*p && n < max) {
+        while (*p == ' ')
+            p++;
+        if (*p == '\0' || *p == '\n')
+            break;
+        w[n++] = p;
+        for (; *p && *p != '\n' && (q || *p != ' '); p++)
+            if (*p == '\'')
+                q = !q;
+        if (*p)
+            *p++ = '\0';
+    }
+    return n;
+}
+
+int
+main(int argc, char **argv)
+{
+    FILE *out = fopen("*PUTLINE", "w");
+    int rc = 0;
+
+    if (out == NULL)
+        out = stdout;
+    if (argc >= 2)
+        rc = command(argc - 1, argv + 1, out);
+    else {
+        /* stdin is DD SYSIN: libc370 opens it there at startup, and a
+        ** second fopen("DD:SYSIN") fails (measured on MVS) */
+        FILE *in = stdin;
+        char line[256], card[100], *w[20];
+        int cmds = 0;
+
+        /* a card ending in '-' continues on the next one, as in TSO */
+        line[0] = '\0';
+        while (in != NULL && fgets(card, sizeof(card), in) != NULL) {
+            char echo[256];
+            size_t len;
+            int n, r;
+
+            if (strlen(card) > 72)
+                card[72] = '\0';
+            card[strcspn(card, "\n")] = '\0';
+            if (card[0] == '*' && line[0] == '\0')
+                continue;
+            len = strlen(card);
+            while (len > 0 && card[len - 1] == ' ')
+                card[--len] = '\0';
+            if (strlen(line) + len + 1 >= sizeof(line)) {
+                fprintf(out, "OFTP003E COMMAND TOO LONG\n");
+                line[0] = '\0';
+                rc = 8;
+                continue;
+            }
+            if (len > 0 && card[len - 1] == '-') {
+                card[len - 1] = ' ';
+                strcat(line, card);
+                continue;
+            }
+            strcat(line, card);
+            snprintf(echo, sizeof(echo), "%s", line);
+            n = words(line, w, 20);
+            if (n == 0) {
+                line[0] = '\0';
+                continue;
+            }
+            fprintf(out, "OFTP %s\n", echo);
+            r = command(n, w, out);
+            if (r > rc)
+                rc = r;
+            cmds++;
+            line[0] = '\0';
+        }
+        if (cmds == 0) {
+            fprintf(out, "OFTP001E NO COMMAND IN PARM OR SYSIN. "
+                    "OFTP SEND|LIST|SHOW|DELETE|HOLD|RELEASE|RETRY|CALL|PARTNERS\n");
+            rc = 8;
+        }
+    }
+    if (out != stdout)
+        fclose(out);
     return rc;
 }
