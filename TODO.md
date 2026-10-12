@@ -14,8 +14,12 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 5. ~~Data set reader/writer~~ — done (`src/mvs/oftp#dsf.c`, TSTDSF on MVS,
    JOB02101): F, V (empty record kept), U (short last block), T (CR-LF split
    across pieces, long line refused with 05), existing target refused 13.
-6. **OFTPD**: listener, outbound calls, spool server, parmlib partners,
-   console commands (ftpd as template).
+6. **OFTPD**: ~~parmlib partners~~ (TSTCFG), ~~spool server~~ (TSTSPL on
+   MVS, JOB02115); next the listener, outbound calls, the glue between
+   spool, data sets and session engine, console commands (ftpd as
+   template).
+   - Drop `put_direct()` once libc370#514 (direct PUT in `vswrite()`) is
+     released and the toolchain pin moves to it.
 7. **OFTP SEND / LIST** over the TCP control port.
 
 ## After the MVP

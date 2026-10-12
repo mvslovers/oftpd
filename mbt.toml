@@ -55,6 +55,10 @@ host = false
 sources = ["test/mvs/tstdsf.c"]
 host = false
 
+[test.TSTSPL]            # the spool; runs for real only from test/mvs/tstspl.jcl
+sources = ["test/mvs/tstspl.c"]
+host = false
+
 # [distribution] and [smp] follow with the first PROC in samplib/:
 #   [smp] prefix = "TOFT"   -> 0.1.0 is TOFT010, delete = [] (first level)
 # The id is proposed, not yet checked on any stand.

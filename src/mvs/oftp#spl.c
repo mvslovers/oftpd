@@ -42,6 +42,7 @@ struct oftp_spool {
     SPL_REQ    *head, *tail;
     ECB         work;
     CTHDTASK   *task;
+    int         lastrc, lastrsn;        /* VSAM codes of the last failure */
     unsigned char buf[OFTP_SPLRECL];
 };
 
@@ -76,11 +77,15 @@ read_key(OFTP_SPOOL *sp, const char *key)
     vsclear(sp->vs);
     rc = vssteq(sp->vs, sp->buf, OFTP_SPLRECL, (void *)key, 8);
     if (rc != 0) {
+        sp->lastrc = sp->vs->rc;
+        sp->lastrsn = sp->vs->rsn;
         rc = sp->vs->rsn == 16 ? OFTP_SPL_NOTFOUND : OFTP_SPL_ERROR;
         vsclear(sp->vs);
         return rc;
     }
     if (vsread(sp->vs, sp->buf, OFTP_SPLRECL, NULL, 0) != OFTP_SPLRECL) {
+        sp->lastrc = sp->vs->rc;
+        sp->lastrsn = sp->vs->rsn;
         vsclear(sp->vs);
         return OFTP_SPL_ERROR;
     }
@@ -241,7 +246,7 @@ request(OFTP_SPOOL *sp, int op, const char *key, OFTP_SPREC *rec)
 }
 
 /* Opens for update; a cluster never loaded first gets its control record
-** through a sequential load (the only way measured).
+** through a sequential load.
 */
 static int
 open_update(OFTP_SPOOL *sp, char *why, int whylen)
@@ -252,17 +257,26 @@ open_update(OFTP_SPOOL *sp, char *why, int whylen)
         rc = read_key(sp, ctlkey);
         if (rc == 0)
             return 0;
-        if (rc == OFTP_SPL_NOTFOUND) {
-            memset(sp->buf, 0, OFTP_SPLRECL);
-            memcpy(sp->buf + 8, "0000000", 7);
-            if (put_direct(sp->vs, sp->buf, OFTP_SPLRECL, (void *)ctlkey) == 0)
-                return 0;
+        /* A cluster never loaded opens for update, but in load mode:
+        ** POINT and a direct PUT then both fail with reason 116 (X'74',
+        ** measured on MVS). Load it sequentially below instead.
+        */
+        if (sp->lastrsn == 116) {
+            vsclose(sp->vs);
+            goto load;
         }
-        snprintf(why, (size_t)whylen, "control record: rc %d reason %d",
-                 sp->vs->rc, sp->vs->rsn);
+        /* loaded once, control record missing: put it back */
+        memset(sp->buf, 0, OFTP_SPLRECL);
+        memcpy(sp->buf + 8, "0000000", 7);
+        if (put_direct(sp->vs, sp->buf, OFTP_SPLRECL, (void *)ctlkey) == 0)
+            return 0;
+        snprintf(why, (size_t)whylen,
+                 "control record: lookup rc %d reason %d, insert rc %d reason %d",
+                 sp->lastrc, sp->lastrsn, sp->vs->rc, sp->vs->rsn);
         vsclose(sp->vs);
         return -1;
     }
+load:
     /* never loaded: load the control record, then reopen */
     if (vsopen(sp->ddname, VSTYPE_KSDS, VSACCESS_SEQ, VSMODE_OUT, &sp->vs) != 0) {
         snprintf(why, (size_t)whylen, "DD %s cannot be opened", sp->ddname);
