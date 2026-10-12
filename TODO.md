@@ -17,7 +17,16 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 6. ~~OFTPD~~ — runs as a started task on dev1 from `samplib/oftpd`
    (SYS2.PROCLIB/PARMLIB members installed 2026-10-12): files both ways
    with mendelson, EERPs both ways (`internals/interop.md`).
-7. **OFTP SEND / LIST** over the TCP control port.
+7. ~~OFTP utility~~ — SEND, LIST, SHOW, DELETE, HOLD, RELEASE, RETRY, CALL,
+   PARTNERS from TSO and batch (`samplib/oftpbat`, JOB02133/JOB02137).
+
+## Next
+
+- Log to a SYSOUT data set instead of every line by WTO; a log-only
+  message class (design 8).
+- `docs/`: installation and configuration guide (needed for
+  `[distribution]`), then `[distribution]`/`[smp]` with `TOFT`.
+- GitHub repository, CI.
 
 ## After the MVP
 
