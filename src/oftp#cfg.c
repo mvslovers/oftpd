@@ -150,6 +150,8 @@ partner_kw(OFTP_PARTNER *p, const char *k, const char *v)
         return put(p->address, sizeof(p->address), v);
     if (strcmp(k, "XLATE") == 0)
         return (b = yesno(v)) < 0 ? -1 : (p->xlate = b, 0);
+    if (strcmp(k, "VIA") == 0)
+        return put(p->via, sizeof(p->via), v);
     return -2;
 }
 
@@ -262,10 +264,26 @@ oftp_cfg_finish(OFTP_CONFIG *c, OFTP_CFGMSG msg, void *ctx)
             p->peer.mode = 'B';
         if (p->port == 0)
             p->port = 3305;
-        if (p->host[0] == '\0')
+        if (p->host[0] == '\0' || p->via[0])
             p->call = 0;
         if (p->enabled)
             on++;
+    }
+    /* VIA must name an enabled direct partner */
+    for (i = 0; i < c->nptn; i++) {
+        OFTP_PARTNER *p = &c->ptn[i], *v = NULL;
+
+        if (!p->via[0] || !p->enabled)
+            continue;
+        for (j = 0; j < c->nptn; j++)
+            if (strcmp(c->ptn[j].peer.name, p->via) == 0)
+                v = &c->ptn[j];
+        if (v == NULL || !v->enabled || v->via[0] || v == p) {
+            say(msg, ctx, "line %d: partner %s: VIA names no direct partner, disabled",
+                p->line, p->peer.name);
+            p->enabled = 0;
+            on--;
+        }
     }
     return on;
 }
@@ -287,7 +305,8 @@ oftp_cfg_byid(OFTP_CONFIG *c, const char *odetteid)
     int i;
 
     for (i = 0; i < c->nptn; i++)
-        if (c->ptn[i].enabled && strcmp(c->ptn[i].peer.code, odetteid) == 0)
+        if (c->ptn[i].enabled && !c->ptn[i].via[0]
+            && strcmp(c->ptn[i].peer.code, odetteid) == 0)
             return &c->ptn[i];
     return NULL;
 }

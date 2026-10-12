@@ -35,6 +35,9 @@ main(void)
         "PARTNER=NOID HOST=x",
         "PARTNER=DUP ODETTEID=O0013000000MVS2",
         "PARTNER=OFF ODETTEID=O0013000000OFF ENABLED=N",
+        "PARTNER=ACME ODETTEID=O0013000000ACME VIA=MVS2",
+        "PARTNER=LOOP ODETTEID=O0013000000LOOP VIA=ACME",
+        "PARTNER=GHOST ODETTEID=O0013000000GHOST VIA=NOBODY",
         NULL };
     OFTP_PARTNER *p;
     int i, on;
@@ -54,8 +57,8 @@ main(void)
     for (i = 0; ptn[i]; i++)
         oftp_cfg_line(&c, 1, ptn[i], i + 1, count, NULL);
     on = oftp_cfg_finish(&c, count, NULL);
-    CHECK_EQ(c.nptn, 6, "six entries");
-    CHECK_EQ(on, 2, "two enabled: MVS2 and PC");
+    CHECK_EQ(c.nptn, 9, "nine entries");
+    CHECK_EQ(on, 3, "three enabled: MVS2, PC and ACME");
 
     p = oftp_cfg_find(&c, "MVS2");
     CHECK(p != NULL, "MVS2 by name");
@@ -74,6 +77,13 @@ main(void)
     CHECK(oftp_cfg_find(&c, "NOID") == NULL, "no ODETTEID disables the partner");
     CHECK(oftp_cfg_find(&c, "DUP") == NULL, "a second ODETTEID disables the partner");
     CHECK(oftp_cfg_find(&c, "OFF") == NULL, "ENABLED=N");
-    CHECK(msgs == 3, "three messages for the partner member");
+    p = oftp_cfg_find(&c, "ACME");
+    CHECK(p != NULL && strcmp(p->via, "MVS2") == 0 && p->call == 0,
+          "ACME via MVS2, never called itself");
+    CHECK(oftp_cfg_byid(&c, "O0013000000ACME") == NULL,
+          "a partner behind another is not accepted as a caller");
+    CHECK(oftp_cfg_find(&c, "LOOP") == NULL, "VIA to a routed partner disabled");
+    CHECK(oftp_cfg_find(&c, "GHOST") == NULL, "VIA to an unknown partner disabled");
+    CHECK(msgs == 5, "five messages for the partner member");
     return mbt_test_summary("TSTCFG");
 }

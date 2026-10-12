@@ -116,7 +116,8 @@ f_next_out(void *ctx, const OFTP_PEER *peer, OFTP_SFIDCMD *f, OFTP_FH **fh)
         strcpy(f->date, r.date);
         strcpy(f->time, r.time);
         strcpy(f->user, r.user);
-        strcpy(f->dest, c->pt->peer.code);
+        /* the final recipient: the partner itself, or the one behind it */
+        strcpy(f->dest, r.dest[0] ? r.dest : c->pt->peer.code);
         strcpy(f->orig, c->pt->peer.ourcode);
         r.state = SPL_ACTIVE;
         r.attempts++;
@@ -184,8 +185,15 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
     char final[45], last[8];
     int rc;
 
-    (void)peer;
     *retry = 'N';
+    /* for us, by our own ID or the one we have towards this partner; a
+    ** file for anyone else would need us as a node (later) */
+    if (strcmp(f->dest, c->m->cfg.odetteid) != 0
+        && strcmp(f->dest, peer->ourcode) != 0) {
+        oftp_mon_msg("OFTP223W %s: %s FOR %s REFUSED, NOT OUR ODETTE ID",
+                     c->pt->peer.name, f->dsn, f->dest);
+        return 2;
+    }
     /* any virtual file name becomes a valid data set name */
     if (oftp_dsn_map(c->m->cfg.inprefix, f->dsn, "", final) != 0)
         return 1;
@@ -321,7 +329,7 @@ f_next_erp(void *ctx, const OFTP_PEER *peer, char *code, OFTP_ERPCMD *e,
         strcpy(e->time, r.time);
         strcpy(e->user, r.user);
         strcpy(e->dest, r.orig);
-        strcpy(e->orig, peer->ourcode);
+        strcpy(e->orig, r.dest[0] ? r.dest : peer->ourcode);
         memcpy(c->erpkey, r.key, 8);
         *h = c;
         return 1;
@@ -356,7 +364,8 @@ f_erp_recv(void *ctx, const OFTP_PEER *peer, char code, const OFTP_ERPCMD *e)
         memcpy(last, r.key, 8);
         if (r.dir != SPL_SEND || strcmp(r.partner, c->pt->peer.name) != 0
             || strcmp(r.dsn, e->dsn) != 0 || strcmp(r.date, e->date) != 0
-            || strcmp(r.time, e->time) != 0)
+            || strcmp(r.time, e->time) != 0
+            || (r.dest[0] && strcmp(r.dest, e->orig) != 0))
             continue;
         r.erp = code;
         r.tdone = (long)time(NULL);
@@ -652,6 +661,18 @@ ctl_send(OFTP_MON *m, int s, const char *line)
         return;
     }
     memset(&r, 0, sizeof(r));
+    /* a partner behind another: the session goes to that one */
+    if (p->via[0]) {
+        OFTP_PARTNER *v = oftp_cfg_find(&m->cfg, p->via);
+
+        if (v == NULL) {
+            oftp_net_puts(s, "501 the partner it is reached through is disabled");
+            return;
+        }
+        strcpy(r.target, p->peer.name);
+        strcpy(r.dest, p->peer.code);
+        p = v;
+    }
     if ((lp = strchr(dsn, '(')) != NULL) {
         char *e = strchr(lp, ')');
 
@@ -708,7 +729,8 @@ ctl_send(OFTP_MON *m, int s, const char *line)
     snprintf(r.user, sizeof(r.user), "%s", user);
     strcpy(r.dsn, vfn);
     strcpy(r.local, dsn);
-    strcpy(r.dest, p->peer.code);
+    if (r.dest[0] == '\0')
+        strcpy(r.dest, p->peer.code);
     strcpy(r.orig, p->peer.ourcode);
     tm = localtime(&now);
     lock(m, 0);
@@ -725,10 +747,12 @@ ctl_send(OFTP_MON *m, int s, const char *line)
         return;
     }
     /* 210: done, with a warning */
-    snprintf(reply, sizeof(reply), "%s %.8s %s for %s as %s%s",
+    snprintf(reply, sizeof(reply), "%s %.8s %s for %s%s%s as %s%s",
              empty ? "210" : "200", r.key,
-             r.state == SPL_HELD ? "queued and held" : "queued", r.partner,
-             r.dsn, empty ? " -- the data set is empty" : "");
+             r.state == SPL_HELD ? "queued and held" : "queued",
+             r.target[0] ? r.target : r.partner, r.target[0] ? " via " : "",
+             r.target[0] ? r.partner : "", r.dsn,
+             empty ? " -- the data set is empty" : "");
     oftp_net_puts(s, reply);
     oftp_mon_msg("OFTP230I %.8s QUEUED FOR %s: %s AS %s", r.key, r.partner,
                  dsn, r.dsn);
@@ -766,7 +790,8 @@ ctl_list(OFTP_MON *m, int s, const char *line)
     last[0] = '\0';
     while (oftp_spl_next(m->spool, last, &r) == 0) {
         memcpy(last, r.key, 8);
-        if (partner[0] && strcmp(partner, r.partner) != 0)
+        if (partner[0] && strcmp(partner, r.partner) != 0
+            && strcmp(partner, r.target) != 0)
             continue;
         if (status[0] && strncmp(status, state_name(r.state), strlen(status)) != 0)
             continue;
@@ -774,7 +799,8 @@ ctl_list(OFTP_MON *m, int s, const char *line)
             continue;
         snprintf(out, sizeof(out), "100 %.8s %-4s %-9s %-8s %-26s %s",
                  r.key, r.dir == SPL_SEND ? "SEND" : "RECV",
-                 state_name(r.state), r.partner, r.dsn, r.local);
+                 state_name(r.state), r.target[0] ? r.target : r.partner,
+                 r.dsn, r.local);
         oftp_net_puts(s, out);
         n++;
     }
@@ -793,9 +819,11 @@ ctl_show(OFTP_MON *m, int s, const char *line)
         oftp_net_puts(s, "504 no such transfer");
         return;
     }
-    snprintf(out, sizeof(out), "100 %.8s %s %s, partner %s, owner %s",
+    snprintf(out, sizeof(out), "100 %.8s %s %s, partner %s%s%s, owner %s",
              r.key, r.dir == SPL_SEND ? "SEND" : "RECEIVE",
-             state_name(r.state), r.partner, r.owner[0] ? r.owner : "-");
+             state_name(r.state), r.target[0] ? r.target : r.partner,
+             r.target[0] ? " via " : "", r.target[0] ? r.partner : "",
+             r.owner[0] ? r.owner : "-");
     oftp_net_puts(s, out);
     snprintf(out, sizeof(out), "100 virtual file %s %s %s, format %c, LRECL %u",
              r.dsn, r.date, r.time, r.fmt ? r.fmt : '-', r.lrecl);
@@ -889,11 +917,12 @@ ctl_partners(OFTP_MON *m, int s)
     for (i = 0; i < m->cfg.nptn; i++) {
         OFTP_PARTNER *p = &m->cfg.ptn[i];
 
-        snprintf(out, sizeof(out), "100 %-8s %-25s %-8s %s LEVEL %d %s",
+        snprintf(out, sizeof(out), "100 %-8s %-25s %-8s %s LEVEL %d %s%s",
                  p->peer.name, p->peer.code,
                  p->enabled ? "ENABLED" : "DISABLED",
                  m->busy[i] ? "BUSY" : "IDLE", p->peer.level,
-                 p->call ? p->host : "(not called)");
+                 p->via[0] ? "via " : p->call ? p->host : "(not called)",
+                 p->via[0] ? p->via : "");
         oftp_net_puts(s, out);
     }
     snprintf(out, sizeof(out), "200 %d partners", m->cfg.nptn);

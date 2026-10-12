@@ -6,6 +6,7 @@ result can be checked rather than believed.
 
 | Date | Partner | Who called | Level | What ran | Result |
 |---|---|---|---|---|---|
+| 2026-10-12 | mendelson 1.1 b53 as a node | OFTPD on dev1 | 5 | T file for partner BEHIND (`VIA=MENDEL`): session with MENDEL, SFIDDEST = BEHIND's Odette ID | refused with SFNA 02; mendelson's log: "receiver not configured in this system ... Invalid destination; SFID.SFIDDEST" -- the route reached the wire as designed |
 | 2026-10-12 | mendelson 1.1 b53 | OFTPD as a started task on dev1 (`S OFTPD,S='IBMUSER.OFTP370.SPOOL'`) | 5 | T file `STC.TEST` queued through the control port, EERP fetched with `F OFTPD,CALL MENDEL` | T0000003 DELIVERED |
 | 2026-10-12 | mendelson 1.1 b53 (workstation) | mendelson | 5 | U file `NOT-CATEGORIZED`, 43 octets, to OFTPD on MVS (dev1, JOB02129) | stored as `IBMUSER.OFTPIN.NOT-CATE`, the 43 octets unchanged (read back through mvsMF); OFTPD's EERP went back in the same session, mendelson deleted its outbound copy; ESID 00 |
 | 2026-10-12 | mendelson 1.1 b53 (workstation) | mendelson | 5 | mendelson sent a file from its outbox to OFTPD on MVS (dev1, JOB02121) | refused by OFTPD with SFNA 01: mendelson's virtual file name `NOT-CATEGORIZED` is not a valid data set qualifier; session ended normally |

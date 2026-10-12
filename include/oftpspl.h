@@ -60,6 +60,8 @@ typedef struct oftp_sprec {
     unsigned long octets;
     long        tqueued, tlast, tnext, tdone;
     char        text[80];               /* last reason, readable          */
+    char        target[9];              /* send: the partner behind
+                                           'partner' it is for (VIA), or "" */
 } OFTP_SPREC;
 
 typedef struct oftp_spool OFTP_SPOOL;

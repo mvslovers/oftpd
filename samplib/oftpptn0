@@ -17,7 +17,14 @@
 * ADDRESS      calls from it must come from this IP address    (-)
 * XLATE        Y: translate F, V and U data EBCDIC<->ASCII     (N)
 * ENABLED      N: refuse it and never call it                 (Y)
+* VIA          the name of the partner it is reached through (a
+*              clearing centre): files for it go in sessions with that
+*              partner, addressed to its ODETTEID. It needs no HOST,
+*              PORT or passwords and never calls in itself.
 *
 PARTNER=PARTNER1 ODETTEID=O0000000000PARTNER1
   PASSWORD=SECRET1 OURPASSWORD=SECRET2
   HOST=partner1.example.org PORT=3305 LEVEL=5
+*
+* A partner behind PARTNER1:
+* PARTNER=FARAWAY ODETTEID=O0000000000FARAWAY VIA=PARTNER1

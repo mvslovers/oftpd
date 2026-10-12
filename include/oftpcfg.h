@@ -13,7 +13,13 @@
 **             RETRY=
 **   OFTPPTN:  PARTNER= ODETTEID= PASSWORD= OURPASSWORD= OURID= HOST=
 **             PORT= LEVEL= SDEB= CREDIT= MODE= COMPRESS= ENABLED= CALL=
-**             ADDRESS= XLATE=
+**             ADDRESS= XLATE= VIA=
+**
+** VIA=name makes a partner one that is reached through another: files for
+** it go in sessions with name, addressed to its Odette ID (SFIDDEST). It
+** has no HOST, PORT or passwords of its own and is never called nor
+** accepted as a caller itself. One level only: name must be a direct
+** partner.
 **
 ** Values are upper-cased except HOST. A wrong keyword or value is
 ** reported with its line number and, in the partner member, disables
@@ -32,6 +38,7 @@ typedef struct oftp_partner {
     int         call;                   /* CALL=Y: we may call it        */
     char        address[16];            /* calls must come from here     */
     int         xlate;                  /* F/V/U translation default     */
+    char        via[9];                 /* reached through this partner  */
     int         line;                   /* where the entry starts        */
 } OFTP_PARTNER;
 
@@ -74,7 +81,9 @@ extern int  oftp_cfg_line(OFTP_CONFIG *c, int partner, const char *text,
 extern int  oftp_cfg_finish(OFTP_CONFIG *c, OFTP_CFGMSG msg, void *ctx)
                                                         asm("OFTPCFGF");
 
-/* The enabled partner with this name or Odette ID, or NULL */
+/* The enabled partner with this name or Odette ID, or NULL. byid finds
+** direct partners only: a partner behind another never calls us itself.
+*/
 extern OFTP_PARTNER *oftp_cfg_find(OFTP_CONFIG *c, const char *name)
                                                         asm("OFTPCFGN");
 extern OFTP_PARTNER *oftp_cfg_byid(OFTP_CONFIG *c, const char *odetteid)

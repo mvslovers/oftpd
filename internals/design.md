@@ -27,6 +27,13 @@ MVP does not block it; what the MVP leaves out is marked *later* there.
 - `OFTP SEND` and `OFTP LIST` over the TCP control port, no security.
 - `F OFTPD,D ...`, `F OFTPD,CALL`, `P OFTPD`.
 
+**Partners behind a partner** (*decided* 2026-10-12, stage 1 of routing):
+a partner with `VIA=name` is reached through the direct partner `name`
+-- the session goes there, `SFIDDEST` carries the final recipient, its
+EERP comes back the same way and is matched by `EERPORIG` too. A file for
+an Odette ID that is not ours is refused (SFNA 02). Acting as a node that
+forwards files for others is stage 2, later.
+
 **Not in the MVP** (all planned): restart, buffer compression, NERP
 generation (received NERPs are recorded), post-processing after receipt,
 configurable naming of received data sets, partner maintenance by command
