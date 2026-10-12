@@ -1,0 +1,38 @@
+//OFTPD    JOB (OFTP),'OFTP MONITOR',CLASS=A,MSGCLASS=H,
+//         MSGLEVEL=(1,1)
+//* ------------------------------------------------------------------
+//* OFTPD as a batch job, for development: defines its spool when it
+//* does not exist yet, then runs until P OFTPD (or F OFTPD,...).
+//* Edit the names, the volume, the Odette IDs and the partner.
+//* ------------------------------------------------------------------
+//DEFINE   EXEC PGM=IDCAMS
+//SYSPRINT DD  SYSOUT=*
+//SYSIN    DD  *
+  LISTCAT ENTRIES(IBMUSER.OFTP370.SPOOL)
+  IF LASTCC NE 0 THEN -
+  DEFINE CLUSTER (NAME(IBMUSER.OFTP370.SPOOL) -
+                  INDEXED KEYS(8 0) RECORDSIZE(512 512) -
+                  TRACKS(15 15) SHAREOPTIONS(1 3) UNIQUE -
+                  VOLUMES(PUB000)) -
+         DATA   (NAME(IBMUSER.OFTP370.SPOOL.DATA)) -
+         INDEX  (NAME(IBMUSER.OFTP370.SPOOL.INDEX))
+/*
+//OFTPD    EXEC PGM=OFTPD,REGION=4096K,COND=(4,LT,DEFINE)
+//STEPLIB  DD  DISP=SHR,DSN=OFTP370.DEV.LINKLIB
+//OFTPSPL  DD  DISP=OLD,DSN=IBMUSER.OFTP370.SPOOL
+//SYSPRINT DD  SYSOUT=*
+//STDOUT   DD  SYSOUT=*
+//STDERR   DD  SYSOUT=*
+//OFTPPRM  DD  *
+* the monitor
+ODETTEID=O01791824916311
+PORT=3305 CONTROLPORT=3306
+INPREFIX=IBMUSER.OFTPIN TMPPREFIX=IBMUSER.OFTPTMP
+SDEB=4096 CREDIT=99 TIMEOUT=60 RETRY=60
+/*
+//OFTPPTN  DD  *
+* the partners
+PARTNER=MENDEL ODETTEID=O01791824860109
+  PASSWORD=TEST OURPASSWORD=TEST
+  HOST=192.168.0.23 PORT=3305 LEVEL=5
+/*

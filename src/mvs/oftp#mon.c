@@ -908,8 +908,23 @@ oftp_mon_command(OFTP_MON *m, const char *cmd)
     char verb[16], arg[40];
     OFTP_PARTNER *p;
 
-    verb[0] = arg[0] = '\0';
-    sscanf(cmd, "%15s %39s", verb, arg);
+    /* split by hand: verb, then the first operand */
+    {
+        const char *p = cmd;
+        size_t n = 0;
+
+        while (*p == ' ')
+            p++;
+        while (*p && *p != ' ' && *p != ',' && n < sizeof(verb) - 1)
+            verb[n++] = *p++;
+        verb[n] = '\0';
+        while (*p == ' ' || *p == ',')
+            p++;
+        n = 0;
+        while (*p && *p != ' ' && n < sizeof(arg) - 1)
+            arg[n++] = *p++;
+        arg[n] = '\0';
+    }
     if (strcmp(verb, "D") == 0 || strcmp(verb, "DISPLAY") == 0)
         cmd_display(m, arg);
     else if (strcmp(verb, "CALL") == 0) {

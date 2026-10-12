@@ -6,6 +6,9 @@ result can be checked rather than believed.
 
 | Date | Partner | Who called | Level | What ran | Result |
 |---|---|---|---|---|---|
+| 2026-10-12 | mendelson 1.1 b53 (workstation) | mendelson | 5 | mendelson sent a file from its outbox to OFTPD on MVS (dev1, JOB02121) | refused by OFTPD with SFNA 01: mendelson's virtual file name `NOT-CATEGORIZED` is not a valid data set qualifier; session ended normally |
+| 2026-10-12 | same | OFTPD on MVS (dev1, JOB02121), `F OFTPD,CALL MENDEL` | 5 | no file; mendelson used the session to send its EERP for `MVS.SAMPLE` | spool record T0000001 DELIVERED |
+| 2026-10-12 | same | OFTPD on MVS (dev1, JOB02119), queued through the control port | 5, buffer 4096, credit 99 | T file `MVS.SAMPLE` from a FB 80 data set, 3 records | ESID 00. mendelson stored 108 octets: the three lines without their trailing blanks, each with CR-LF, in ASCII |
 | 2026-10-12 | mendelson opensource OFTP2 1.1 build 53, plain port 3305, workstation | `host/oftph` | 5, buffer 4096, credit 99 | in the same session: EERP for the T file below received; a U file (33 octets) received from mendelson's outbox; our EERP for it sent | ESID 00 from mendelson. mendelson's log: our EERP received, its outbound copy deleted |
 | 2026-10-12 | same | `host/oftph` | 5, buffer 4096, credit 99 | T file (20 octets) sent | ESID 00 from us. mendelson's log: 20 octets received, "unsigned EERP requested" queued |
 
