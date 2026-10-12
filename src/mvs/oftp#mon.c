@@ -62,6 +62,39 @@ settext(OFTP_SPREC *r, const char *text)
     snprintf(r->text, sizeof(r->text), "%s", text);
 }
 
+/* An EERP or NERP to pass back to the partner a relayed file came from:
+** a receive record in state RECEIVED that holds no file, only the
+** response (f_next_erp sends it like the EERP of a received file).
+*/
+static void
+queue_erp(OFTP_MON *m, const OFTP_SPREC *sent, char code, int reas,
+          const char *crea)
+{
+    OFTP_SPREC e;
+
+    memset(&e, 0, sizeof(e));
+    e.dir = SPL_RECV;
+    e.state = SPL_RECEIVED;
+    e.relay = 'Y';
+    e.erp = code;
+    e.reas = reas;
+    strcpy(e.partner, sent->from);
+    strcpy(e.dsn, sent->dsn);
+    strcpy(e.date, sent->date);
+    strcpy(e.time, sent->time);
+    strcpy(e.user, sent->user);
+    strcpy(e.orig, sent->orig);
+    strcpy(e.dest, sent->dest);
+    snprintf(e.crea, sizeof(e.crea), "%s", crea);
+    e.tqueued = e.tlast = (long)time(NULL);
+    snprintf(e.text, sizeof(e.text), "relay: %s to pass back to %s",
+             code == OFTP_EERP ? "EERP" : "NERP", sent->from);
+    if (oftp_spl_add(m->spool, &e) == 0)
+        oftp_mon_msg("OFTP240I %.8s RELAY: %s FOR %s QUEUED FOR %s", e.key,
+                     code == OFTP_EERP ? "EERP" : "NERP", e.dsn, e.partner);
+    ecb_post(&m->wake, 0);
+}
+
 /* ---- one session ------------------------------------------------- */
 
 typedef struct sesctx {
@@ -99,8 +132,11 @@ f_next_out(void *ctx, const OFTP_PEER *peer, OFTP_SFIDCMD *f, OFTP_FH **fh)
             snprintf(name, sizeof(name), "%s(%s)", r.local, r.member);
         else
             snprintf(name, sizeof(name), "%s", r.local);
-        if (oftp_dsf_open_out(name, r.fmt == 'T' ? 'T' : 0, r.xlate == 'Y',
-                              f, &c->odsf) != 0) {
+        /* a relayed file is read back raw, as it was stored */
+        if (oftp_dsf_open_out(name,
+                              r.fmt == 'T' && r.relay != 'Y' ? 'T' : 0,
+                              r.xlate == 'Y' && r.relay != 'Y', f,
+                              &c->odsf) != 0) {
             r.state = SPL_FAILED;
             r.reasby = 'L';
             r.reas = 12;
@@ -110,15 +146,25 @@ f_next_out(void *ctx, const OFTP_PEER *peer, OFTP_SFIDCMD *f, OFTP_FH **fh)
                          r.partner, name);
             continue;
         }
-        r.fmt = f->fmt;
-        r.lrecl = f->lrecl;
+        if (r.relay == 'Y') {
+            /* passed through unchanged: a T file was stored as received,
+            ** as an undefined-format byte stream */
+            if (r.fmt == 'T') {
+                f->fmt = 'T';
+                f->lrecl = 0;
+            }
+        } else {
+            r.fmt = f->fmt;
+            r.lrecl = f->lrecl;
+        }
         strcpy(f->dsn, r.dsn);
         strcpy(f->date, r.date);
         strcpy(f->time, r.time);
         strcpy(f->user, r.user);
         /* the final recipient: the partner itself, or the one behind it */
         strcpy(f->dest, r.dest[0] ? r.dest : c->pt->peer.code);
-        strcpy(f->orig, c->pt->peer.ourcode);
+        /* the originator: we, or for a relayed file the one who sent it */
+        strcpy(f->orig, r.relay == 'Y' ? r.orig : c->pt->peer.ourcode);
         r.state = SPL_ACTIVE;
         r.attempts++;
         r.tlast = now;
@@ -170,6 +216,11 @@ f_out_done(void *ctx, OFTP_FH *fh, int reas, char retry)
         settext(r, t);
         oftp_mon_msg("OFTP212W %.8s %s: %s REFUSED, REASON %02d RETRY %c",
                      r->key, r->partner, r->dsn, reas, retry);
+        /* a relayed file that cannot go on: the originator learns it */
+        if (r->relay == 'Y' && r->state == SPL_REJECTED) {
+            queue_erp(c->m, r, OFTP_NERP, reas, c->m->cfg.odetteid);
+            remove(r->local);
+        }
     }
     oftp_spl_put(c->m->spool, r);
     r->key[0] = '\0';
@@ -185,27 +236,39 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
     char final[45], last[8];
     int rc;
 
+    OFTP_PARTNER *next = NULL, *target = NULL;
+    OFTP_SFIDCMD alloc;
+
     *retry = 'N';
-    /* for us, by our own ID or the one we have towards this partner; a
-    ** file for anyone else would need us as a node (later) */
+    /* for us, by our own ID or the one we have towards this partner; for
+    ** anyone else only as a node (RELAY=Y) towards a partner we know */
     if (strcmp(f->dest, c->m->cfg.odetteid) != 0
         && strcmp(f->dest, peer->ourcode) != 0) {
-        oftp_mon_msg("OFTP223W %s: %s FOR %s REFUSED, NOT OUR ODETTE ID",
-                     c->pt->peer.name, f->dsn, f->dest);
-        return 2;
+        if (c->m->cfg.relay)
+            next = oftp_cfg_route(&c->m->cfg, f->dest, &target);
+        if (next == NULL || next == c->pt) {
+            oftp_mon_msg("OFTP223W %s: %s FOR %s REFUSED, %s", c->pt->peer.name,
+                         f->dsn, f->dest,
+                         !c->m->cfg.relay ? "NOT OUR ODETTE ID"
+                         : next == NULL ? "NO ROUTE" : "IT WOULD GO BACK");
+            return 2;
+        }
     }
+    if (next != NULL)
+        snprintf(final, sizeof(final), "%s", "");
     /* any virtual file name becomes a valid data set name */
-    if (oftp_dsn_map(c->m->cfg.inprefix, f->dsn, "", final) != 0)
+    else if (oftp_dsn_map(c->m->cfg.inprefix, f->dsn, "", final) != 0)
         return 1;
 
     /* the same virtual file again: answer its EERP once more */
     last[0] = '\0';
     while (oftp_spl_next(c->m->spool, last, &r) == 0) {
         memcpy(last, r.key, 8);
-        if (r.dir == SPL_RECV && strcmp(r.orig, f->orig) == 0
+        if ((r.dir == SPL_RECV || r.relay == 'Y') && r.local[0]
+            && strcmp(r.orig, f->orig) == 0
             && strcmp(r.dsn, f->dsn) == 0 && strcmp(r.date, f->date) == 0
             && strcmp(r.time, f->time) == 0) {
-            if (r.state == SPL_CONFIRMED) {
+            if (r.dir == SPL_RECV && r.state == SPL_CONFIRMED) {
                 r.state = SPL_RECEIVED;
                 oftp_spl_put(c->m->spool, &r);
             }
@@ -227,12 +290,20 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
     strcpy(r.orig, f->orig);
     strcpy(r.local, final);
     r.tqueued = r.tlast = (long)time(NULL);
+    if (next != NULL) {
+        /* relayed: where it goes on, and where its EERP goes back */
+        r.relay = 'Y';
+        r.xlate = 'N';
+        strcpy(r.from, c->pt->peer.name);
+        strcpy(r.target, target != next ? target->peer.name : "");
+        strcpy(r.partner, next->peer.name);
+    }
     if (oftp_spl_add(c->m->spool, &r) != 0) {
         *retry = 'Y';
         return 99;
     }
     /* the name is taken: the transfer number makes it unique */
-    if (exists(final)) {
+    if (next == NULL && exists(final)) {
         char key[9];
 
         memcpy(key, r.key, 8);
@@ -252,7 +323,11 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
     opt.ublksize = c->m->cfg.ublksize;
     strcpy(opt.unit, c->m->cfg.unit);
     strcpy(opt.volser, c->m->cfg.volser);
-    rc = oftp_dsf_open_in(c->tmp, f, r.xlate == 'Y', &opt, &c->idsf);
+    /* a relayed T file is kept as it came: a byte stream, format U */
+    alloc = *f;
+    if (next != NULL && f->fmt == 'T')
+        alloc.fmt = 'U';
+    rc = oftp_dsf_open_in(c->tmp, &alloc, r.xlate == 'Y', &opt, &c->idsf);
     if (rc != 0) {
         oftp_spl_del(c->m->spool, r.key);
         oftp_mon_msg("OFTP220E %s: %s NOT RECEIVED, %s NOT ALLOCATED (%02d)",
@@ -290,6 +365,21 @@ f_close_in(void *ctx, OFTP_FH *fh, int ok)
         r->key[0] = '\0';
         return rc;
     }
+    if (r->relay == 'Y') {
+        /* not ours: it goes on as it is, and only the final recipient
+        ** answers with an EERP */
+        r->dir = SPL_SEND;
+        r->state = SPL_QUEUED;
+        strcpy(r->local, c->tmp);
+        r->tdone = (long)time(NULL);
+        settext(r, "relay: received, queued to go on");
+        oftp_spl_put(c->m->spool, r);
+        oftp_mon_msg("OFTP241I %.8s RELAY: %s FROM %s FOR %s QUEUED FOR %s",
+                     r->key, r->dsn, r->from, r->dest, r->partner);
+        r->key[0] = '\0';
+        ecb_post(&c->m->wake, 0);
+        return 0;
+    }
     if (rename(c->tmp, r->local) != 0) {
         remove(c->tmp);
         oftp_spl_del(c->m->spool, r->key);
@@ -323,7 +413,9 @@ f_next_erp(void *ctx, const OFTP_PEER *peer, char *code, OFTP_ERPCMD *e,
             || strcmp(r.partner, c->pt->peer.name) != 0)
             continue;
         memset(e, 0, sizeof(*e));
-        *code = OFTP_EERP;
+        *code = r.erp == OFTP_NERP ? OFTP_NERP : OFTP_EERP;
+        e->reas = r.reas;
+        strcpy(e->crea, r.crea);
         strcpy(e->dsn, r.dsn);
         strcpy(e->date, r.date);
         strcpy(e->time, r.time);
@@ -382,6 +474,10 @@ f_erp_recv(void *ctx, const OFTP_PEER *peer, char code, const OFTP_ERPCMD *e)
         oftp_spl_put(c->m->spool, &r);
         oftp_mon_msg("OFTP213I %.8s %s: %s %s", r.key, r.partner, r.dsn,
                      code == OFTP_EERP ? "DELIVERED" : "NOT DELIVERED (NERP)");
+        if (r.relay == 'Y') {
+            queue_erp(c->m, &r, code, e->reas, e->crea);
+            remove(r.local);
+        }
         return;
     }
     oftp_mon_msg("OFTP214W %s: %s FOR UNKNOWN FILE %s", c->pt->peer.name,

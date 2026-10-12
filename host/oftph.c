@@ -13,6 +13,8 @@
 **   -z         offer buffer compression      -d DIR   where received files go
 **   -f FMT     format of the files sent: T (default), U, F, V
 **   -r LRECL   record length for F and V
+**   -D ID      address the files to ID (SFIDDEST), not to the partner:
+**              for a partner reached through the one called
 **
 ** A file is sent under its base name, upper-cased and cut to 26
 ** characters. Received files are written to DIR under their virtual file
@@ -88,6 +90,7 @@ typedef struct hfiles {
     char        fmt;
     unsigned    lrecl;
     const char *dir;
+    const char *dest;           /* -D: the final recipient */
     FILE       *in;
     char        inname[OFTP_DSNLEN + 1];
     char        infmt;
@@ -140,7 +143,7 @@ h_next_out(void *ctx, const OFTP_PEER *peer, OFTP_SFIDCMD *f, OFTP_FH **fh)
         rewind(o->fp);
         strcpy(f->dsn, o->dsn);
         stamp(f->date, f->time);
-        strcpy(f->dest, peer->code);
+        strcpy(f->dest, h->dest ? h->dest : peer->code);
         strcpy(f->orig, peer->ourcode);
         f->fmt = h->fmt;
         f->lrecl = (h->fmt == 'F' || h->fmt == 'V') ? h->lrecl : 0;
@@ -338,7 +341,7 @@ usage(void)
             "usage: oftph call HOST PORT [options] [FILE ...]\n"
             "       oftph listen PORT [options]\n"
             "options: -i ourID -I partnerID -p ourPW -P partnerPW -l level\n"
-            "         -b sdeb -c credit -z -d dir -f T|U|F|V -r lrecl\n");
+            "         -b sdeb -c credit -z -d dir -f T|U|F|V -r lrecl -D destID\n");
     exit(2);
 }
 
@@ -386,7 +389,7 @@ main(int argc, char **argv)
     h.dir = ".";
 
     optind = argi;
-    while ((opt = getopt(argc, argv, "i:I:p:P:l:b:c:zd:f:r:")) != -1) {
+    while ((opt = getopt(argc, argv, "i:I:p:P:l:b:c:zd:f:r:D:")) != -1) {
         switch (opt) {
         case 'i': copy(config.ourcode, optarg, sizeof(config.ourcode)); break;
         case 'I': copy(config.code, optarg, sizeof(config.code)); break;
@@ -399,6 +402,7 @@ main(int argc, char **argv)
         case 'd': h.dir = optarg; break;
         case 'f': h.fmt = (char)toupper((unsigned char)optarg[0]); break;
         case 'r': h.lrecl = (unsigned)atoi(optarg); break;
+        case 'D': h.dest = optarg; break;
         default: usage();
         }
     }

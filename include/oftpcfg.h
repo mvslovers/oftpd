@@ -10,7 +10,7 @@
 **
 **   OFTPPRM:  ODETTEID= PORT= CONTROLPORT= INPREFIX= TMPPREFIX= MAXSESS=
 **             SDEB= CREDIT= TIMEOUT= TLRECL= UBLKSIZE= UNIT= VOLSER=
-**             RETRY=
+**             RETRY= RELAY=
 **   OFTPPTN:  PARTNER= ODETTEID= PASSWORD= OURPASSWORD= OURID= HOST=
 **             PORT= LEVEL= SDEB= CREDIT= MODE= COMPRESS= ENABLED= CALL=
 **             ADDRESS= XLATE= VIA=
@@ -57,6 +57,7 @@ typedef struct oftp_config {
     char        unit[9];
     char        volser[7];
     int         retry;                  /* seconds before a retry        */
+    int         relay;                  /* RELAY=Y: act as a node        */
 
     OFTP_PARTNER ptn[OFTP_MAXPTN];
     int         nptn;
@@ -88,5 +89,12 @@ extern OFTP_PARTNER *oftp_cfg_find(OFTP_CONFIG *c, const char *name)
                                                         asm("OFTPCFGN");
 extern OFTP_PARTNER *oftp_cfg_byid(OFTP_CONFIG *c, const char *odetteid)
                                                         asm("OFTPCFGI");
+
+/* Where a file for odetteid goes next: the enabled partner with that ID
+** if it is direct, else the one it is reached through; NULL if unknown.
+** *final gets the partner with the ID itself.
+*/
+extern OFTP_PARTNER *oftp_cfg_route(OFTP_CONFIG *c, const char *odetteid,
+                                    OFTP_PARTNER **final) asm("OFTPCFGR");
 
 #endif /* OFTPCFG_H */

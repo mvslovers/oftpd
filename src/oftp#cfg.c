@@ -102,6 +102,8 @@ monitor_kw(OFTP_CONFIG *c, const char *k, const char *v)
         return put(c->volser, sizeof(c->volser), v);
     if (strcmp(k, "RETRY") == 0)
         return (n = num(v, 10, 86400)) < 0 ? -1 : (c->retry = (int)n, 0);
+    if (strcmp(k, "RELAY") == 0)
+        return (n = yesno(v)) < 0 ? -1 : (c->relay = (int)n, 0);
     return -2;
 }
 
@@ -296,6 +298,23 @@ oftp_cfg_find(OFTP_CONFIG *c, const char *name)
     for (i = 0; i < c->nptn; i++)
         if (c->ptn[i].enabled && strcmp(c->ptn[i].peer.name, name) == 0)
             return &c->ptn[i];
+    return NULL;
+}
+
+OFTP_PARTNER *
+oftp_cfg_route(OFTP_CONFIG *c, const char *odetteid, OFTP_PARTNER **final)
+{
+    int i;
+
+    for (i = 0; i < c->nptn; i++) {
+        OFTP_PARTNER *p = &c->ptn[i];
+
+        if (!p->enabled || strcmp(p->peer.code, odetteid) != 0)
+            continue;
+        *final = p;
+        return p->via[0] ? oftp_cfg_find(c, p->via) : p;
+    }
+    *final = NULL;
     return NULL;
 }
 

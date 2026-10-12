@@ -18,6 +18,9 @@
 * TLRECL       LRECL of received text files (VB)           (255)
 * UBLKSIZE     BLKSIZE of received unstructured files (U)  (6144)
 * UNIT, VOLSER where received files are allocated    (system's choice)
+* RELAY        Y: act as a node: take files for Odette IDs of our
+*              partners (direct or VIA) and pass them on unchanged,
+*              their EERP/NERP back to the sender               (N)
 *
 ODETTEID=O0000000000MYMVS
 PORT=3305 CONTROLPORT=3306

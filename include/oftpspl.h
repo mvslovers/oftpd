@@ -62,6 +62,11 @@ typedef struct oftp_sprec {
     char        text[80];               /* last reason, readable          */
     char        target[9];              /* send: the partner behind
                                            'partner' it is for (VIA), or "" */
+    /* relaying (OFTPD as a node, internals/design.md 0) */
+    char        relay;                  /* 'Y': not ours, passed through  */
+    char        from[9];                /* relay send: the partner it came
+                                           from, where its EERP goes back */
+    char        crea[OFTP_IDLEN + 1];   /* relayed NERP: its creator      */
 } OFTP_SPREC;
 
 typedef struct oftp_spool OFTP_SPOOL;

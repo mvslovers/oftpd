@@ -31,8 +31,23 @@ MVP does not block it; what the MVP leaves out is marked *later* there.
 a partner with `VIA=name` is reached through the direct partner `name`
 -- the session goes there, `SFIDDEST` carries the final recipient, its
 EERP comes back the same way and is matched by `EERPORIG` too. A file for
-an Odette ID that is not ours is refused (SFNA 02). Acting as a node that
-forwards files for others is stage 2, later.
+an Odette ID that is not ours is refused (SFNA 02) -- unless OFTPD is a
+node.
+
+**OFTPD as a node** (stage 2, `RELAY=Y`, 2026-10-12): a file for the
+Odette ID of one of our partners (direct or `VIA`) is taken, stored
+unchanged (a T file as its byte stream, format U, never translated) under
+`TMPPREFIX.Tnnnnnnn`, answered with EFPA and **no EERP**, and queued as a
+send to the next hop with its identity intact (name, date, time and the
+original `SFIDORIG`). The final recipient's EERP or NERP is matched to
+that send and queued as a response record for the partner the file came
+from, which `next_erp` sends like any EERP; the stored copy is then
+deleted. A relayed file refused for good by the next hop makes OFTPD
+create the NERP itself (creator: our Odette ID). A file whose route would
+lead back to the partner it came from, or with no route, is refused with
+SFNA 02. Not yet: a retry limit (a next hop that never answers keeps the
+file WAITING), forwarding an EERP that matches no relayed send, loop
+detection beyond the one hop back.
 
 **Not in the MVP** (all planned): restart, buffer compression, NERP
 generation (received NERPs are recorded), post-processing after receipt,

@@ -6,6 +6,7 @@ result can be checked rather than believed.
 
 | Date | Partner | Who called | Level | What ran | Result |
 |---|---|---|---|---|---|
+| 2026-10-12 | two `host/oftph` (MACA, MACB) through OFTPD on dev1 as a node (`RELAY=Y`) | MACA called OFTPD; OFTPD called MACB | 5 | T file from MACA addressed to MACB (`-D`); OFTPD stored it (T0000011), passed it on, got MACB's EERP, queued it for MACA (T0000012); MACA called again | MACB got the 47 octets unchanged (cmp); MACA got the EERP "from O0000000000MACB"; OFTPD's copy deleted; all ESID 00 |
 | 2026-10-12 | mendelson 1.1 b53 as a node | OFTPD on dev1 | 5 | T file for partner BEHIND (`VIA=MENDEL`): session with MENDEL, SFIDDEST = BEHIND's Odette ID | refused with SFNA 02; mendelson's log: "receiver not configured in this system ... Invalid destination; SFID.SFIDDEST" -- the route reached the wire as designed |
 | 2026-10-12 | mendelson 1.1 b53 | OFTPD as a started task on dev1 (`S OFTPD,S='IBMUSER.OFTP370.SPOOL'`) | 5 | T file `STC.TEST` queued through the control port, EERP fetched with `F OFTPD,CALL MENDEL` | T0000003 DELIVERED |
 | 2026-10-12 | mendelson 1.1 b53 (workstation) | mendelson | 5 | U file `NOT-CATEGORIZED`, 43 octets, to OFTPD on MVS (dev1, JOB02129) | stored as `IBMUSER.OFTPIN.NOT-CATE`, the 43 octets unchanged (read back through mvsMF); OFTPD's EERP went back in the same session, mendelson deleted its outbound copy; ESID 00 |
