@@ -1,0 +1,24 @@
+* OFTPPRM0 - OFTPD monitor settings
+*
+* KEYWORD=VALUE, blanks or commas between them, '*' in column 1
+* starts a comment. Columns 73-80 are ignored.
+*
+* ODETTEID     this installation's Odette ID (required)
+* PORT         OFTP port for calls from partners          (3305)
+* CONTROLPORT  port of the OFTP utility, 0 = none          (3306)
+*              NO SECURITY during development: anyone who can
+*              reach this port can queue and list transfers
+* INPREFIX     received files are INPREFIX.<virtual name>  (OFTP.IN)
+* TMPPREFIX    files while being received                  (OFTP.TMP)
+* MAXSESS      sessions at a time                          (4)
+* SDEB         exchange buffer, 128..8192                  (4096)
+* CREDIT       buffers before a credit, 1..999             (99)
+* TIMEOUT      seconds to wait for the partner             (60)
+* RETRY        seconds before a refused send is retried    (300)
+* TLRECL       LRECL of received text files (VB)           (255)
+* UBLKSIZE     BLKSIZE of received unstructured files (U)  (6144)
+* UNIT, VOLSER where received files are allocated    (system's choice)
+*
+ODETTEID=O0000000000MYMVS
+PORT=3305 CONTROLPORT=3306
+INPREFIX=OFTP.IN TMPPREFIX=OFTP.TMP

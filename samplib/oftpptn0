@@ -1,0 +1,23 @@
+* OFTPPTN0 - OFTPD partners
+*
+* PARTNER=name opens an entry (1..8 characters, the name commands use);
+* the keywords after it belong to that partner. An entry with an error
+* is disabled, the others still work.
+*
+* ODETTEID     the partner's Odette ID (required)
+* PASSWORD     the password the partner sends
+* OURPASSWORD  the password we send
+* OURID        our Odette ID towards it      (ODETTEID of OFTPPRM0)
+* HOST, PORT   where to call it; no HOST: never called      (-, 3305)
+* LEVEL        highest OFTP level: 5 (2.0), 4 (1.4), 2 (1.3)  (5)
+* SDEB, CREDIT caps for this partner               (from OFTPPRM0)
+* MODE         S send only, R receive only, B both            (B)
+* COMPRESS     Y: offer buffer compression                    (N)
+* CALL         N: never call it, only answer                  (Y)
+* ADDRESS      calls from it must come from this IP address    (-)
+* XLATE        Y: translate F, V and U data EBCDIC<->ASCII     (N)
+* ENABLED      N: refuse it and never call it                 (Y)
+*
+PARTNER=PARTNER1 ODETTEID=O0000000000PARTNER1
+  PASSWORD=SECRET1 OURPASSWORD=SECRET2
+  HOST=partner1.example.org PORT=3305 LEVEL=5

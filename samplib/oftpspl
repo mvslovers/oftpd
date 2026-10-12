@@ -1,0 +1,17 @@
+//OFTPSPL  JOB (OFTP),'DEFINE OFTP SPOOL',CLASS=A,MSGCLASS=A
+//* ------------------------------------------------------------------
+//* Defines the OFTPD spool once. Edit the name (the S= of the PROC)
+//* and the volume: one with VSAM space owned by your catalog; UNIQUE
+//* gives the cluster a data space of its own. Finished transfers
+//* stay in the spool until removed; size the space for that.
+//* ------------------------------------------------------------------
+//DEFINE   EXEC PGM=IDCAMS
+//SYSPRINT DD  SYSOUT=*
+//SYSIN    DD  *
+  DEFINE CLUSTER (NAME(OFTP.SPOOL) -
+                  INDEXED KEYS(8 0) RECORDSIZE(512 512) -
+                  TRACKS(15 15) SHAREOPTIONS(1 3) UNIQUE -
+                  VOLUMES(PUB000)) -
+         DATA   (NAME(OFTP.SPOOL.DATA)) -
+         INDEX  (NAME(OFTP.SPOOL.INDEX))
+/*
