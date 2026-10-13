@@ -66,9 +66,26 @@ host = false
 sources = ["test/mvs/tstspl.c"]
 host = false
 
-# [distribution] and [smp] follow with the first PROC in samplib/:
-#   [smp] prefix = "TOFT"   -> 0.1.0 is TOFT010, delete = [] (first level)
-# The id is proposed, not yet checked on any stand.
+# The SMP installation package (mbt package): the load modules go to
+# OFTPD.LINKLIB (SMP's, distribution library OFTPD.AOFTPLOD), samplib/
+# and ispplib/ are received as text libraries beside it.
+[distribution]
+readme = "docs/installation.md"
+
+[smp]
+# The id is the release: T + three product letters + the version digits,
+# spent exactly once; each release deletes the one before it. No version
+# component may exceed 9. TOFT010 is the first level, so nothing to delete.
+# It is spent by the 0.1.0-dev prerelease installed on the test systems
+# (maintainer, 2026-10-13); the first final release is 0.2.0, TOFT020,
+# and it deletes TOFT010.
+prefix = "TOFT"
+delete = []
+prereq = []
+
+[distribution.library.samplib]   # OFTPD.SAMPLIB: PROC, PARMLIB, jobs
+
+[distribution.library.ispplib]   # OFTPD.ISPPLIB: the dialog's panels
 
 # The ISPF dialog over TN3270 (test/tso/ispf.lua), on the screen the
 # panels are made for.

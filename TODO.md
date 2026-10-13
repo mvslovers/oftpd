@@ -31,9 +31,13 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 - **Prerelease 0.1.0** (2026-10-13), to install on the four M38 targets
   (m38l, m38x MVS/CE; m38b, m38r TK5) beside dev1 and the mendelson peer
   on the Mac, and to test routing over several hops (`VIA=`, `RELAY=Y`)
-  among six nodes: `[distribution]`/`[smp]` with `TOFT` (check
-  `LIST CDS/ACDS SYSMOD(TOFT010)` on all four, with job numbers),
-  `docs/installation.md`, then `mbt prerelease`.
+  among six nodes. `[distribution]`/`[smp]` and `docs/installation.md`
+  are in. `TOFT010` free on m38r (`JOB00358`) and m38b (`JOB00579`),
+  CDS and ACDS (MBT's inventory); m38l and m38x pending. The M38 stands
+  are MBT's to schedule, after the ufsd/ftpd/httpd/mvsMF rollout and only
+  with the maintainer's go. Then `mbt prerelease`, install by the guide. The prerelease spends
+  `TOFT010`; the first final release is 0.2.0 (`TOFT020`, deletes
+  `TOFT010`).
 - dev1 still carries the old name: `OFTP370.DEV.LINKLIB` in the OFTPD
   PROC and in ISPLLIB, the spool `IBMUSER.OFTP370.SPOOL`, the panel
   titles `OFTP370 - ...` (`internals/dev1-changes.md`). Move it to
@@ -62,13 +66,10 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   (Transfers): a fixed cost per request on the MVS client side, not per
   row or byte. A 0.1 s select() tick on the client changed nothing (A/B
   on dev1). Next suspects: connect() and closesocket() through DYN75.
-- `[distribution.library]` for `ispplib/`, installation notes for the
-  dialog (ISPPLIB/ISPLLIB, ISPMORE).
 
 - Log to a SYSOUT data set instead of every line by WTO; a log-only
   message class (design 8).
-- `docs/`: installation and configuration guide (needed for
-  `[distribution]`), then `[distribution]`/`[smp]` with `TOFT`.
+- `docs/`: a configuration guide beside `docs/installation.md`.
 - ~~GitHub repository, CI~~ — `mvslovers/oftpd` (2026-10-13).
 
 ## After the MVP
