@@ -4,7 +4,7 @@
  @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT) CAPS(OFF) COLOR(TURQ)
  ! TYPE(OUTPUT) INTENS(HIGH) JUST(LEFT) CAPS(OFF) COLOR(YELLOW)
 )BODY WIDTH(&ZSCREENW) EXPAND(//)
-%------------------------------ OFTP370 - Transfer -/-/-------------------------
+%-------------------------------- OFTPD - Transfer -/-/-------------------------
 +
 +
 +   @OFTL1

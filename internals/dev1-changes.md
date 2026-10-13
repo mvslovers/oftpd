@@ -4,6 +4,11 @@ dev1 is a shared stand. Everything oftp370 changed outside its own data
 sets is listed here, with how to undo it. All of it was approved by the
 maintainer at the time; the dates are when it was done.
 
+The project was called oftp370 until 2026-10-13, and the names below are
+what dev1 carries: `OFTP370.DEV.LINKLIB`, `IBMUSER.OFTP370.*`. The repo
+now builds and deploys for `OFTPD.DEV.LINKLIB`; moving dev1 over is open
+(`TODO.md`).
+
 ## New members
 
 | Data set (member) | Since | What it is | Undo |

@@ -6,7 +6,7 @@
  @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT) CAPS(OFF) COLOR(TURQ)
  ! TYPE(OUTPUT) INTENS(HIGH) JUST(LEFT) CAPS(OFF) COLOR(YELLOW)
 )BODY WIDTH(&ZSCREENW) EXPAND(//)
-%----------------------- OFTP370 - Odette File Transfer -/-/--------------------
+%------------------------- OFTPD - Odette File Transfer -/-/--------------------
 %Option ===>_Z +                                        / /+User     @ZUSER   +
 +                                                       / /+Time     @ZTIMEL  +
 %  1  {Send       +Queue a data set for a partner       / /+Terminal @ZTERM   +

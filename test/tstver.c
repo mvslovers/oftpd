@@ -10,6 +10,6 @@ main(void)
     const char *v = oftp_version();
 
     CHECK(v != NULL, "version string present");
-    CHECK(strncmp(v, "oftp370 ", 8) == 0, "starts with the project name");
+    CHECK(strncmp(v, "oftpd ", 6) == 0, "starts with the project name");
     return mbt_test_summary("TSTVER");
 }

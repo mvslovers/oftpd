@@ -1,4 +1,4 @@
-# CLAUDE.md — oftp370
+# CLAUDE.md — oftpd
 
 Extends the ecosystem root `CLAUDE.md` (`~/repos/mvs/CLAUDE.md`); nothing
 here contradicts it.
@@ -11,8 +11,9 @@ monitor running as a started task (`OFTPD`) plus TSO and batch utilities
 tool for the MVS hobbyist community — MVS to MVS over TCP/IP, and MVS to PC
 peers. The commercial rvsMVS is the model for the operational design.
 
-Product name: still open. Until it is decided, use the repo name. Mind the
-root rule: `X/370` names can collide with IBM product names.
+Product name: **OFTPD**, repo `oftpd` (decided 2026-10-13, matching FTPD
+and HTTPD; the repo was called oftp370 before). The started task and its
+module carry the same name, as FTPD's do.
 
 ## Decisions taken (2026-10-12)
 

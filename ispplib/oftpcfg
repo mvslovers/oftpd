@@ -4,7 +4,7 @@
  _ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT) COLOR(TURQ)
  ! TYPE(OUTPUT) INTENS(HIGH) JUST(LEFT) CAPS(OFF) COLOR(YELLOW)
 )BODY WIDTH(&ZSCREENW) EXPAND(//)
-%---------------------- OFTP370 - Configure the Partners -/-/-------------------
+%------------------------ OFTPD - Configure the Partners -/-/-------------------
 +
 +
 +  Partner member ===>_OFTCDSN                                       +

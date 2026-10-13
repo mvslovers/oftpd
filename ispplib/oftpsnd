@@ -4,7 +4,7 @@
  _ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT) COLOR(TURQ)
  ! TYPE(OUTPUT) INTENS(HIGH) JUST(LEFT) CAPS(OFF) COLOR(YELLOW)
 )BODY WIDTH(&ZSCREENW) EXPAND(//)
-%------------------------ OFTP370 - Send a Data Set -/-/------------------------
+%-------------------------- OFTPD - Send a Data Set -/-/------------------------
 +
 %  To
 +

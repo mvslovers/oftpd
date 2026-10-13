@@ -1,4 +1,4 @@
-/* OFTPI - the ISPF dialog of oftp370
+/* OFTPI - the ISPF dialog of oftpd
 **
 ** Started under ISPF as a command: SELECT CMD(OFTPI) NEWAPPL(OFTP). The
 ** panels OFTP@PRI, OFTPSND, OFTPLST, OFTPLSW, OFTPSHW, OFTPPTL, OFTPCFG

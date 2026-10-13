@@ -1,4 +1,4 @@
-# oftp370 — design
+# oftpd — design
 
 Status: **draft for discussion**, 2026-10-12. Everything here is a proposal
 unless marked *decided*. The wire format is not repeated here; it is in
@@ -317,7 +317,7 @@ V therefore come back as the original records (FB/VB, blocked as we
 choose); U is a byte stream on the wire, so the original U *block*
 boundaries are lost and only the bytes are kept. Recreating the sender's
 exact layout would need the sender to say what it was — possible between
-two oftp370 systems through `SFIDUSER` or the 2.0 description, *later*.
+two oftpd systems through `SFIDUSER` or the 2.0 description, *later*.
 
 **Written under a temporary name, renamed at the end.** A file being
 received goes to `<temp prefix>.T<transfer number>`; only after the CLOSE

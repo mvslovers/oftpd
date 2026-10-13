@@ -5,7 +5,7 @@
  @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT) CAPS(OFF) COLOR(TURQ)
  ! TYPE(OUTPUT) INTENS(HIGH) JUST(LEFT) CAPS(OFF) COLOR(YELLOW)
 )BODY WIDTH(&ZSCREENW) EXPAND(//)
-%----------------------------- OFTP370 - Transfers -/-/-------------------------
+%------------------------------- OFTPD - Transfers -/-/-------------------------
 %Command ===>_ZCMD                                         / /%Scroll ===>_Z   +
 +
 +  Partner ===>_OFTFPTN +   Status ===>_OFTFST    +   Mine only ===>_Z+  Y or N

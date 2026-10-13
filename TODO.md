@@ -28,6 +28,17 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 
 ## Next
 
+- **Prerelease 0.1.0** (2026-10-13), to install on the four M38 targets
+  (m38l, m38x MVS/CE; m38b, m38r TK5) beside dev1 and the mendelson peer
+  on the Mac, and to test routing over several hops (`VIA=`, `RELAY=Y`)
+  among six nodes: `[distribution]`/`[smp]` with `TOFT` (check
+  `LIST CDS/ACDS SYSMOD(TOFT010)` on all four, with job numbers),
+  `docs/installation.md`, then `mbt prerelease`.
+- dev1 still carries the old name: `OFTP370.DEV.LINKLIB` in the OFTPD
+  PROC and in ISPLLIB, the spool `IBMUSER.OFTP370.SPOOL`, the panel
+  titles `OFTP370 - ...` (`internals/dev1-changes.md`). Move it to
+  `OFTPD.DEV.LINKLIB` (mbt's default now) in a slot; until then a
+  `mbt deploy` lands in a library nothing runs from.
 - Retry limit (`MAXRETRY`, design 3.3): measured on dev1 2026-10-13
   (`internals/interop.md`). Still untried there: a transfer cut off
   mid-file, the wait after a call that failed before any file, a NERP
@@ -41,8 +52,7 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   source; a field after `/ /` keeps its literal length, so pad it and end
   it with an attribute; `&VAR` in text is substituted before expanding
   and swallows the blank after it. Menu and Send need more than 24 rows;
-  `test/tso/ispf.lua` needs mbt's TN3270 driver with larger models (MBT
-  session is on it).
+  `test/tso/ispf.lua` runs at 80x43 (`[tso.ispf] size`, mbt 3.0.0-dev).
 - TBCREATE from a CLIST answers RC 20 on dev1 (also with the variables
   set first, as Wally's CMEMFIND does); not understood.
 - Dialog lag: the control port now looks for a request every 0.1 s
@@ -59,7 +69,7 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   message class (design 8).
 - `docs/`: installation and configuration guide (needed for
   `[distribution]`), then `[distribution]`/`[smp]` with `TOFT`.
-- GitHub repository, CI.
+- ~~GitHub repository, CI~~ — `mvslovers/oftpd` (2026-10-13).
 
 ## After the MVP
 
@@ -70,7 +80,7 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 
 ## Maintainer decisions
 
-- Product name; FMID prefix `TOFT` (check `LIST CDS/ACDS SYSMOD(TOFT010)`
-  on MVS/CE and TK5, with job numbers); book area (ML09 is the next free
-  one); rows in the root `CLAUDE.md`.
-- GitHub repository, then `.github/workflows` go live.
+- ~~Product name~~ — OFTPD, repo `oftpd` (2026-10-13).
+- FMID prefix `TOFT` (check `LIST CDS/ACDS SYSMOD(TOFT010)` on MVS/CE
+  and TK5, with job numbers); book area (ML09 is the next free one);
+  rows in the root `CLAUDE.md`.

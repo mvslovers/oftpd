@@ -1,7 +1,7 @@
 schema = 3
 
 [project]
-name = "oftp370"
+name = "oftpd"
 version = "0.1.0-dev"
 
 [toolchain]

@@ -3,7 +3,7 @@
 ** Each format goes through oftp_dsf_open_in/write/close into a new data
 ** set and comes back through oftp_dsf_open_out/read, as the session
 ** engine would drive them. PARM: the data set prefix, default
-** IBMUSER.OFTP370.TDSF.
+** IBMUSER.OFTPD.TDSF.
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,7 +14,7 @@
 #include "oftpdsf.h"
 #include "oftpxlt.h"
 
-static char prefix[40] = "IBMUSER.OFTP370.TDSF";
+static char prefix[40] = "IBMUSER.OFTPD.TDSF";
 static unsigned char got[16384];
 static unsigned char want[16384];
 
