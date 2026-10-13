@@ -1,16 +1,23 @@
 )ATTR
- % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)
- + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)
- @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT) CAPS(OFF)
-)BODY
-%------------------------- OFTP370 - Transfer -----------------------------
+ + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)   COLOR(GREEN)
+ % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)   COLOR(WHITE)
+ @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT) CAPS(OFF) COLOR(TURQ)
+ ! TYPE(OUTPUT) INTENS(HIGH) JUST(LEFT) CAPS(OFF) COLOR(YELLOW)
+)BODY WIDTH(&ZSCREENW) EXPAND(//)
+%------------------------------ OFTP370 - Transfer -/-/-------------------------
 +
-@OFTL1
-@OFTL2
-@OFTL3
-@OFTL4
-@OFTL5
-@OFTL6
 +
-+  Enter or END to return to the list.
++   @OFTL1
++
++   @OFTL2
++   @OFTL3
++
++   @OFTL4
++   @OFTL5
++   @OFTL6
++
++
+!OFTMSG
++
++  Enter or END returns to the list.
 )END

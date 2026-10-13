@@ -28,12 +28,30 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 
 ## Next
 
-- Retry limit (`MAXRETRY`, design 3.3, 2026-10-13): host-tested
-  (TSTCFG, NERP paths in TSTSESS); on dev1 still to try, in a slot: a
-  partner not reached -> WAITING with a growing interval -> HELD after
-  `MAXRETRY`; a relayed file -> NERP back to its sender, copy deleted.
-- Dialog: `S` (show) and Configure not yet driven by the TN3270 test; the
-  data set column of the transfer list is cut at column 80.
+- Retry limit (`MAXRETRY`, design 3.3): measured on dev1 2026-10-13
+  (`internals/interop.md`). Still untried there: a transfer cut off
+  mid-file, the wait after a call that failed before any file, a NERP
+  for a level 1.3 sender.
+- Dialog: `S` (show) and Configure not yet driven by the TN3270 test.
+  Panels for 80x43, measured on dev1 2026-10-13 at 80x43 and 160x62
+  (s3270 `-model 3279-4-E`, `-model 3279-5-E -oversize 160x62`): on
+  Wally's ISPF `EXPAND(//)` works on TBDISPL panels, inside the ZCMD
+  field and in `)MODEL` lines (`@Z / /+` lets the last field grow); a
+  two-line model works. A model line without it ends at column 80 of the
+  source; a field after `/ /` keeps its literal length, so pad it and end
+  it with an attribute; `&VAR` in text is substituted before expanding
+  and swallows the blank after it. Menu and Send need more than 24 rows;
+  `test/tso/ispf.lua` needs mbt's TN3270 driver with larger models (MBT
+  session is on it).
+- TBCREATE from a CLIST answers RC 20 on dev1 (also with the variables
+  set first, as Wally's CMEMFIND does); not understood.
+- Dialog lag: the control port now looks for a request every 0.1 s
+  (was 1 s; greeting after 0.04-0.10 s instead of 1.0 s). A request
+  still takes 1.1-1.2 s in the dialog against 0.03-0.05 s for a panel
+  without one, the same for 5 answer lines (Monitor) as for 9
+  (Transfers): a fixed cost per request on the MVS client side, not per
+  row or byte. A 0.1 s select() tick on the client changed nothing (A/B
+  on dev1). Next suspects: connect() and closesocket() through DYN75.
 - `[distribution.library]` for `ispplib/`, installation notes for the
   dialog (ISPPLIB/ISPLLIB, ISPMORE).
 

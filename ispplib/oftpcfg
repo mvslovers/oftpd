@@ -1,21 +1,28 @@
 )ATTR
- % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)
- + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)
- _ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT)
- @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT) CAPS(OFF)
-)BODY
-%-------------------- OFTP370 - Configure the Partners ---------------------
+ + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)   COLOR(GREEN)
+ % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)   COLOR(WHITE)
+ _ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT) COLOR(TURQ)
+ ! TYPE(OUTPUT) INTENS(HIGH) JUST(LEFT) CAPS(OFF) COLOR(YELLOW)
+)BODY WIDTH(&ZSCREENW) EXPAND(//)
+%---------------------- OFTP370 - Configure the Partners -/-/-------------------
++
 +
 +  Partner member ===>_OFTCDSN                                       +
-+                   (the data set and member OFTPD reads as OFTPPTN,
-+                    without quotes, for example SYS2.PARMLIB(OFTPPTN0))
++
++     the data set and member OFTPD reads as OFTPPTN, without quotes,
++     for example SYS2.PARMLIB(OFTPPTN0); kept in your ISPF profile
++
 +
 +  Enter edits the member. When the edit ends, OFTPD reads it again:
-+  changed partners are updated, new ones added, removed ones disabled.
 +
-@OFTMSG
++     changed partners are updated,
++     new ones are added,
++     removed ones are disabled.
 +
-+  END to leave without editing.
++
+!OFTMSG
++
++  END leaves without editing.
 )INIT
   .CURSOR = OFTCDSN
 )PROC

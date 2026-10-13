@@ -1,25 +1,37 @@
 )ATTR
- % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)
- + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)
- _ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT)
- @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT) CAPS(OFF)
-)BODY
-%------------------------ OFTP370 - Send a Data Set ------------------------
+ + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)   COLOR(GREEN)
+ % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)   COLOR(WHITE)
+ _ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT) COLOR(TURQ)
+ ! TYPE(OUTPUT) INTENS(HIGH) JUST(LEFT) CAPS(OFF) COLOR(YELLOW)
+)BODY WIDTH(&ZSCREENW) EXPAND(//)
+%------------------------ OFTP370 - Send a Data Set -/-/------------------------
 +
-+  Partner   ===>_OFTPTN  +       (? for a list)
-+  Data set  ===>_OFTDSN                                       +
-+                (fully qualified, without quotes; member in parentheses)
-+  Virtual   ===>_OFTVFN                    +
-+  file name     (at most 26 characters; blank: the data set or member)
+%  To
 +
-+  Text      ===>_Z+  (Y: format T, EBCDIC to ASCII with CR-LF per record)
-+  Translate ===>_Z+  (Y: translate F, V and U data)
-+  Hold      ===>_Z+  (Y: queue it held; release it from the list)
-+  User data ===>_OFTUSR  +
++    Partner   ===>_OFTPTN  +   ? shows the partners to pick one from
 +
-@OFTMSG
+%  What
 +
-+  Enter to queue the file, END to leave.
++    Data set  ===>_OFTDSN                                       +
++                  fully qualified, without quotes;
++                  a member in parentheses
++
++    Virtual   ===>_OFTVFN                    +
++    file name     the name the partner sees, at most 26 characters;
++                  blank takes the data set or member name
++
+%  How
++
++    Text      ===>_Z+   Y: format T, EBCDIC to ASCII, CR-LF after each record
++    Translate ===>_Z+   Y: F, V and U data translated as well
++    Hold      ===>_Z+   Y: queued held, released later from the transfer list
++
++    User data ===>_OFTUSR  +   the SFID user field, at most 8 characters
++
++
+!OFTMSG
++
++  Enter queues the file, END leaves.
 )INIT
   .ZVARS = '(OFTFMT OFTXLT OFTHLD)'
   .CURSOR = OFTPTN

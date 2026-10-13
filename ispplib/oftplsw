@@ -1,0 +1,24 @@
+)ATTR
+ + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)   COLOR(GREEN)
+ % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)   COLOR(WHITE)
+ _ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT) COLOR(TURQ)
+ @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT) CAPS(OFF) COLOR(TURQ)
+ ! TYPE(OUTPUT) INTENS(HIGH) JUST(LEFT) CAPS(OFF) COLOR(YELLOW)
+)BODY WIDTH(&ZSCREENW) EXPAND(//)
+%----------------------------- OFTP370 - Transfers -/-/-------------------------
+%Command ===>_ZCMD                                         / /%Scroll ===>_Z   +
++
++  Partner ===>_OFTFPTN +   Status ===>_OFTFST    +   Mine only ===>_Z+  Y or N
+!OFTMSG
++
++  S show   H hold   R release   T retry   D delete
++
+%  Key      D Status    Partner  Virtual file name          Data set
+)MODEL
+_Z@Z       @Z@Z        @Z       @Z                         @Z    / /+
+)INIT
+  .ZVARS = '(ZSCROLL OFTFMIN OS OK OD OT OP OV ON)'
+  &ZSCROLL = PAGE
+)PROC
+  VER (&OFTFMIN,LIST,Y,N)
+)END

@@ -1,23 +1,30 @@
 )ATTR
- % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)
- + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)
- _ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT)
- @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT) CAPS(OFF)
-)BODY
-%-------------------------- OFTP370 - Monitor ------------------------------
+ + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)   COLOR(GREEN)
+ % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)   COLOR(WHITE)
+ _ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT) COLOR(TURQ)
+ @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT) CAPS(OFF) COLOR(TURQ)
+ ! TYPE(OUTPUT) INTENS(HIGH) JUST(LEFT) CAPS(OFF) COLOR(YELLOW)
+)BODY WIDTH(&ZSCREENW) EXPAND(//)
+%------------------------------ OFTP370 - Monitor -/-/--------------------------
 +
-@OFTL1
-@OFTL2
-@OFTL3
-@OFTL4
-@OFTL5
+%  OFTPD
 +
-+  OFTPD control port, kept in your ISPF profile:
++   @OFTL1
++   @OFTL2
++   @OFTL3
++   @OFTL4
++   @OFTL5
++
++
+%  Control port +  kept in your ISPF profile
++
 +    Host ===>_OFTHOST                                                  +
 +    Port ===>_OFTPORT+
 +
-@OFTMSG
-+  Enter to look again, END to return.
++
+!OFTMSG
++
++  Enter looks again, END returns.
 )INIT
   .CURSOR = OFTHOST
 )PROC

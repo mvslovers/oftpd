@@ -1,9 +1,10 @@
 /* OFTPI - the ISPF dialog of oftp370
 **
 ** Started under ISPF as a command: SELECT CMD(OFTPI) NEWAPPL(OFTP). The
-** panels OFTP@PRI, OFTPSND, OFTPLST, OFTPSHW, OFTPPTL, OFTPCFG and
-** OFTPMON (ispplib/) must be in the ISPPLIB concatenation, this module in
-** the ISPLLIB one: ISPLINK is loaded from there (src/mvs/oftp#isp.c).
+** panels OFTP@PRI, OFTPSND, OFTPLST, OFTPLSW, OFTPSHW, OFTPPTL, OFTPCFG
+** and OFTPMON (ispplib/) must be in the ISPPLIB concatenation, this
+** module in the ISPLLIB one: ISPLINK is loaded from there
+** (src/mvs/oftp#isp.c).
 **
 ** Everything the dialog does goes through OFTPD's control port, as the
 ** OFTP utility does. Host, port and the partner member's name are kept in
@@ -19,14 +20,15 @@
 
 /* The dialog variables, each a blank-padded field ISPF reads and writes */
 typedef struct vars {
-    char oftopt[1], oftmsg[76], ofthost[60], oftport[5];
+    char oftopt[1], oftmsg[128], ofthost[60], oftport[5];
     char oftptn[8], oftdsn[54], oftvfn[26], oftfmt[1], oftxlt[1];
     char ofthld[1], oftusr[8];
     char oftfptn[8], oftfst[10], oftfmin[1];
     char os[1], ok[8], od[1], ot[9], op[8], ov[26], on[44];
-    char pn[8], pi[25], pe[8], pb[4], pl[1], ph[30];
-    char l[6][76];
+    char pn[8], pi[25], pe[8], pb[4], pl[1], ph[72];
+    char l[6][128];
     char oftcdsn[54];
+    char oftscrw[4];
 } VARS;
 
 typedef struct dlg {
@@ -54,7 +56,7 @@ define(DLG *d)
         V("ON", on), V("PN", pn), V("PI", pi), V("PE", pe), V("PB", pb),
         V("PL", pl), V("PH", ph), V("OFTL1", l[0]), V("OFTL2", l[1]),
         V("OFTL3", l[2]), V("OFTL4", l[3]), V("OFTL5", l[4]),
-        V("OFTL6", l[5]), V("OFTCDSN", oftcdsn),
+        V("OFTL6", l[5]), V("OFTCDSN", oftcdsn), V("OFTSCRW", oftscrw),
 #undef V
     };
     unsigned i;
@@ -79,7 +81,9 @@ ask(DLG *d, const char *req, OFTP_CLILINE line, void *ctx)
     return rc;
 }
 
-/* Column cut from an answer line: from..to inclusive, blanks trimmed */
+/* Column cut from an answer line: from..to inclusive, blanks trimmed;
+** out holds 80 characters
+*/
 static void
 col(const char *line, int from, int to, char *out)
 {
@@ -91,6 +95,8 @@ col(const char *line, int from, int to, char *out)
     if (to < 0 || to >= n)
         to = n - 1;
     len = to - from + 1;
+    if (len > 79)
+        len = 79;
     memcpy(out, line + from, (size_t)len);
     out[len] = '\0';
     while (len > 0 && out[len - 1] == ' ')
@@ -151,7 +157,7 @@ static void
 add_transfer(void *ctx, const char *line)
 {
     DLG *d = ctx;
-    char f[60];
+    char f[80];
 
     PUT(d, os, "");
     col(line, 0, 7, f);   PUT(d, ok, f);
@@ -183,19 +189,31 @@ show(DLG *d, const char *key)
 
     memset(d->v.l, ' ', sizeof(d->v.l));
     snprintf(req, sizeof(req), "SHOW KEY=%s", key);
-    ask(d, req, show_line, d);
+    if (ask(d, req, show_line, d) == 0)
+        PUT(d, oftmsg, "");          /* "end" says nothing */
     oftp_isp_exec("DISPLAY PANEL(OFTPSHW)");
 }
 
 static void
 transfers(DLG *d)
 {
-    char fp[9], fs[11], fm[2], sel[2], key[9], req[120], keep[77];
+    char fp[9], fs[11], fm[2], sel[2], key[9], req[120], keep[129];
+    const char *panel = "OFTPLST";
     size_t n;
     int rc;
 
     PUT(d, oftmsg, "");
     PUT(d, oftfmin, "N");
+    /* the data set fits on the line from 110 columns on, below that
+    ** each transfer takes two lines; OFTP@PRI copied ZSCREENW
+    */
+    {
+        char w[5];
+
+        GET(d, oftscrw, w);
+        if (atoi(w) >= 110)
+            panel = "OFTPLSW";
+    }
     for (;;) {
         GET(d, oftfptn, fp);
         GET(d, oftfst, fs);
@@ -216,7 +234,7 @@ transfers(DLG *d)
             PUT(d, oftmsg, keep);
         oftp_isp_exec("TBTOP OFTPTRN");
         PUT(d, os, "");
-        rc = oftp_isp_exec("TBDISPL OFTPTRN PANEL(OFTPLST)");
+        rc = oftp_isp_exec("TBDISPL OFTPTRN PANEL(%s)", panel);
         GET(d, os, sel);
         GET(d, ok, key);
         oftp_isp_exec("TBEND OFTPTRN");
@@ -262,7 +280,7 @@ static void
 add_partner(void *ctx, const char *line)
 {
     DLG *d = ctx;
-    char f[60];
+    char f[80];
 
     PUT(d, os, "");
     col(line, 0, 7, f);   PUT(d, pn, f);
@@ -278,7 +296,7 @@ add_partner(void *ctx, const char *line)
 static void
 partners(DLG *d, int selecting)
 {
-    char sel[2], name[9], req[40], keep[77];
+    char sel[2], name[9], req[40], keep[129];
     int rc;
 
     if (!selecting)
@@ -348,7 +366,8 @@ monitor(DLG *d)
     PUT(d, oftmsg, "");
     for (;;) {
         memset(d->v.l, ' ', sizeof(d->v.l));
-        ask(d, "STATUS", show_line, d);
+        if (ask(d, "STATUS", show_line, d) == 0)
+            PUT(d, oftmsg, "");
         if (oftp_isp_exec("DISPLAY PANEL(OFTPMON)") != 0)
             return;
         GET(d, ofthost, host);

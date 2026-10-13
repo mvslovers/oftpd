@@ -1167,13 +1167,16 @@ ctl_thread(void *arg1, void *arg2)
     (void)arg2;
     while (!m->stop) {
         int s, n;
-        ECB e = 0;
 
-        ecb_timed_wait(&e, 100, 0);
-        if (m->stop)
-            break;
-        if ((s = oftp_net_accept(m->csock, ip, sizeof(ip))) < 0)
+        /* a dialog waits for every answer: look for the next request
+        ** every 0.1 s, and at once after one
+        */
+        if ((s = oftp_net_accept(m->csock, ip, sizeof(ip))) < 0) {
+            ECB e = 0;
+
+            ecb_timed_wait(&e, 10, 0);
             continue;
+        }
         /* one request per connection; no security during development */
         oftp_net_puts(s, "220 OFTPD control port");
         n = oftp_net_gets(s, line, sizeof(line), 30);

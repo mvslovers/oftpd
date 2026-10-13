@@ -1,27 +1,42 @@
 )ATTR
- % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)
- + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)
- _ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT)
- @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT) CAPS(OFF)
-)BODY
-%-------------------- OFTP370 - Odette File Transfer -----------------------
-%Option ===>_Z +
+ + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)   COLOR(GREEN)
+ % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)   COLOR(WHITE)
+ { TYPE(TEXT)   INTENS(LOW)  SKIP(ON)   COLOR(TURQ)
+ _ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT) COLOR(TURQ)
+ @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT) CAPS(OFF) COLOR(TURQ)
+ ! TYPE(OUTPUT) INTENS(HIGH) JUST(LEFT) CAPS(OFF) COLOR(YELLOW)
+)BODY WIDTH(&ZSCREENW) EXPAND(//)
+%----------------------- OFTP370 - Odette File Transfer -/-/--------------------
+%Option ===>_Z +                                        / /+User     @ZUSER   +
++                                                       / /+Time     @ZTIMEL  +
+%  1  {Send       +Queue a data set for a partner       / /+Terminal @ZTERM   +
++                  partner, data set, virtual file name / /+Panel    @ZPANELID+
 +
-%  1 +Send       +Queue a data set for a partner
-%  2 +Transfers  +List; S show, H hold, R release, T retry, D delete
-%  3 +Partners   +List the partners; C call one now
-%  4 +Configure  +Edit the partner table, then OFTPD reloads it
-%  5 +Monitor    +OFTPD: Odette ID, ports, sessions, spool
-%  X +Exit
+%  2  {Transfers  +What is queued, sent and received
++                  S show, H hold, R release, T retry, D delete
++
+%  3  {Partners   +The partner table as OFTPD has it
++                  C calls a partner now
++
+%  4  {Configure  +Edit the partner member
++                  OFTPD reads it again when the edit ends
++
+%  5  {Monitor    +OFTPD: Odette ID, ports, sessions, spool
++                  and the control port this dialog talks to
++
+%  X  {Exit
 +
 +
+!OFTMSG
 +
-@OFTMSG
+%  OFTPD control port +  kept in your ISPF profile, option 5 changes it
++    Host @OFTHOST
++    Port @OFTPORT
 +
-+  OFTPD control port:@OFTHOST                                       +
-+                     @OFTPORT+
++  Enter an option, END or X to leave.
 )INIT
   .ZVARS = '(OFTOPT)'
+  &OFTSCRW = &ZSCREENW
   .CURSOR = OFTOPT
 )PROC
   VER (&OFTOPT,LIST,1,2,3,4,5,X)

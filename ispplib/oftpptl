@@ -1,16 +1,20 @@
 )ATTR
- % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)
- + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)
- _ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT)
- @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT) CAPS(OFF)
-)BODY
-%--------------------------- OFTP370 - Partners ----------------------------
-%Command ===>_ZCMD                                         %Scroll ===>_Z   +
-@OFTMSG
-+ C call now   S select (from Send)
-+  Name     Odette ID                 State    Busy Lvl Called at
+ + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)   COLOR(GREEN)
+ % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)   COLOR(WHITE)
+ _ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT) COLOR(TURQ)
+ @ TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT) CAPS(OFF) COLOR(TURQ)
+ ! TYPE(OUTPUT) INTENS(HIGH) JUST(LEFT) CAPS(OFF) COLOR(YELLOW)
+)BODY WIDTH(&ZSCREENW) EXPAND(//)
+%------------------------------ OFTP370 - Partners -/-/-------------------------
+%Command ===>_ZCMD                                         / /%Scroll ===>_Z   +
++
+!OFTMSG
++
++  C call now   S select for Send
++
+%  Name     Odette ID                 State    Busy Lvl Reached at
 )MODEL
-_Z@Z       @Z                        @Z       @Z   @Z  @Z
+_Z@Z       @Z                        @Z       @Z   @Z  @Z                   / /+
 )INIT
   .ZVARS = '(ZSCROLL OS PN PI PE PB PL PH)'
   &ZSCROLL = PAGE
