@@ -69,3 +69,8 @@ host = false
 # [distribution] and [smp] follow with the first PROC in samplib/:
 #   [smp] prefix = "TOFT"   -> 0.1.0 is TOFT010, delete = [] (first level)
 # The id is proposed, not yet checked on any stand.
+
+# The ISPF dialog over TN3270 (test/tso/ispf.lua), on the screen the
+# panels are made for.
+[tso.ispf]
+size = "80x43"
