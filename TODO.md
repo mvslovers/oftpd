@@ -36,16 +36,15 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   (`JOB01671`) and m38x (`JOB00592`), CDS and ACDS (MBT's inventory).
   Network and members (approved): `internals/testnet.md`. The M38 stands
   are MBT's to schedule, after the ufsd/ftpd/httpd/mvsMF rollout; the
-  install there was approved by the maintainer 2026-10-13. Then `mbt prerelease`, install
-  by the guide, one slot per stand. Old mvsMF on m38l/m38x garbles job
+  install there was approved by the maintainer 2026-10-13. `v0.1.0-dev` is tagged and on
+  GitHub as a pre-release (2026-10-13); its release page is still to be
+  written. Install by the guide, one slot per stand. Old mvsMF on m38l/m38x garbles job
   passwords (IEF722I) until mvsMF 1.2.0 is in. The prerelease spends
   `TOFT010`; the first final release is 0.2.0 (`TOFT020`, deletes
   `TOFT010`).
-- dev1 still carries the old name: `OFTP370.DEV.LINKLIB` in the OFTPD
-  PROC and in ISPLLIB, the spool `IBMUSER.OFTP370.SPOOL`, the panel
-  titles `OFTP370 - ...` (`internals/dev1-changes.md`). Move it to
-  `OFTPD.DEV.LINKLIB` (mbt's default now) in a slot; until then a
-  `mbt deploy` lands in a library nothing runs from.
+- ~~dev1 on the new names~~ — 2026-10-13 (STC00661, `OFTP004I
+  AUTHORIZED BY SVC`, ISPF test green, `OFTP370.DEV.LINKLIB` scratched;
+  `internals/dev1-changes.md`).
 - Retry limit (`MAXRETRY`, design 3.3): measured on dev1 2026-10-13
   (`internals/interop.md`). Still untried there: a transfer cut off
   mid-file, the wait after a call that failed before any file, a NERP
