@@ -37,8 +37,8 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   Network and members (approved): `internals/testnet.md`. The M38 stands
   are MBT's to schedule, after the ufsd/ftpd/httpd/mvsMF rollout; the
   install there was approved by the maintainer 2026-10-13. `v0.1.0-dev` is tagged and on
-  GitHub as a pre-release (2026-10-13); its release page is still to be
-  written. Install by the guide, one slot per stand. Old mvsMF on m38l/m38x garbles job
+  GitHub as a pre-release with its release page (2026-10-13).
+  Install by the guide, one slot per stand. Old mvsMF on m38l/m38x garbles job
   passwords (IEF722I) until mvsMF 1.2.0 is in. The prerelease spends
   `TOFT010`; the first final release is 0.2.0 (`TOFT020`, deletes
   `TOFT010`).
