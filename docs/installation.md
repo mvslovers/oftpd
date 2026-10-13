@@ -61,7 +61,15 @@ REST API).
    `OFTPD.AOFTPLOD`; edit `UNIT=` or add a `VOL=SER=` if `SYSDA` is not
    what you want.
 2. In `oftpd-<v>-inst.jcl`, replace the three `CHANGE.ME...` names with
-   the data sets of step 2, then submit it.
+   the data sets of step 2, then submit it. On MVS/CE, TSO `RECEIVE`
+   needs a volume: add `VOLUME('PUB000')` (or another volume of yours)
+   to each of the three `RECEIVE` commands, as in
+
+   ```
+     RECEIVE INDSN('IBMUSER.OFTPD.LOAD.XMIT') -
+       DATASET('OFTPD.OFTPLOAD') -
+       VOLUME('PUB000')
+   ```
 
 The job deletes and re-receives `OFTPD.SAMPLIB` and `OFTPD.ISPPLIB`, so
 copy members out of them before you change them, and never edit them in

@@ -48,10 +48,12 @@ expects the partner's (`PASSWORD=<partner name>`). MENDEL keeps `TEST`.
 
 ## The members
 
-Per stand: `SYS2.PARMLIB(OFTPPRM0)` and `(OFTPPTN0)`, the spool
-`OFTPD.SPOOL`, received files under `OFTPD.IN`, in transit `OFTPD.TMP`.
-The volume for the spool comes from MBT's state report at the start of
-the slot.
+Per stand: `SYS2.PARMLIB(OFTPPRM0)` and `(OFTPPTN0)`, received files
+under `OFTPD.IN`, in transit `OFTPD.TMP`. The spool is
+`IBMUSER.OFTPD.SPOOL` (MVS/CE) or `HERC01.OFTPD.SPOOL` (TK5), not
+`OFTPD.SPOOL`: `OFTPD` has no catalog alias on either, and neither master
+catalog owns VSAM space outside the system volumes
+(`internals/m38-changes.md`).
 
 ### M38L
 
@@ -167,3 +169,42 @@ and arrive through DEV1.
    `MAXRETRY` gives it up at M38B, the NERP travelling back to M38X.
 6. Later, on purpose: a ring (M38X routed back VIA M38L towards itself),
    which loop detection beyond one hop does not catch yet.
+
+## Results, 2026-10-13
+
+All five MVS nodes on 0.1.0-dev (`1ca9786`), installed through SMP
+(`internals/m38-changes.md`); every file below compared with its source
+afterwards: identical.
+
+| Step | Path | Result |
+|---|---|---|
+| 1 | each stand alone | `OFTP004I AUTHORIZED BY SVC` on all four (MVS/CE and TK5) |
+| 2 | DEV1-M38L, DEV1-M38B, M38L-M38X, M38B-M38R | an F and a T file each way, EERP back each time |
+| 3 | M38X -> M38L -> DEV1, M38R -> M38B -> DEV1 | delivered, EERP back to the origin (m38x JOB00612, m38r JOB00385) |
+| 4 | M38X -> M38L -> DEV1 -> M38B -> M38R and back | delivered both ways, EERPs back (JOB00614, JOB00387) |
+| 4 | M38R -> M38B -> DEV1 -> MENDEL | refused by mendelson, reason 03; the NERP came back to M38R |
+| 5 | M38X -> M38R with M38R down | m38b (`RETRY=10 MAXRETRY=2` for the test) gave up after 2 attempts; NERP 99 back over three hops to M38X in about 40 s (JOB00616) |
+
+Found on the way:
+
+- **mendelson refuses a file from an origin it has no partner for**
+  (`getTransmissionSender()` is null in its log, NERP 03). To test
+  M38R -> MENDEL, mendelson needs the M38 nodes as partners of its own,
+  without a connection.
+- **An EERP waited at a relay until a manual `CALL`**: in step 4 the
+  EERP and the NERP for M38R stayed at m38b ("relay: EERP to pass back to
+  M38R") for minutes, after M38B and M38R had called each other at the
+  same second (15:59:44; one side refused with ESID 03, which sets the
+  caller's next call RETRY seconds ahead). `CALL M38R` on m38b delivered
+  both. Repeated with normal settings (JOB00391): back in about 25 s
+  without a call. Not reproduced, cause not established.
+- **The control port can fail to open on a quick restart**: `OFTP052W
+  CONTROL PORT 3336 NOT OPEN, ERRNO 48`, a TIME-WAIT on 127.0.0.1:3336
+  left by the last utility connections (`ss` on the host). There is no
+  `setsockopt` for SO_REUSEADDR, so OFTPD must retry the bind instead of
+  giving up. Restarted after the TIME-WAIT was gone.
+- `F OFTPD,D P` shows a partner reached through another one as `-:3305`;
+  it should name the `VIA` partner.
+- In SYSIN, columns 73-80 are ignored: an operand that ends past column
+  72 is lost silently (here `PORT(...)`, so the request went to the
+  default control port 3306). Continue the line instead.

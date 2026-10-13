@@ -28,20 +28,21 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 
 ## Next
 
-- **Prerelease 0.1.0** (2026-10-13), to install on the four M38 targets
-  (m38l, m38x MVS/CE; m38b, m38r TK5) beside dev1 and the mendelson peer
-  on the Mac, and to test routing over several hops (`VIA=`, `RELAY=Y`)
-  among six nodes. `[distribution]`/`[smp]` and `docs/installation.md`
-  are in. `TOFT010` free on m38r (`JOB00358`), m38b (`JOB00579`), m38l
-  (`JOB01671`) and m38x (`JOB00592`), CDS and ACDS (MBT's inventory).
-  Network and members (approved): `internals/testnet.md`. The M38 stands
-  are MBT's to schedule, after the ufsd/ftpd/httpd/mvsMF rollout; the
-  install there was approved by the maintainer 2026-10-13. `v0.1.0-dev` is tagged and on
-  GitHub as a pre-release with its release page (2026-10-13).
-  Install by the guide, one slot per stand. Old mvsMF on m38l/m38x garbles job
-  passwords (IEF722I) until mvsMF 1.2.0 is in. The prerelease spends
-  `TOFT010`; the first final release is 0.2.0 (`TOFT020`, deletes
-  `TOFT010`).
+- ~~Prerelease 0.1.0 on the M38 stands~~ — 2026-10-13: installed through
+  SMP from the release assets on m38l, m38x, m38b and m38r
+  (`internals/m38-changes.md`), `OFTP004I AUTHORIZED BY SVC` on all four;
+  test network steps 1-5 passed over up to four hops, EERP and NERP back
+  (`internals/testnet.md`, Results). The first final release is 0.2.0
+  (`TOFT020`, deletes `TOFT010`).
+- Control port: retry the bind on EADDRINUSE (a TIME-WAIT after a quick
+  restart, `OFTP052W ... ERRNO 48` on m38b), as HTTPD does (`HTTPD030I`,
+  up after about 50 s).
+- An EERP held at a relay after a call collision (testnet.md, Results):
+  seen once at m38b, not reproduced. Find out whether a refused call
+  (ESID 03, `OFTP202W`) can leave owed EERPs uncalled beyond RETRY.
+- `F OFTPD,D P`: name the `VIA` partner instead of `-:3305`.
+- mendelson: add the M38 nodes as partners there (no connection), so
+  that M38R -> MENDEL can be tried; mendelson refuses an unknown origin.
 - ~~dev1 on the new names~~ — 2026-10-13 (STC00661, `OFTP004I
   AUTHORIZED BY SVC`, ISPF test green, `OFTP370.DEV.LINKLIB` scratched;
   `internals/dev1-changes.md`).
