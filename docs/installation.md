@@ -87,6 +87,11 @@ through SVC 244, where RAKF permits that. To authorize `OFTPD.LINKLIB`,
 add it with its volume to `SYS1.PARMLIB(IEAAPF00)`; MVS 3.8j reads that
 member only at IPL.
 
+The console says which route it took: `OFTP004I AUTHORIZED BY LIBRARY` or
+`OFTP004I AUTHORIZED BY SVC`. This release needs no authorization yet, so
+`OFTP005W NOT AUTHORIZED, RC=n, CONTINUING` is a warning only; later
+releases will need it.
+
 ## 5. The spool
 
 OFTPD keeps every transfer in a VSAM KSDS, its spool. Copy
@@ -127,7 +132,7 @@ spool and the authority to create data sets under `INPREFIX` and
 `TMPPREFIX`.
 
 Start it with `S OFTPD` (or `S OFTPD,S='MY.SPOOL'`). The console shows
-`OFTP000I` with the version, `OFTP014I` with the Odette ID and the number
+`OFTP000I` with the version, `OFTP004I` (step 4), `OFTP014I` with the Odette ID and the number
 of partners enabled, `OFTP001I OFTPD READY`, `OFTP051I LISTENING ON PORT
 3305` and `OFTP053I CONTROL PORT 3306 (NO SECURITY)`. A partner entry with
 an error is reported with `OFTP010W` and disabled; the others still work.

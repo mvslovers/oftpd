@@ -32,10 +32,13 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   (m38l, m38x MVS/CE; m38b, m38r TK5) beside dev1 and the mendelson peer
   on the Mac, and to test routing over several hops (`VIA=`, `RELAY=Y`)
   among six nodes. `[distribution]`/`[smp]` and `docs/installation.md`
-  are in. `TOFT010` free on m38r (`JOB00358`) and m38b (`JOB00579`),
-  CDS and ACDS (MBT's inventory); m38l and m38x pending. The M38 stands
-  are MBT's to schedule, after the ufsd/ftpd/httpd/mvsMF rollout and only
-  with the maintainer's go. Then `mbt prerelease`, install by the guide. The prerelease spends
+  are in. `TOFT010` free on m38r (`JOB00358`), m38b (`JOB00579`), m38l
+  (`JOB01671`) and m38x (`JOB00592`), CDS and ACDS (MBT's inventory).
+  Network and members (approved): `internals/testnet.md`. The M38 stands
+  are MBT's to schedule, after the ufsd/ftpd/httpd/mvsMF rollout; the
+  install there was approved by the maintainer 2026-10-13. Then `mbt prerelease`, install
+  by the guide, one slot per stand. Old mvsMF on m38l/m38x garbles job
+  passwords (IEF722I) until mvsMF 1.2.0 is in. The prerelease spends
   `TOFT010`; the first final release is 0.2.0 (`TOFT020`, deletes
   `TOFT010`).
 - dev1 still carries the old name: `OFTP370.DEV.LINKLIB` in the OFTPD

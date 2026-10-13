@@ -43,7 +43,7 @@ main(int argc, char **argv)
     COM *com;
     CIB *cib;
     char why[80];
-    int on, running = 1;
+    int on, running = 1, apf_entry, apf_rc;
 
     (void)argc;
     if ((com = __gtcom()) == NULL) {
@@ -51,8 +51,18 @@ main(int argc, char **argv)
         return 8;
     }
     __cibset(5);
-    clib_apf_setup(argv[0]);
+    /* Authorized at entry means an APF library; clib_apf_setup() erases
+    ** the difference, so measure first. Nothing needs it yet (RACINIT and
+    ** cross-memory come later): report the route and carry on. */
+    apf_entry = __isauth();
+    apf_rc = clib_apf_setup(argv[0]);
     oftp_mon_msg("OFTP000I %s STARTING", oftp_version());
+    if (apf_entry)
+        oftp_mon_msg("OFTP004I AUTHORIZED BY LIBRARY");
+    else if (apf_rc == 0 && __isauth())
+        oftp_mon_msg("OFTP004I AUTHORIZED BY SVC");
+    else
+        oftp_mon_msg("OFTP005W NOT AUTHORIZED, RC=%d, CONTINUING", apf_rc);
 
     if ((m = calloc(1, sizeof(*m))) == NULL) {
         oftp_mon_msg("OFTP091E NO STORAGE");
