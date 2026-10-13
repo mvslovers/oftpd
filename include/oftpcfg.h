@@ -10,7 +10,7 @@
 **
 **   OFTPPRM:  ODETTEID= PORT= CONTROLPORT= INPREFIX= TMPPREFIX= MAXSESS=
 **             SDEB= CREDIT= TIMEOUT= TLRECL= UBLKSIZE= UNIT= VOLSER=
-**             RETRY= RELAY=
+**             RETRY= MAXRETRY= RELAY=
 **   OFTPPTN:  PARTNER= ODETTEID= PASSWORD= OURPASSWORD= OURID= HOST=
 **             PORT= LEVEL= SDEB= CREDIT= MODE= COMPRESS= ENABLED= CALL=
 **             ADDRESS= XLATE= VIA=
@@ -57,6 +57,7 @@ typedef struct oftp_config {
     char        unit[9];
     char        volser[7];
     int         retry;                  /* seconds before a retry        */
+    int         maxretry;               /* attempts per send, 0 no limit */
     int         relay;                  /* RELAY=Y: act as a node        */
 
     OFTP_PARTNER ptn[OFTP_MAXPTN];
@@ -96,5 +97,14 @@ extern OFTP_PARTNER *oftp_cfg_byid(OFTP_CONFIG *c, const char *odetteid)
 */
 extern OFTP_PARTNER *oftp_cfg_route(OFTP_CONFIG *c, const char *odetteid,
                                     OFTP_PARTNER **final) asm("OFTPCFGR");
+
+/* After a failed attempt to send a file -- refused with retry Y, cut off
+** in the session, or the partner not reached -- with attempts the
+** attempts made so far, the first one included: 0 and *tnext the time of
+** the next one, now + RETRY times attempts (progressive, at most a day);
+** or 1 when MAXRETRY is reached and the file is not retried by itself.
+*/
+extern int  oftp_cfg_retry(const OFTP_CONFIG *c, unsigned attempts, long now,
+                           long *tnext)                 asm("OFTPCFGT");
 
 #endif /* OFTPCFG_H */

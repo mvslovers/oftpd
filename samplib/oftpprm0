@@ -14,7 +14,10 @@
 * SDEB         exchange buffer, 128..8192                  (4096)
 * CREDIT       buffers before a credit, 1..999             (99)
 * TIMEOUT      seconds to wait for the partner             (60)
-* RETRY        seconds before a refused send is retried    (300)
+* RETRY        seconds before a send is retried: RETRY times
+*              the attempts so far, at most a day           (300)
+* MAXRETRY     attempts per send, 0 = no limit; then our own
+*              file is held, a relayed one given up (NERP)  (10)
 * TLRECL       LRECL of received text files (VB)           (255)
 * UBLKSIZE     BLKSIZE of received unstructured files (U)  (6144)
 * UNIT, VOLSER where received files are allocated    (system's choice)

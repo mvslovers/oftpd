@@ -45,14 +45,16 @@ from, which `next_erp` sends like any EERP; the stored copy is then
 deleted. A relayed file refused for good by the next hop makes OFTPD
 create the NERP itself (creator: our Odette ID). A file whose route would
 lead back to the partner it came from, or with no route, is refused with
-SFNA 02. Not yet: a retry limit (a next hop that never answers keeps the
-file WAITING), forwarding an EERP that matches no relayed send, loop
-detection beyond the one hop back.
+SFNA 02. A relayed file that reaches `MAXRETRY` is given up the same
+way: NERP to the partner it came from (its last SFNA reason, else 99),
+the stored copy deleted (3.3). Not yet: forwarding an EERP that matches
+no relayed send, loop detection beyond the one hop back.
 
 **Not in the MVP** (all planned): restart, buffer compression, NERP
-generation (received NERPs are recorded), post-processing after receipt,
-configurable naming of received data sets, partner maintenance by command
-or ISPF, virtual local Odette IDs, routing, cross-memory transport.
+generation beyond a relay that gives up (received NERPs are recorded),
+post-processing after receipt, configurable naming of received data sets,
+partner maintenance by command or ISPF, virtual local Odette IDs, routing
+beyond one hop, cross-memory transport.
 
 **Order of work:**
 
@@ -180,7 +182,7 @@ QUEUED --> ACTIVE --> SENT ------> DELIVERED     (EERP received)
    ^  ^       |         |
    |  |       v         +--------> REJECTED      (NERP received)
    |  +---- WAITING                REJECTED      (SFNA/EFNA, retry N)
-   |       (retry later)           FAILED        (retries exhausted)
+   |       (retry later)           FAILED        (local error)
    |
  HELD (operator or user)
 ```
@@ -189,9 +191,26 @@ QUEUED --> ACTIVE --> SENT ------> DELIVERED     (EERP received)
   answer is outstanding. `DELIVERED` is the EERP. The two are never
   folded into one state.
 - `WAITING` is the **system's** hold: after a broken connection, SFNA
-  retry `Y` or EFNA, with a next-attempt time that grows with the attempt
-  count. It clears itself. `HELD` is the **operator's or user's** hold and
-  only a person releases it. An abend during a transfer leaves it `HELD`,
+  retry `Y`, or a partner that was not reached, with a next-attempt time
+  that grows with the attempt count (`RETRY` times the attempts, at most
+  a day). It clears itself. `HELD` is the **operator's or user's** hold and
+  only a person releases it.
+- **Retry limit** (2026-10-13, after rvsMVS `MAXRETRY`/`TRANSHLD=YES`):
+  after `MAXRETRY` attempts (OFTPPRM, default 10, 0 = no limit) our own
+  file goes to `HELD` -- not `FAILED`, so a person decides, and `RELEASE`
+  or `RETRY` start the count again. A relayed file is given up instead:
+  `REJECTED`, a NERP to the partner it came from, the copy deleted; a node
+  has no one to release it, and the originator has to learn it (a level
+  1.3 originator cannot: the engine drops the NERP). An attempt is a file
+  opened in a session (as rvs counts) **and** a call that did not reach
+  the partner -- unlike rvs, whose dial retries are counted apart, so that
+  a dead next hop ends in a NERP too. A partner not reached, or a call that
+  ended in an error before any file (a wrong password, say: not counted),
+  is not called again for `RETRY` seconds (CALL overrides). A file for a partner we do
+  not call (no `HOST`) waits for the partner's call and is never counted.
+  A stop of the monitor during a transfer does not count. Later, from
+  rvs: per-send `MAXRETRY`, a deadline (`ENDDATE`/`ENDTIME`) and a job
+  when either fires (`ERRJOB`, with post-processing). An abend during a transfer leaves it `HELD`,
   not `WAITING`, so a failure that repeats does not loop.
 - An explicit `RETRY` verb resends a `SENT` file (lost EERP) — knowingly,
   because the partner then sees the same virtual file twice.

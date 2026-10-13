@@ -32,6 +32,7 @@ oftp_cfg_defaults(OFTP_CONFIG *c)
     c->tlrecl = 255;
     c->ublksize = 6144;
     c->retry = 300;
+    c->maxretry = 10;
 }
 
 /* A decimal number in lo..hi, or -1 */
@@ -102,6 +103,8 @@ monitor_kw(OFTP_CONFIG *c, const char *k, const char *v)
         return put(c->volser, sizeof(c->volser), v);
     if (strcmp(k, "RETRY") == 0)
         return (n = num(v, 10, 86400)) < 0 ? -1 : (c->retry = (int)n, 0);
+    if (strcmp(k, "MAXRETRY") == 0)
+        return (n = num(v, 0, 255)) < 0 ? -1 : (c->maxretry = (int)n, 0);
     if (strcmp(k, "RELAY") == 0)
         return (n = yesno(v)) < 0 ? -1 : (c->relay = (int)n, 0);
     return -2;
@@ -328,4 +331,18 @@ oftp_cfg_byid(OFTP_CONFIG *c, const char *odetteid)
             && strcmp(c->ptn[i].peer.code, odetteid) == 0)
             return &c->ptn[i];
     return NULL;
+}
+
+int
+oftp_cfg_retry(const OFTP_CONFIG *c, unsigned attempts, long now, long *tnext)
+{
+    long wait;
+
+    if (c->maxretry > 0 && attempts >= (unsigned)c->maxretry)
+        return 1;
+    if (attempts == 0)
+        attempts = 1;
+    wait = (long)attempts > 86400L / c->retry ? 86400L : c->retry * (long)attempts;
+    *tnext = now + wait;
+    return 0;
 }

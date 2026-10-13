@@ -28,6 +28,10 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 
 ## Next
 
+- Retry limit (`MAXRETRY`, design 3.3, 2026-10-13): host-tested
+  (TSTCFG, NERP paths in TSTSESS); on dev1 still to try, in a slot: a
+  partner not reached -> WAITING with a growing interval -> HELD after
+  `MAXRETRY`; a relayed file -> NERP back to its sender, copy deleted.
 - Dialog: `S` (show) and Configure not yet driven by the TN3270 test; the
   data set column of the transfer list is cut at column 80.
 - `[distribution.library]` for `ispplib/`, installation notes for the
@@ -41,9 +45,10 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 
 ## After the MVP
 
-- Restart, buffer compression, NERP generation, post-processing (JCL and
-  exit), naming patterns for received data sets, partner maintenance by
-  command/ISPF, virtual local Odette IDs, routing, cross-memory transport.
+- Restart, buffer compression, NERP generation beyond a relay that gives
+  up, post-processing (JCL and exit), naming patterns for received data
+  sets, partner maintenance by command/ISPF, virtual local Odette IDs,
+  routing beyond one hop, cross-memory transport.
 
 ## Maintainer decisions
 

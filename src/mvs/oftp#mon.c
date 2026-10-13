@@ -95,6 +95,37 @@ queue_erp(OFTP_MON *m, const OFTP_SPREC *sent, char code, int reas,
     ecb_post(&m->wake, 0);
 }
 
+/* A send that failed this time, its reason and text set: it waits for
+** the next attempt (oftp_cfg_retry), or it has had its last. Our own
+** file is then held, for a person to decide; a relayed one is given up
+** and its originator gets a NERP. The caller writes the record.
+*/
+static void
+failed(OFTP_MON *m, OFTP_SPREC *r)
+{
+    char t[80];
+
+    if (oftp_cfg_retry(&m->cfg, r->attempts, (long)time(NULL), &r->tnext) == 0) {
+        r->state = SPL_WAITING;
+        return;
+    }
+    snprintf(t, sizeof(t), "%.48s, given up after %u attempts", r->text,
+             r->attempts);
+    settext(r, t);
+    if (r->relay == 'Y') {
+        r->state = SPL_REJECTED;
+        oftp_mon_msg("OFTP242W %.8s RELAY: %s FOR %s GIVEN UP AFTER %u ATTEMPTS",
+                     r->key, r->dsn, r->dest, r->attempts);
+        queue_erp(m, r, OFTP_NERP, r->reasby == 'P' && r->reas ? r->reas : 99,
+                  m->cfg.odetteid);
+        remove(r->local);
+    } else {
+        r->state = SPL_HELD;
+        oftp_mon_msg("OFTP215W %.8s %s: %s HELD AFTER %u ATTEMPTS", r->key,
+                     r->partner, r->dsn, r->attempts);
+    }
+}
+
 /* ---- one session ------------------------------------------------- */
 
 typedef struct sesctx {
@@ -207,19 +238,19 @@ f_out_done(void *ctx, OFTP_FH *fh, int reas, char retry)
     } else {
         r->reas = reas;
         r->reasby = 'P';
-        if (retry == 'Y') {
-            r->state = SPL_WAITING;
-            r->tnext = r->tlast + c->m->cfg.retry;
-        } else
-            r->state = SPL_REJECTED;
         snprintf(t, sizeof(t), "refused by the partner, reason %02d", reas);
         settext(r, t);
         oftp_mon_msg("OFTP212W %.8s %s: %s REFUSED, REASON %02d RETRY %c",
                      r->key, r->partner, r->dsn, reas, retry);
-        /* a relayed file that cannot go on: the originator learns it */
-        if (r->relay == 'Y' && r->state == SPL_REJECTED) {
-            queue_erp(c->m, r, OFTP_NERP, reas, c->m->cfg.odetteid);
-            remove(r->local);
+        if (retry == 'Y')
+            failed(c->m, r);
+        else {
+            r->state = SPL_REJECTED;
+            /* a relayed file that cannot go on: the originator learns it */
+            if (r->relay == 'Y') {
+                queue_erp(c->m, r, OFTP_NERP, reas, c->m->cfg.odetteid);
+                remove(r->local);
+            }
         }
     }
     oftp_spl_put(c->m->spool, r);
@@ -438,7 +469,9 @@ f_erp_sent(void *ctx, OFTP_FH *h)
     (void)h;
     if (oftp_spl_get(c->m->spool, c->erpkey, &r) == 0) {
         r.state = SPL_CONFIRMED;
-        settext(&r, "received, EERP sent");
+        /* a NERP to a 1.3 partner is dropped by the engine, and done */
+        settext(&r, r.erp == OFTP_NERP ? "NERP passed on, or dropped below 1.4"
+                                       : "received, EERP sent");
         oftp_spl_put(c->m->spool, &r);
     }
 }
@@ -554,12 +587,19 @@ session_thread(void *arg1, void *arg2)
 
     rc = oftp_sess_run(&c->s);
 
-    /* a file cut off in the middle: back to waiting, or away */
+    /* a file cut off in the middle: an attempt that failed, or with a
+    ** stop none at all; a receive is away */
     if (c->odsf != NULL) {
         oftp_dsf_close(c->odsf, 1);
-        c->out.state = SPL_WAITING;
-        c->out.tnext = (long)time(NULL) + m->cfg.retry;
+        c->out.reasby = 'L';
         settext(&c->out, "session ended during the transfer");
+        if (m->stop) {
+            c->out.state = SPL_WAITING;
+            c->out.tnext = 0;
+            if (c->out.attempts > 0)
+                c->out.attempts--;
+        } else
+            failed(m, &c->out);
         oftp_spl_put(m->spool, &c->out);
     }
     if (c->idsf != NULL) {
@@ -571,6 +611,9 @@ session_thread(void *arg1, void *arg2)
                  c->pt ? c->pt->peer.name : c->ip, rc,
                  c->s.esid_local ? "(OURS)" : "(PARTNER)",
                  c->s.files_out, c->s.files_in);
+    /* a call that ended in an error before any file: not again at once */
+    if (c->initiator && rc != 0 && c->s.files_out == 0 && c->s.files_in == 0)
+        m->tcall[ptn_index(m, c->pt)] = (long)time(NULL) + m->cfg.retry;
     lock(m, 0);
     if (c->pt)
         m->busy[ptn_index(m, c->pt)] = 0;
@@ -665,6 +708,36 @@ due(OFTP_MON *m, char *work)
     }
 }
 
+/* A partner that was not reached: each send due for it has had an
+** attempt, and the partner is not called again before RETRY seconds.
+** busy[i] is still set, so no session for it changes these records.
+*/
+static void
+unreached(OFTP_MON *m, int i)
+{
+    OFTP_PARTNER *p = &m->cfg.ptn[i];
+    OFTP_SPREC r;
+    char last[8];
+    long now = (long)time(NULL);
+
+    m->tcall[i] = now + m->cfg.retry;
+    last[0] = '\0';
+    while (oftp_spl_next(m->spool, last, &r) == 0) {
+        memcpy(last, r.key, 8);
+        if (r.dir != SPL_SEND || strcmp(r.partner, p->peer.name) != 0
+            || !(r.state == SPL_QUEUED
+                 || (r.state == SPL_WAITING && r.tnext <= now)))
+            continue;
+        r.attempts++;
+        r.tlast = now;
+        r.reasby = 'L';
+        r.reas = 0;
+        settext(&r, "partner not reached");
+        failed(m, &r);
+        oftp_spl_put(m->spool, &r);
+    }
+}
+
 static int
 sched_thread(void *arg1, void *arg2)
 {
@@ -683,7 +756,8 @@ sched_thread(void *arg1, void *arg2)
             OFTP_PARTNER *p = &m->cfg.ptn[i];
             int s;
 
-            if (!(work[i] || m->callreq[i]) || !p->enabled || !p->call)
+            if (!(work[i] || m->callreq[i]) || !p->enabled || !p->call
+                || (!m->callreq[i] && (long)time(NULL) < m->tcall[i]))
                 continue;
             lock(m, 0);
             if (m->busy[i] || m->nsess >= m->cfg.maxsess) {
@@ -697,6 +771,7 @@ sched_thread(void *arg1, void *arg2)
                          p->host, p->port);
             if ((s = oftp_net_connect(p->host, p->port, 5)) < 0) {
                 oftp_mon_msg("OFTP207W %s NOT REACHED", p->peer.name);
+                unreached(m, i);
                 lock(m, 0);
                 m->busy[i] = 0;
                 unlock(m, 0);
@@ -982,6 +1057,7 @@ ctl_change(OFTP_MON *m, int s, const char *verb, const char *line)
             return;
         }
         r.state = SPL_QUEUED;
+        r.attempts = 0;
         settext(&r, "released");
     } else {                            /* RETRY */
         if (r.state == SPL_QUEUED) {
@@ -990,6 +1066,7 @@ ctl_change(OFTP_MON *m, int s, const char *verb, const char *line)
         }
         /* a SENT file goes out once more: the partner sees it twice */
         r.state = SPL_QUEUED;
+        r.attempts = 0;
         r.reas = 0;
         r.erp = 0;
         settext(&r, "queued again");
@@ -1203,6 +1280,7 @@ oftp_mon_refresh(OFTP_MON *m)
             o->enabled = 0;
         } else {
             *o = n->ptn[j];
+            m->tcall[i] = 0;                    /* perhaps a new HOST */
             n->ptn[j].peer.name[0] = '\0';     /* taken */
         }
     }

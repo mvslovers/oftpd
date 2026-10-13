@@ -88,6 +88,10 @@ typedef struct mfiles {
     int         erp_pending[MAXF];  /* EERPs owed for in[i]               */
     int         eerps;              /* EERPs received                     */
     int         refuse;             /* SFNA reason for every open_in      */
+    int         nerp;               /* answer in[0] with a NERP, reason   */
+    int         nerps;              /* NERPs received                     */
+    int         nreas;              /* the last one's reason and creator  */
+    char        ncrea[OFTP_IDLEN + 1];
 } MFILES;
 
 static int
@@ -207,6 +211,11 @@ m_next_erp(void *ctx, const OFTP_PEER *peer, char *code, OFTP_ERPCMD *e,
         if (m->erp_pending[i]) {
             memset(e, 0, sizeof(*e));
             *code = OFTP_EERP;
+            if (i == 0 && m->nerp) {
+                *code = OFTP_NERP;
+                e->reas = m->nerp;
+                strcpy(e->crea, peer->ourcode);
+            }
             strcpy(e->dsn, m->in[i].dsn);
             strcpy(e->date, "20261012");
             strcpy(e->time, "1200000001");
@@ -233,8 +242,12 @@ m_erp_recv(void *ctx, const OFTP_PEER *peer, char code, const OFTP_ERPCMD *e)
     int i;
 
     (void)peer;
-    if (code != OFTP_EERP)
+    if (code == OFTP_NERP) {
+        m->nerps++;
+        m->nreas = e->reas;
+        strcpy(m->ncrea, e->crea);
         return;
+    }
     for (i = 0; i < m->nout; i++)
         if (strcmp(m->out[i].dsn, e->dsn) == 0)
             m->eerps++;
@@ -293,6 +306,8 @@ typedef struct scen {
     int         cmpr;
     const char *ipw;                /* password the initiator sends      */
     int         refuse;             /* responder refuses with this       */
+    int         nerp;               /* responder answers a file with a
+                                       NERP of this reason instead      */
 } SCEN;
 
 /* Initiator files: an F file, a T file */
@@ -369,8 +384,15 @@ run_initiator(const SCEN *sc, int fd)
         return 14;
     if (m.in[0].len != 86 || memcmp(m.in[0].data, "short||a longer", 15) != 0)
         return 15;
-    if (m.eerps != 2)                   /* EERPs for both files */
+    if (m.eerps != (sc->nerp ? 1 : 2))  /* EERPs for both files */
         return 16;
+    /* a NERP arrives from 1.4 on; at 1.3 there is none, nor an EERP */
+    if (sc->nerp && sess.level >= OFTP_LEV14
+        && (m.nerps != 1 || m.nreas != sc->nerp
+            || strcmp(m.ncrea, "O0013000000MVS2") != 0))
+        return 18;
+    if (sc->nerp && sess.level < OFTP_LEV14 && m.nerps != 0)
+        return 19;
     if (sess.level != (sc->ilevel < sc->rlevel ? sc->ilevel : sc->rlevel))
         return 17;
     return 0;
@@ -401,6 +423,7 @@ scenario(const SCEN *sc)
 
     resp_files(&m);
     m.refuse = sc->refuse;
+    m.nerp = sc->nerp;
     peer_init(&resp_view, "MVS1", "O0013000000MVS1", "O0013000000MVS2",
               sc->rlevel, sc->sdeb, sc->cred, sc->cmpr);
     sess_init(&sess, &sv[1], &m, 0);
@@ -431,6 +454,8 @@ scenario(const SCEN *sc)
     snprintf(msg, sizeof(msg), "%s: T file stream intact", sc->name);
     CHECK(m.in[1].fmt == 'T' && m.in[1].len == strlen(twant)
           && memcmp(m.in[1].data, twant, m.in[1].len) == 0, msg);
+    snprintf(msg, sizeof(msg), "%s: no response left owed", sc->name);
+    CHECK(m.erp_pending[0] == 0 && m.erp_pending[1] == 0, msg);
     snprintf(msg, sizeof(msg), "%s: EERP for the V file arrived", sc->name);
     CHECK(m.eerps == 1 && m.out[0].done == 1, msg);
 }
@@ -439,16 +464,19 @@ int
 main(void)
 {
     static const SCEN sc[] = {
-        { "2.0 both",          5, 5, 4096, 99, 0, "PW", 0 },
-        { "2.0 to 1.4",        5, 4, 4096, 99, 0, "PW", 0 },
-        { "2.0 to 1.3",        5, 2, 4096, 99, 0, "PW", 0 },
-        { "1.4 both",          4, 5, 4096, 99, 0, "PW", 0 },
-        { "small buffers",     5, 5,  165,  1, 0, "PW", 0 },
-        { "minimum 1.4",       4, 4,  128,  1, 0, "PW", 0 },
-        { "compressed",        5, 5,  200,  2, 1, "PW", 0 },
-        { "compressed 1.3",    2, 2,  256,  3, 1, "PW", 0 },
-        { "wrong password",    5, 5, 4096, 99, 0, "XX", 0 },
-        { "file refused",      5, 5, 4096, 99, 0, "PW", 13 },
+        { "2.0 both",          5, 5, 4096, 99, 0, "PW", 0, 0 },
+        { "2.0 to 1.4",        5, 4, 4096, 99, 0, "PW", 0, 0 },
+        { "2.0 to 1.3",        5, 2, 4096, 99, 0, "PW", 0, 0 },
+        { "1.4 both",          4, 5, 4096, 99, 0, "PW", 0, 0 },
+        { "small buffers",     5, 5,  165,  1, 0, "PW", 0, 0 },
+        { "minimum 1.4",       4, 4,  128,  1, 0, "PW", 0, 0 },
+        { "compressed",        5, 5,  200,  2, 1, "PW", 0, 0 },
+        { "compressed 1.3",    2, 2,  256,  3, 1, "PW", 0, 0 },
+        { "wrong password",    5, 5, 4096, 99, 0, "XX", 0, 0 },
+        { "file refused",      5, 5, 4096, 99, 0, "PW", 13, 0 },
+        { "NERP 2.0",          5, 5, 4096, 99, 0, "PW", 0, 99 },
+        { "NERP 1.4",          4, 4, 4096, 99, 0, "PW", 0, 12 },
+        { "NERP to 1.3",       5, 2, 4096, 99, 0, "PW", 0, 99 },
     };
     unsigned i;
 

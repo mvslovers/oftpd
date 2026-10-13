@@ -85,5 +85,21 @@ main(void)
     CHECK(oftp_cfg_find(&c, "LOOP") == NULL, "VIA to a routed partner disabled");
     CHECK(oftp_cfg_find(&c, "GHOST") == NULL, "VIA to an unknown partner disabled");
     CHECK(msgs == 5, "five messages for the partner member");
+
+    /* retries: progressive, a day at most, MAXRETRY ends them */
+    {
+        long t = 0;
+
+        CHECK(c.retry == 300 && c.maxretry == 10, "RETRY and MAXRETRY defaults");
+        CHECK(oftp_cfg_retry(&c, 1, 1000, &t) == 0 && t == 1300, "after the first: RETRY");
+        CHECK(oftp_cfg_retry(&c, 3, 1000, &t) == 0 && t == 1900, "after the third: 3 x RETRY");
+        CHECK_EQ(oftp_cfg_retry(&c, 10, 1000, &t), 1, "the tenth was the last");
+        CHECK_EQ(oftp_cfg_line(&c, 0, "MAXRETRY=0 RETRY=86400", 1, count, NULL), 0,
+                 "MAXRETRY=0 and the longest RETRY");
+        CHECK(oftp_cfg_retry(&c, 200, 0, &t) == 0 && t == 86400,
+              "no limit, and never more than a day");
+        CHECK_EQ(oftp_cfg_line(&c, 0, "MAXRETRY=256", 1, count, NULL), 1,
+                 "MAXRETRY above 255 refused");
+    }
     return mbt_test_summary("TSTCFG");
 }
