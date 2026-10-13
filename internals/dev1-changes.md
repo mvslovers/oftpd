@@ -11,7 +11,9 @@ maintainer at the time; the dates are when it was done.
 | `SYS2.PROCLIB(OFTPD)` | 2026-10-12 | the started task procedure, `samplib/oftpd` with `@LINKLIB@` = `OFTP370.DEV.LINKLIB` | delete the member |
 | `SYS2.PARMLIB(OFTPPRM0)` | 2026-10-12 | OFTPD's settings for dev1 (Odette ID, ports, prefixes, `RELAY=Y`) | delete the member |
 | `SYS2.PARMLIB(OFTPPTN0)` | 2026-10-12 | OFTPD's partners for dev1 (MENDEL, BEHIND, MACA, MACB) | delete the member |
-| `SYSGEN.ISPF.PLIB(OFTP@PRI)`, `(OFTPSND)`, `(OFTPLST)`, `(OFTPSHW)`, `(OFTPPTL)`, `(OFTPCFG)`, `(OFTPMON)` | 2026-10-12 | the ISPF dialog's panels, `ispplib/` | delete the seven members |
+| `SYSGEN.ISPF.PLIB(OFTP@PRI)`, `(OFTPSND)`, `(OFTPLST)`, `(OFTPSHW)`, `(OFTPPTL)`, `(OFTPCFG)`, `(OFTPMON)` | 2026-10-12 | the ISPF dialog's panels, `ispplib/`; replaced by the 80x43 versions 2026-10-13 | delete the seven members |
+| `SYSGEN.ISPF.PLIB(OFTPLSW)` | 2026-10-13 | the transfer list for 110 columns and more, `ispplib/` | delete the member |
+| `SYSGEN.ISPF.PLIB(OFTB@PRI)`, `(OFTBSND)`, `(OFTBLST)`, `(OFTBSHW)`, `(OFTBPTL)`, `(OFTBCFG)`, `(OFTBMON)` | 2026-10-13 | **backup** of the seven panels above as of 2026-10-12, byte for byte (OFTP→OFTB in the name) | delete when no longer needed |
 | `SYSGEN.ISPF.PLIB(ISPMOREB)` | 2026-10-12 | **backup** of `ISPMORE` before the change below, byte for byte (3760 bytes) | delete after restoring |
 | `SYS1.CMDPROC(ISPFBAK)` | 2026-10-12 | **backup** of the `ISPF` CLIST before the change below, byte for byte (2080 bytes) | delete after restoring |
 
@@ -41,3 +43,20 @@ received or relayed).
 TN3270 logons hung at the welcome screen; and `C U=IBMUSER` for a test
 session left logged on. Since then a slot is asked from the MBT session
 before any deploy, start/stop or operator command on dev1.
+
+2026-10-13, slot from the MBT session, about 00:42-00:49 MVS time: `P
+OFTPD`; `OFTP370.DEV.LINKLIB` reallocated by `mbt deploy --reallocate`
+(144 tracks on WORK00, nothing held it: no TSO users, OFTPD stopped;
+JOB02156 probe, JOB02157 deploy); `OFTPPRM0` changed for the test to
+`RETRY=10 MAXRETRY=2`, OFTPD run as STC00639; then `OFTPPRM0` restored
+from `OFTPPRMB` and compared byte for byte, OFTPD started again with the
+normal settings as STC00640. Test records T0000013-T0000015 deleted from
+the spool. The backup `SYS2.PARMLIB(OFTPPRMB)` was deleted afterwards
+(maintainer's OK); `OFTPPRM0` compared again, unchanged.
+
+2026-10-13, slot from the MBT session, about 03:25-04:00 MVS time: the
+seven panels backed up as `OFTB*` and replaced, `OFTPLSW` added; a test
+panel `SYSGEN.ISPF.PLIB(OFTPTST)` and the CLIST `IBMUSER.OFTP370.TSTPNL`
+used and deleted again; `P OFTPD` / `mbt deploy` / `S OFTPD` three times
+(JOB02163, JOB02164, JOB02165; STC00645, STC00646, now STC00647); TSO
+logons as IBMUSER over TN3270 at 80x43 and 160x62, each logged off.
