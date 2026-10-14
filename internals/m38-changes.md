@@ -188,6 +188,11 @@ m38r, EERP back to mendelson); both identical to their sources.
 Undo: the two lines of each `OFTPPTN0` back to the old IDs and names,
 then `F OFTPD,REFRESH`.
 
+2026-10-14, later: `P OFTPD` and a plain `S OFTPD` on all four, to drop
+the disabled MENDEL entry: `5 OF 5 PARTNERS ENABLED` and `F OFTPD,D P`
+lists DEV1, MAC1 and the three other stands only, on each. The ISPF test
+(`mbt test --tso --only ispf`, types MAC1) passed on dev1.
+
 Now running: dev1 STC00676 (a plain `S OFTPD` since the PROC fix,
-`internals/dev1-changes.md`), m38l STC00779, m38x STC00509, m38b STC00074,
-m38r STC00034.
+`internals/dev1-changes.md`), m38l STC00798, m38x STC00528, m38b STC00076,
+m38r STC00038.
