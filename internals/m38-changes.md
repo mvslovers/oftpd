@@ -167,3 +167,27 @@ Tests in `internals/testnet.md` (Results). Changed on the way, and back:
 Now running: dev1 STC00661, m38l STC00779, m38x STC00509, m38b STC00074,
 m38r STC00034. Test files on the stands: `*.OFTPD.TESTF` and the received
 `OFTPD.IN.*` / `IBMUSER.OFTPIN.*` (HOP1, HOP3, HOP4, NERP, EERP).
+
+## The rename, 2026-10-14, about 09:55-10:05 local time
+
+One block slot from the MBT session for all five stands. DEV1's Odette
+ID became `O0000000000DEV1` and MENDEL became MAC1 (`O0000000000MAC1`),
+`internals/testnet.md` "Renamed". On each M38 stand only
+`SYS2.PARMLIB(OFTPPTN0)` changed: DEV1's `ODETTEID`, and the MENDEL
+line became `PARTNER=MAC1 ODETTEID=O0000000000MAC1 VIA=...`. Backed up
+binary beforehand (m38l and m38b 640 bytes, m38x and m38r 560, kept off
+the stand), written, read back identical, then `F OFTPD,REFRESH` on the
+running STC (no restart): `OFTP016I PARTNERS RELOADED: 5 ENABLED, 1 NEW,
+1 DISABLED` on all four; `OFTP PARTNERS` shows DEV1 with the new ID,
+MAC1 enabled and MENDEL disabled until the next start.
+
+Tests: M38R -> MAC1 over three hops (m38r JOB00414, EERP back) and
+MAC1 -> M38R through DEV1 (received as `OFTPD.IN.REN.MAC1.TO.M38R` on
+m38r, EERP back to mendelson); both identical to their sources.
+
+Undo: the two lines of each `OFTPPTN0` back to the old IDs and names,
+then `F OFTPD,REFRESH`.
+
+Now running: dev1 STC00676 (a plain `S OFTPD` since the PROC fix,
+`internals/dev1-changes.md`), m38l STC00779, m38x STC00509, m38b STC00074,
+m38r STC00034.

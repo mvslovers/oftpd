@@ -41,8 +41,11 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   seen once at m38b, not reproduced. Find out whether a refused call
   (ESID 03, `OFTP202W`) can leave owed EERPs uncalled beyond RETRY.
 - `F OFTPD,D P`: name the `VIA` partner instead of `-:3305`.
-- mendelson: add the M38 nodes as partners there (no connection), so
-  that M38R -> MENDEL can be tried; mendelson refuses an unknown origin.
+- ~~mendelson: the M38 nodes as partners there~~ — 2026-10-14, with
+  the rename DEV1 -> `O0000000000DEV1`, MENDEL -> MAC1
+  (`O0000000000MAC1`): M38R -> MAC1 and MAC1 -> M38R (DEV1 as
+  mendelson's gateway) both delivered with the EERP back
+  (`internals/testnet.md`, "Renamed").
 - ~~dev1 on the new names~~ — 2026-10-13 (STC00661, `OFTP004I
   AUTHORIZED BY SVC`, ISPF test green, `OFTP370.DEV.LINKLIB` scratched;
   `internals/dev1-changes.md`).

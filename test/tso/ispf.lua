@@ -35,7 +35,7 @@ return function(t)
   -- send held: partner, data set, (virtual name), text Y, translate N, hold Y
   t:type("1"):enter()
   t:expect("OFTPD - Send a Data Set")
-  t:type("MENDEL"):tab()
+  t:type("MAC1"):tab()
   t:type("IBMUSER.OFTPD.SAMPLE"):tab()
   t:type("ISPF.TEST"):tab()
   t:type("Y"):tab()

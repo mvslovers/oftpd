@@ -11,7 +11,7 @@ schedule (after the ufsd/ftpd/httpd/mvsMF rollout); oftpd installs there
 one slot per stand.
 
 ```
-                     MENDEL (Mac, mendelson)
+                     MAC1 (Mac, mendelson)
                         |
                       DEV1  relay
                      /     \
@@ -33,18 +33,19 @@ the host's, so every OFTPD needs ports of its own on 192.168.0.233
 
 | Node | Stand | Odette ID | OFTP port | Control port |
 |---|---|---|---|---|
-| DEV1 | dev1 (MVS/CE) | `O01791824916311` (as today) | 3305 | 3306 |
+| DEV1 | dev1 (MVS/CE) | `O0000000000DEV1` (`O01791824916311` until 2026-10-14) | 3305 | 3306 |
 | M38L | m38l (MVS/CE LAB) | `O0000000000M38L` | 3315 | 3316 |
 | M38X | m38x (MVS/CE EXP) | `O0000000000M38X` | 3325 | 3326 |
 | M38B | m38b (TK5) | `O0000000000M38B` | 3335 | 3336 |
 | M38R | m38r (TK5 REF) | `O0000000000M38R` | 3345 | 3346 |
-| MENDEL | Mac 192.168.0.23 | `O01791824860109` (as today) | 3305 | - |
+| MAC1 | Mac 192.168.0.23 | `O0000000000MAC1` (MENDEL, `O01791824860109`, until 2026-10-14) | 3305 | - |
 
 The utility and the dialog take the control port with `PORT(3316)` and
 so on; the dialog keeps it in the user's profile.
 
 Passwords: a node sends its own name (`OURPASSWORD=<own name>`) and
-expects the partner's (`PASSWORD=<partner name>`). MENDEL keeps `TEST`.
+expects the partner's (`PASSWORD=<partner name>`), MAC1 included (it
+had `TEST` both ways until 2026-10-14).
 
 ## The members
 
@@ -67,11 +68,11 @@ RETRY=60 RELAY=Y
 
 ```
 * OFTPPTN0 - OFTPD partners on M38L
-PARTNER=DEV1 ODETTEID=O01791824916311
+PARTNER=DEV1 ODETTEID=O0000000000DEV1
   PASSWORD=DEV1 OURPASSWORD=M38L HOST=192.168.0.233 PORT=3305
 PARTNER=M38X ODETTEID=O0000000000M38X
   PASSWORD=M38X OURPASSWORD=M38L HOST=192.168.0.233 PORT=3325
-PARTNER=MENDEL ODETTEID=O01791824860109 VIA=DEV1
+PARTNER=MAC1 ODETTEID=O0000000000MAC1 VIA=DEV1
 PARTNER=M38B ODETTEID=O0000000000M38B VIA=DEV1
 PARTNER=M38R ODETTEID=O0000000000M38R VIA=DEV1
 ```
@@ -90,8 +91,8 @@ RETRY=60
 * OFTPPTN0 - OFTPD partners on M38X
 PARTNER=M38L ODETTEID=O0000000000M38L
   PASSWORD=M38L OURPASSWORD=M38X HOST=192.168.0.233 PORT=3315
-PARTNER=DEV1 ODETTEID=O01791824916311 VIA=M38L
-PARTNER=MENDEL ODETTEID=O01791824860109 VIA=M38L
+PARTNER=DEV1 ODETTEID=O0000000000DEV1 VIA=M38L
+PARTNER=MAC1 ODETTEID=O0000000000MAC1 VIA=M38L
 PARTNER=M38B ODETTEID=O0000000000M38B VIA=M38L
 PARTNER=M38R ODETTEID=O0000000000M38R VIA=M38L
 ```
@@ -108,11 +109,11 @@ RETRY=60 RELAY=Y
 
 ```
 * OFTPPTN0 - OFTPD partners on M38B
-PARTNER=DEV1 ODETTEID=O01791824916311
+PARTNER=DEV1 ODETTEID=O0000000000DEV1
   PASSWORD=DEV1 OURPASSWORD=M38B HOST=192.168.0.233 PORT=3305
 PARTNER=M38R ODETTEID=O0000000000M38R
   PASSWORD=M38R OURPASSWORD=M38B HOST=192.168.0.233 PORT=3345
-PARTNER=MENDEL ODETTEID=O01791824860109 VIA=DEV1
+PARTNER=MAC1 ODETTEID=O0000000000MAC1 VIA=DEV1
 PARTNER=M38L ODETTEID=O0000000000M38L VIA=DEV1
 PARTNER=M38X ODETTEID=O0000000000M38X VIA=DEV1
 ```
@@ -131,16 +132,18 @@ RETRY=60
 * OFTPPTN0 - OFTPD partners on M38R
 PARTNER=M38B ODETTEID=O0000000000M38B
   PASSWORD=M38B OURPASSWORD=M38R HOST=192.168.0.233 PORT=3335
-PARTNER=DEV1 ODETTEID=O01791824916311 VIA=M38B
-PARTNER=MENDEL ODETTEID=O01791824860109 VIA=M38B
+PARTNER=DEV1 ODETTEID=O0000000000DEV1 VIA=M38B
+PARTNER=MAC1 ODETTEID=O0000000000MAC1 VIA=M38B
 PARTNER=M38L ODETTEID=O0000000000M38L VIA=M38B
 PARTNER=M38X ODETTEID=O0000000000M38X VIA=M38B
 ```
 
 ### DEV1: additions to today's members
 
-`OFTPPRM0` stays as it is (`RELAY=Y` already). `OFTPPTN0` keeps MENDEL,
-BEHIND, MACA and MACB and gets:
+`OFTPPRM0` keeps its settings (`RELAY=Y` already); since 2026-10-14 it
+reads `ODETTEID=O0000000000DEV1`. `OFTPPTN0` keeps MAC1 (formerly
+MENDEL, now `PASSWORD=MAC1 OURPASSWORD=DEV1`), BEHIND (`VIA=MAC1`), MACA
+and MACB and gets:
 
 ```
 PARTNER=M38L ODETTEID=O0000000000M38L
@@ -151,12 +154,19 @@ PARTNER=M38X ODETTEID=O0000000000M38X VIA=M38L
 PARTNER=M38R ODETTEID=O0000000000M38R VIA=M38B
 ```
 
-### MENDEL
+### MAC1
 
-mendelson gets DEV1 as its only partner, which it has already. It cannot
-address a file to an Odette ID other than the partner it calls, so from
-the Mac only files *to* DEV1 start; files *for* MENDEL can start anywhere
-and arrive through DEV1.
+mendelson's own station is `O0000000000MAC1` (name MAC1). It calls
+DEV1 (mvsdev.lan:3305, password `MAC1`, marked as a gateway) and knows
+the four M38 nodes with DEV1 as their gateway (`GATEWAYOFTPID`; their
+host is DEV1's too), so a file for M38R goes to DEV1 with SFIDDEST
+M38R. Without these entries mendelson refuses a file from an M38 node as
+an unknown origin (reason 03). Each partner has an outbox poll; DEV1's
+and M38R's carry a virtual file name of their own (`REN.MAC1.TO.DEV1`,
+`REN.MAC1.TO.M38R`), the others still send `NOT-CATEGORIZED`. Set on
+2026-10-14 straight in its configuration database (HSQLDB, tables
+`PARTNER`, `CERTIFICATES`, `OUTBOUNDPOLL`; each new partner copied from
+DEV1's rows), then mendelson restarted.
 
 ## Tests, in order
 
@@ -164,7 +174,8 @@ and arrive through DEV1.
    route), `F OFTPD,D P`.
 2. Each direct link both ways: a T file and an F file, EERP back.
 3. One hop through a node: M38X -> M38L -> DEV1, M38R -> M38B -> DEV1.
-4. Four hops: M38X -> M38R and back; M38R -> MENDEL.
+4. Four hops: M38X -> M38R and back; M38R -> MAC1 (MENDEL until
+   2026-10-14).
 5. A NERP over several hops: a file for M38R while M38R is down, until
    `MAXRETRY` gives it up at M38B, the NERP travelling back to M38X.
 6. Later, on purpose: a ring (M38X routed back VIA M38L towards itself),
@@ -190,7 +201,7 @@ Found on the way:
 - **mendelson refuses a file from an origin it has no partner for**
   (`getTransmissionSender()` is null in its log, NERP 03). To test
   M38R -> MENDEL, mendelson needs the M38 nodes as partners of its own,
-  without a connection.
+  without a connection (done 2026-10-14, below).
 - **An EERP waited at a relay until a manual `CALL`**: in step 4 the
   EERP and the NERP for M38R stayed at m38b ("relay: EERP to pass back to
   M38R") for minutes, after M38B and M38R had called each other at the
@@ -208,3 +219,21 @@ Found on the way:
 - In SYSIN, columns 73-80 are ignored: an operand that ends past column
   72 is lost silently (here `PORT(...)`, so the request went to the
   default control port 3306). Continue the line instead.
+
+## Renamed, 2026-10-14
+
+DEV1 became `O0000000000DEV1` and MENDEL became MAC1, `O0000000000MAC1`,
+so that every node follows the same scheme (maintainer's request).
+Changed: dev1 `OFTPPRM0` and `OFTPPTN0` (OFTPD restarted, STC00675),
+`OFTPPTN0` on the four M38 stands (`F OFTPD,REFRESH`: `5 ENABLED, 1 NEW,
+1 DISABLED` on each), and mendelson's configuration (section MAC1).
+`REFRESH` keeps a partner that left the member: MENDEL stays listed as
+DISABLED until the next restart. Every file compared with its source:
+identical.
+
+| Path | Result |
+|---|---|
+| DEV1 -> MAC1 (F, 3 x 80) | delivered, mendelson identified DEV1 by its new ID and sent the EERP (dev1 JOB02229) |
+| MAC1 -> DEV1 (U, from mendelson's outbox) | received as `IBMUSER.OFTPIN.REN.MAC1.TO.DEV1`, EERP back to mendelson |
+| M38R -> M38B -> DEV1 -> MAC1 | accepted by mendelson now that it knows M38R, EERP back over three hops (m38r JOB00414) |
+| MAC1 -> DEV1 -> M38B -> M38R | mendelson sent it through its gateway DEV1, stored as `OFTPD.IN.REN.MAC1.TO.M38R`, EERP back to mendelson |
