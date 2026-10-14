@@ -126,3 +126,11 @@ of `OFTPD` (source as committed next, banner `822ee57-dirty`), a plain
 RC 4), VERIFIED`, both ports listening, 35 transfers. So the open that
 an abend leaves behind answers rc 4. `P OFTPD` and a plain `S OFTPD`
 once more -> **STC00693**, no VERIFY, 35 transfers.
+
+Step 2 of #1 (the control handlers answer through an output function):
+`P OFTPD` (STC00693), deploy of `OFTPD` built from eeace93, a plain
+`S OFTPD` -> **STC00694**, banner `(eeace93)`. Control-port answers
+compared byte for byte with those taken from STC00693 just before:
+`PARTNERS`, `LIST` (37 lines), `SHOW 0000001` and an unknown request
+identical, `STATUS` only in its version line. `mbt test --tso --only
+ispf` passed.

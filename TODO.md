@@ -36,8 +36,9 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   (`TOFT020`, deletes `TOFT010`).
 - **Cross-memory transport** (#1, `internals/xmem.md`, a private SVC):
   SVC 237, free on all five stands (measured 2026-10-14); the ESTAE is
-  in (d5b8bdc, measured with a CANCEL on dev1), #2 too; next the output
-  function under `ctl_*`. It replaces the TCP control port, which goes off by
+  in (d5b8bdc, measured with a CANCEL on dev1), #2 too; the handlers
+  answer through an output function (eeace93); next `OFTPSVC`, the anchor
+  and a probe round-tripping `STATUS` (step 3). It replaces the TCP control port, which goes off by
   default in 0.2.0.
 - ~~Before 0.2.0: the spool after an abend~~ (#2) -- OFTPD runs VERIFY
   itself when the open fails (rc 4 after a CANCEL, measured on dev1) and
