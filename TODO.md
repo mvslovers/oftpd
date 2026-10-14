@@ -34,9 +34,13 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   test network steps 1-5 passed over up to four hops, EERP and NERP back
   (`internals/testnet.md`, Results). The first final release is 0.2.0
   (`TOFT020`, deletes `TOFT010`).
+- **Cross-memory transport** (#1, `internals/xmem.md`, a private SVC): step 0
+  is the read-only measurement of the free SVC numbers on dev1 and the
+  M38 stands. It replaces the TCP control port, which goes off by
+  default in 0.2.0.
 - Control port: retry the bind on EADDRINUSE (a TIME-WAIT after a quick
   restart, `OFTP052W ... ERRNO 48` on m38b), as HTTPD does (`HTTPD030I`,
-  up after about 50 s).
+  up after about 50 s). Moot once the SVC transport is in.
 - An EERP held at a relay after a call collision (testnet.md, Results):
   seen once at m38b, not reproduced. Find out whether a refused call
   (ESID 03, `OFTP202W`) can leave owed EERPs uncalled beyond RETRY.

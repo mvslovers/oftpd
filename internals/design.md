@@ -374,6 +374,11 @@ underneath changes. So the request layer must not depend on TCP (no
 reliance on stream properties, no per-connection state beyond the
 request), and nothing may assume that a TCP caller is trustworthy.
 
+*Decided* (2026-10-14): the cross-memory transport is **a private SVC**
+that OFTPD installs at start, not the subsystem interface, because an
+SSI caller must be authorized and the utilities are not. The design is
+in `internals/xmem.md`.
+
 Note: the sockets are the Hercules host's (DYN75), so "loopback" is the
 PC running Hercules, not MVS. Any process on that PC can reach the port.
 Acceptable for development, not for anything else.
