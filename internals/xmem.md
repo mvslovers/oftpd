@@ -226,12 +226,30 @@ OFTPD delays one `OFTP LIST` -- so the MVP does without, and adds it
 
 ## 8. What the toolchain has to be checked for
 
-- **`MVCK` in as370.** nsf370 found on 2026-07-22 that as370 encoded
-  `MVCK` as an SS instruction with length, dropping R1 and R3, and emits
-  it as a raw `D9` opcode. cc370#56 and #57 are closed; neither says
-  `MVCK` was fixed. Assemble one `MVCK` and read the listing before
-  relying on the mnemonic; if it is still wrong, raw `D9` and a cc370
-  issue.
+- **`MVCK` in as370 -- confirmed broken, fix pending (cc370#947).**
+  Measured here with as370 1.6.2 (7b7506e) on 2026-10-14: `MVCK 0(4,2),
+  0(5),3` assembles to `D903 2000 5000` and `MVCK 16(4,10),32(11),7` to
+  `D903 A010 B020`. Both are wrong: the register byte should be `43` and
+  `47` (R1 = length register, R3 = source key, POPS SS-with-two-registers
+  format `D9 | R1 R3 | B1 D1 | B2 D2`). as370 reads the "4" as an SS
+  length (L-1 = 3) and drops R3. The cc370 session confirmed it, found the
+  same defect in `MVCP` (`DA03` for `DA43`) and `MVCS` (`DB03` for
+  `DB43`), and that a missing R3 still assembles at rc 0; `dasm370` has the
+  mirror-image bug, which is why a round trip never showed it. Filed as
+  **mvslovers/cc370#947**, fix in progress, shipping in **as370 1.6.3**
+  (`main` is 1.6.3-dev; release date not yet set). **Until 1.6.3: emit
+  `MVCK`/`MVCP`/`MVCS` as raw `DC X'..'`** -- e.g. nsf370's
+  `DC X'D9134000',X'5000'` for `MVCK 0(1,4),0(5),3` (R1 = true length
+  0..255, R4 = dest, R5 = source, R3 = source key in bits 24-27). When
+  1.6.3 is installed, reassemble one and read the listing, then switch to
+  the mnemonic and strike this note.
+- **`TPROT` is fine -- the nsf370 note was stale.** as370 has had `TPROT`
+  as SSE since cc370#56: `TPROT 4(5),8(9)` gives `E501 5004 9008` (cc370
+  session, 2026-10-14, pinned to IFOX00). So no raw `DC` is needed for
+  `TPROT`; nsf370's "as370 has no SSE format" is out of date. Note that
+  IFOX00 does not know `MVCK`/`MVCP`/`MVCS` at all (an undefined opcode
+  there), so those three cannot be cross-checked against IFOX -- only
+  against POPS.
 - **Column 72.** A continuation in column 72 makes as370 swallow the next
   line without a word (nsf370, ADR-0038 history). The routine is short;
   keep its lines short.
@@ -245,6 +263,7 @@ OFTPD delays one `OFTP LIST` -- so the MVP does without, and adds it
 2. The output function under `ctl_*` (socket or slot); host tests stay
    green.
 3. `OFTPSVC` and the anchor; a probe client that round-trips `STATUS`.
+   **Not started -- the routine still has to be written** (see section 10).
 4. `OFTP`/`OFTPI` switch over; OFTPD takes the owner from the slot.
 5. Tests on MVS, dev1 first, then the M38 stands:
    - `TESTAUTH FCTN=1` proves the client unauthorized;
@@ -264,6 +283,89 @@ OFTPD delays one `OFTP LIST` -- so the MVP does without, and adds it
 **Effort**: more than the "two to three days" first said, which was for
 an SSI router in C. This is an assembler routine plus ESTAE, liveness and
 sweep. With nsf370's ADRs as the map, about a week of work plus the
-stand time; uncertain mainly through the `MVCK` encoding, how many SVC
-numbers are free per distribution, and how the ESTAE behaves on the
-first live abend.
+stand time; uncertain mainly through how many SVC numbers are free per
+distribution and how the ESTAE behaves on the first live abend (the
+`MVCK` encoding is settled -- section 8).
+
+## 10. Where step 3 stands (handoff, 2026-10-14)
+
+Steps 0, 1 and 2 are done and on `main` (`26f8995`). Step 3 -- the SVC
+routine `OFTPSVC`, the CSA anchor and the STC-side install -- has not
+been written. One artefact exists for it and is committed nowhere yet:
+
+- **`include/oftpsvc.h`** (new, untracked): the shared layout of the
+  anchor, the slot and the client request block, with the state and rc
+  constants. It is the mirror `asm/oftpsvc.asm` and the probe both build
+  against. Review it first; the field offsets in it are the contract.
+
+Nothing else for step 3 is on disk: `asm/oftpsvc.asm`, `src/mvs/oftp#svc.c`,
+the `[module.OFTPSVC]` block in `mbt.toml`, the `SVC=` keyword in
+`oftp#cfg.c` and the probe `test/mvs/tstsvc.c` are all still to come.
+
+**The model is nsf370**, which solved exactly this problem and measured it
+live on MVS/CE. Read, in this order:
+
+- `nsf370/asm/nsfvsvc.asm` -- the routine to copy the *structure* of (not
+  the code): entry register discipline (R4/R5 are destroyed, re-derive the
+  TCB from `PSATOLD` and the SVRB from `TCBRBP`), the `CS` slot claim, the
+  save/restore of registers across the branch POST in the SVRB's
+  `RBEXSAVE`, the `MVCK` copy in/out under the caller's key, the exit
+  paths. OFTPD's routine is a thin text-in/text-out router -- a fraction of
+  `nsfvsvc.asm`, which also carries ECHO/XFER/RQE verbs OFTPD does not
+  need.
+- `nsf370/src/nsfv.c` -- the STC side: `nsfv_anchor_alloc` (getmain SP 241
+  under `__super(PSWKEY0)`), `nsfv_router_load` (`__loadhi`, then patch the
+  anchor address into the routine's word at `epa + OFTP_SVC_ANCH_OFF`),
+  `nsfv_svc_steal`/`nsfv_svc_restore` (walk `CVT->cvtabend->scvtsvct`,
+  verify the slot holds the modal invalid-SVC EP before taking it, write
+  `C0 00 00 00` to the attribute bytes, keep the 8 saved bytes for
+  restore), the liveness guard (ASVT entry for the ASID still equals the
+  recorded ASCB), and the shutdown/ESTAE order.
+- `nsf370/src/nsfreqc.c` / `nsf370/test/mvs/tstsvc.c` -- how an
+  unauthorized client issues the SVC: `EX Rn,SVC0` with the number in a
+  register.
+
+**The relevant libc370 helpers** (all present, measured): `__super` /
+`__prob` / `super_key_do` (`mvs/apf.h`), `getmain` / `freemain`
+(`mvs/storage.h`, SP 241 = key-0 CSA), `__loadhi` (`mvs/link.h`, needs APF
++ key 0, reads STEPLIB only), `__xmpost` (`mvs/xmem.h`, the `CVT0PT01`
+branch POST -- needs supervisor key 0, does no MODESET itself), `ssct_new`
+/ `ssct_install` / `ssct_find` / `ssct_remove` (`mvs/subsys.h`), `__cas` /
+`__uinc` / `__udec` (`s370/atomic.h`). The ACEE userid walk is
+`racf_get_acee()`'s path: PSA X'224' -> ASCB, +X'6C' -> ASXB, +X'C8' ->
+ACEE, `aceeuser` at +X'14' (`ibm/mvs/ihaacee.h`). SVC table and ASVT
+structs: `ibm/mvs/ihascvt.h` (`svctable`/`svcentry`), `ibm/mvs/ihaasvt.h`
+(`asvtenty`), `ibm/mvs/cvt.h` (`cvtabend` X'C8', `cvt0pt01` X'98',
+`cvtasvt` X'22C').
+
+**The two key/ECB rules that cost nsf370 debugging rounds:**
+
+- OFTPD's wake ECB lives in OFTPD's private key-8 storage (its cthreads
+  WAIT in problem state; a key-0 ECB there is `S047`). The slot's reply
+  ECB is key-0 CSA and the *routine* WAITs on it in supervisor key 0,
+  which is legal.
+- Every store into caller-supplied storage (the reply bytes, rc, length,
+  resume index) runs under the caller's key via `SPKA`; everything into
+  the CSA slot runs in key 0. OFTPD builds the reply into a private buffer
+  through the step-2 output function, then one key-0 window does: copy to
+  the slot, liveness check, state -> DONE, `__xmpost`.
+
+**Build order** (cross-build clean at each step, `mbt module-data` clean):
+`oftpsvc.h` + `SVC=` in `oftp#cfg.c` -> `asm/oftpsvc.asm` +
+`[module.OFTPSVC]` (`entry="OFTPSVC" startup=false rent=true reus=true`)
+-> `src/mvs/oftp#svc.c` + the new `OFTP_MON` fields -> `oftpd.c` start/stop
+wiring (restore is the *first* act of `oftp_mon_abend`) -> `test/tstsvc.c`.
+A host test that asserts `offsetof()` on every `oftpsvc.h` field against
+the `.asm` EQUs is the only mirror check runnable off-MVS; run it before
+any deploy.
+
+**MVS test plan**: section 9 step 5. Ask MBT for a dev1 slot first; read
+the slot-237 entry with `svcdm.py` *before* and *after* (`P OFTPD` must
+leave it reading back equal to the saved bytes). If an abend path or a
+bad restore is suspected, do not `S OFTPD` again -- report.
+
+**Why this handoff exists**: this session's environment stops the
+assistant from writing or correcting the routine itself (it reads a
+slot-stealing SVC as a privilege-escalation pattern regardless of
+context). The design above is complete and the toolchain blocker (`MVCK`)
+is resolved pending as370 1.6.3; what remains is writing the four files.
