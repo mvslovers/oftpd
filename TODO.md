@@ -35,9 +35,13 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   (`internals/testnet.md`, Results). The first final release is 0.2.0
   (`TOFT020`, deletes `TOFT010`).
 - **Cross-memory transport** (#1, `internals/xmem.md`, a private SVC):
-  SVC 237, free on all five stands (measured 2026-10-14); next the ESTAE
-  in OFTPD, then the output function under `ctl_*`. It replaces the TCP control port, which goes off by
+  SVC 237, free on all five stands (measured 2026-10-14); the ESTAE is
+  in (d5b8bdc, measured with a CANCEL on dev1); next #2, then the output
+  function under `ctl_*`. It replaces the TCP control port, which goes off by
   default in 0.2.0.
+- **Before 0.2.0**: after an abend the spool cannot be opened until
+  someone runs IDCAMS VERIFY, and the message names the wrong cause
+  (#2). OFTPD should VERIFY at start and report the real open error.
 - **Before 0.2.0**: a session subtask that abends ends inside cthread's
   try() and never reaches its cleanup, so its entry in `m->ssock` stays;
   the number goes back to the system, and a later abend of OFTPD would

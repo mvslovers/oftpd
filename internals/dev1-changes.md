@@ -105,3 +105,15 @@ as meant), `P OFTPD` (STC00675) and a plain `S OFTPD` -> **STC00676**,
 `OFTP000I oftpd 0.1.0-dev (1ca9786)`, `OFTP004I AUTHORIZED BY SVC`,
 `OFTP014I ODETTE ID O0000000000DEV1, 8 OF 8 PARTNERS ENABLED`, control
 port answering.
+
+Later that day, slot from the MBT session: the ESTAE test (#1 step 1).
+`P OFTPD` (STC00676), `mbt deploy -target dev1 -module OFTPD` (an
+IEBCOPY merge into `OFTPD.DEV.LINKLIB`; the build is the source of
+d5b8bdc, its banner says `fbb96c6-dirty`), `S OFTPD` -> STC00688. Then
+`C OFTPD`: `OFTP098E OFTPD ABEND, 2 SOCKETS CLOSED`, `ABEND S222`;
+`ss -ltn` on mvsdev showed 3305 and 3306 free. No dump (SYSUDUMP empty).
+The next start, STC00689, failed on the spool left not properly closed
+(`IEC161I 056-084`, `OFTP020E`; #2); `VERIFY DATASET(IBMUSER.OFTP370.SPOOL)`
+(JOB02258, CC 0, 36 records as before) mended it, and `S OFTPD` ->
+**STC00690**, both ports listening. The outputs of STC00688, STC00689 and
+JOB02258 purged afterwards (maintainer's OK).
