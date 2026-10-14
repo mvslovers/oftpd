@@ -798,6 +798,28 @@ sched_thread(void *arg1, void *arg2)
 
 /* ---- control port ------------------------------------------------ */
 
+/* Where a request's answer goes: the lines are the same whichever
+** transport carried the request (internals/design.md 7): a socket for
+** the TCP control port, a slot for the cross-memory one later.
+*/
+typedef struct ctlout CTLOUT;
+struct ctlout {
+    void      (*put)(CTLOUT *o, const char *line);
+    int         sock;                   /* the TCP transport's socket    */
+};
+
+static void
+ctl_put(CTLOUT *o, const char *line)
+{
+    o->put(o, line);
+}
+
+static void
+put_sock(CTLOUT *o, const char *line)
+{
+    oftp_net_puts(o->sock, line);
+}
+
 /* KEYWORD=VALUE from a request line, or "" */
 static void
 kw(const char *line, const char *key, char *out, size_t cap)
@@ -821,7 +843,7 @@ kw(const char *line, const char *key, char *out, size_t cap)
 }
 
 static void
-ctl_send(OFTP_MON *m, int s, const char *line)
+ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
 {
     OFTP_SPREC r;
     OFTP_PARTNER *p;
@@ -841,7 +863,7 @@ ctl_send(OFTP_MON *m, int s, const char *line)
     kw(line, "OWNER", owner, sizeof(owner));
     kw(line, "HOLD", hold, sizeof(hold));
     if ((p = oftp_cfg_find(&m->cfg, partner)) == NULL) {
-        oftp_net_puts(s, "501 unknown or disabled partner");
+        ctl_put(o, "501 unknown or disabled partner");
         return;
     }
     memset(&r, 0, sizeof(r));
@@ -850,7 +872,7 @@ ctl_send(OFTP_MON *m, int s, const char *line)
         OFTP_PARTNER *v = oftp_cfg_find(&m->cfg, p->via);
 
         if (v == NULL) {
-            oftp_net_puts(s, "501 the partner it is reached through is disabled");
+            ctl_put(o, "501 the partner it is reached through is disabled");
             return;
         }
         strcpy(r.target, p->peer.name);
@@ -866,18 +888,18 @@ ctl_send(OFTP_MON *m, int s, const char *line)
         snprintf(r.member, sizeof(r.member), "%s", lp + 1);
     }
     if (!oftp_dsn_valid(dsn) || !exists(dsn)) {
-        oftp_net_puts(s, "502 data set not found");
+        ctl_put(o, "502 data set not found");
         return;
     }
     if (vfn[0] == '\0') {
         if (strlen(r.member[0] ? r.member : dsn) > OFTP_DSNLEN) {
-            oftp_net_puts(s, "503 name longer than 26, give VFN=");
+            ctl_put(o, "503 name longer than 26, give VFN=");
             return;
         }
         strcpy(vfn, r.member[0] ? r.member : dsn);
     }
     if (strlen(vfn) > OFTP_DSNLEN) {
-        oftp_net_puts(s, "503 VFN longer than 26");
+        ctl_put(o, "503 VFN longer than 26");
         return;
     }
     /* an empty file is queued all the same, with a warning */
@@ -891,13 +913,13 @@ ctl_send(OFTP_MON *m, int s, const char *line)
         else
             snprintf(q, sizeof(q), "'%s'", dsn);
         if (ropen(q, 0, &rf) != 0) {
-            oftp_net_puts(s, "502 data set cannot be opened");
+            ctl_put(o, "502 data set cannot be opened");
             return;
         }
         /* one record, on the heap: this thread's stack is 32 KB */
         if ((one = malloc((size_t)rf->lrecl + 4)) == NULL) {
             rclose(rf);
-            oftp_net_puts(s, "451 no storage");
+            ctl_put(o, "451 no storage");
             return;
         }
         empty = rread(rf, one, &got) != 0;
@@ -927,7 +949,7 @@ ctl_send(OFTP_MON *m, int s, const char *line)
     r.tqueued = (long)now;
     settext(&r, r.state == SPL_HELD ? "queued and held" : "queued");
     if (oftp_spl_add(m->spool, &r) != 0) {
-        oftp_net_puts(s, "451 spool not available");
+        ctl_put(o, "451 spool not available");
         return;
     }
     /* 210: done, with a warning */
@@ -937,7 +959,7 @@ ctl_send(OFTP_MON *m, int s, const char *line)
              r.target[0] ? r.target : r.partner, r.target[0] ? " via " : "",
              r.target[0] ? r.partner : "", r.dsn,
              empty ? " -- the data set is empty" : "");
-    oftp_net_puts(s, reply);
+    ctl_put(o, reply);
     oftp_mon_msg("OFTP230I %.8s QUEUED FOR %s: %s AS %s", r.key, r.partner,
                  dsn, r.dsn);
     ecb_post(&m->wake, 0);
@@ -962,7 +984,7 @@ state_name(char st)
 }
 
 static void
-ctl_list(OFTP_MON *m, int s, const char *line)
+ctl_list(OFTP_MON *m, CTLOUT *o, const char *line)
 {
     OFTP_SPREC r;
     char last[8], partner[16], status[16], owner[12], out[200];
@@ -985,22 +1007,22 @@ ctl_list(OFTP_MON *m, int s, const char *line)
                  r.key, r.dir == SPL_SEND ? "SEND" : "RECV",
                  state_name(r.state), r.target[0] ? r.target : r.partner,
                  r.dsn, r.local);
-        oftp_net_puts(s, out);
+        ctl_put(o, out);
         n++;
     }
     snprintf(out, sizeof(out), "200 %d transfers", n);
-    oftp_net_puts(s, out);
+    ctl_put(o, out);
 }
 
 static void
-ctl_show(OFTP_MON *m, int s, const char *line)
+ctl_show(OFTP_MON *m, CTLOUT *o, const char *line)
 {
     OFTP_SPREC r;
     char key[12], out[200];
 
     kw(line, "KEY", key, sizeof(key));
     if (strlen(key) != 8 || oftp_spl_get(m->spool, key, &r) != 0) {
-        oftp_net_puts(s, "504 no such transfer");
+        ctl_put(o, "504 no such transfer");
         return;
     }
     snprintf(out, sizeof(out), "100 %.8s %s %s, partner %s%s%s, owner %s",
@@ -1008,65 +1030,65 @@ ctl_show(OFTP_MON *m, int s, const char *line)
              state_name(r.state), r.target[0] ? r.target : r.partner,
              r.target[0] ? " via " : "", r.target[0] ? r.partner : "",
              r.owner[0] ? r.owner : "-");
-    oftp_net_puts(s, out);
+    ctl_put(o, out);
     snprintf(out, sizeof(out), "100 virtual file %s %s %s, format %c, LRECL %u",
              r.dsn, r.date, r.time, r.fmt ? r.fmt : '-', r.lrecl);
-    oftp_net_puts(s, out);
+    ctl_put(o, out);
     snprintf(out, sizeof(out), "100 data set %s%s%s%s", r.local,
              r.member[0] ? "(" : "", r.member, r.member[0] ? ")" : "");
-    oftp_net_puts(s, out);
+    ctl_put(o, out);
     snprintf(out, sizeof(out), "100 from %s to %s, %lu records, %u attempts",
              r.orig, r.dest, r.recs, r.attempts);
-    oftp_net_puts(s, out);
+    ctl_put(o, out);
     if (r.reas)
         snprintf(out, sizeof(out), "100 reason %02d (%s): %s", r.reas,
                  r.reasby == 'P' ? "partner" : "local", r.text);
     else
         snprintf(out, sizeof(out), "100 %s", r.text);
-    oftp_net_puts(s, out);
-    oftp_net_puts(s, "200 end");
+    ctl_put(o, out);
+    ctl_put(o, "200 end");
 }
 
 /* DELETE, HOLD, RELEASE, RETRY of one transfer */
 static void
-ctl_change(OFTP_MON *m, int s, const char *verb, const char *line)
+ctl_change(OFTP_MON *m, CTLOUT *o, const char *verb, const char *line)
 {
     OFTP_SPREC r;
     char key[12], out[80];
 
     kw(line, "KEY", key, sizeof(key));
     if (strlen(key) != 8 || oftp_spl_get(m->spool, key, &r) != 0) {
-        oftp_net_puts(s, "504 no such transfer");
+        ctl_put(o, "504 no such transfer");
         return;
     }
     if (r.state == SPL_ACTIVE) {
-        oftp_net_puts(s, "450 transfer is active, try later");
+        ctl_put(o, "450 transfer is active, try later");
         return;
     }
     if (strcmp(verb, "DELETE") == 0) {
         if (oftp_spl_del(m->spool, r.key) != 0) {
-            oftp_net_puts(s, "451 spool not available");
+            ctl_put(o, "451 spool not available");
             return;
         }
         snprintf(out, sizeof(out), "200 %.8s deleted", r.key);
-        oftp_net_puts(s, out);
+        ctl_put(o, out);
         oftp_mon_msg("OFTP231I %.8s DELETED", r.key);
         return;
     }
     if (r.dir != SPL_SEND) {
-        oftp_net_puts(s, "505 only a send can be held, released or retried");
+        ctl_put(o, "505 only a send can be held, released or retried");
         return;
     }
     if (strcmp(verb, "HOLD") == 0) {
         if (r.state != SPL_QUEUED && r.state != SPL_WAITING) {
-            oftp_net_puts(s, "505 only a queued or waiting send can be held");
+            ctl_put(o, "505 only a queued or waiting send can be held");
             return;
         }
         r.state = SPL_HELD;
         settext(&r, "held");
     } else if (strcmp(verb, "RELEASE") == 0) {
         if (r.state != SPL_HELD) {
-            oftp_net_puts(s, "505 not held");
+            ctl_put(o, "505 not held");
             return;
         }
         r.state = SPL_QUEUED;
@@ -1074,7 +1096,7 @@ ctl_change(OFTP_MON *m, int s, const char *verb, const char *line)
         settext(&r, "released");
     } else {                            /* RETRY */
         if (r.state == SPL_QUEUED) {
-            oftp_net_puts(s, "505 already queued");
+            ctl_put(o, "505 already queued");
             return;
         }
         /* a SENT file goes out once more: the partner sees it twice */
@@ -1085,17 +1107,17 @@ ctl_change(OFTP_MON *m, int s, const char *verb, const char *line)
         settext(&r, "queued again");
     }
     if (oftp_spl_put(m->spool, &r) != 0) {
-        oftp_net_puts(s, "451 spool not available");
+        ctl_put(o, "451 spool not available");
         return;
     }
     snprintf(out, sizeof(out), "200 %.8s %s", r.key, state_name(r.state));
-    oftp_net_puts(s, out);
+    ctl_put(o, out);
     oftp_mon_msg("OFTP232I %.8s %s BY CONTROL PORT", r.key, verb);
     ecb_post(&m->wake, 0);
 }
 
 static void
-ctl_partners(OFTP_MON *m, int s)
+ctl_partners(OFTP_MON *m, CTLOUT *o)
 {
     char out[160];
     int i;
@@ -1109,14 +1131,14 @@ ctl_partners(OFTP_MON *m, int s)
                  m->busy[i] ? "BUSY" : "IDLE", p->peer.level,
                  p->via[0] ? "via " : p->call ? p->host : "(not called)",
                  p->via[0] ? p->via : "");
-        oftp_net_puts(s, out);
+        ctl_put(o, out);
     }
     snprintf(out, sizeof(out), "200 %d partners", m->cfg.nptn);
-    oftp_net_puts(s, out);
+    ctl_put(o, out);
 }
 
 static void
-ctl_status(OFTP_MON *m, int s)
+ctl_status(OFTP_MON *m, CTLOUT *o)
 {
     OFTP_SPREC r;
     char last[8], out[160];
@@ -1134,41 +1156,85 @@ ctl_status(OFTP_MON *m, int s)
             on++;
     snprintf(out, sizeof(out), "100 Odette ID %s, OFTP port %d, control port %d",
              m->cfg.odetteid, m->cfg.port, m->cfg.ctlport);
-    oftp_net_puts(s, out);
+    ctl_put(o, out);
     snprintf(out, sizeof(out), "100 sessions %d of %d, partners %d of %d enabled",
              m->nsess, m->cfg.maxsess, on, m->cfg.nptn);
-    oftp_net_puts(s, out);
+    ctl_put(o, out);
     snprintf(out, sizeof(out), "100 spool %d: queued %d, waiting %d, held %d, "
              "active %d, sent %d", total, cnt[SPL_QUEUED & 0x7F],
              cnt[SPL_WAITING & 0x7F], cnt[SPL_HELD & 0x7F],
              cnt[SPL_ACTIVE & 0x7F], cnt[SPL_SENT & 0x7F]);
-    oftp_net_puts(s, out);
+    ctl_put(o, out);
     snprintf(out, sizeof(out), "100 delivered %d, rejected %d, failed %d, "
              "received %d, confirmed %d", cnt[SPL_DELIVERED & 0x7F],
              cnt[SPL_REJECTED & 0x7F], cnt[SPL_FAILED & 0x7F],
              cnt[SPL_RECEIVED & 0x7F], cnt[SPL_CONFIRMED & 0x7F]);
-    oftp_net_puts(s, out);
+    ctl_put(o, out);
     snprintf(out, sizeof(out), "100 received files go to %s, %s",
              m->cfg.inprefix, oftp_version());
-    oftp_net_puts(s, out);
-    oftp_net_puts(s, "200 status");
+    ctl_put(o, out);
+    ctl_put(o, "200 status");
 }
 
 static void
-ctl_call(OFTP_MON *m, int s, const char *line)
+ctl_call(OFTP_MON *m, CTLOUT *o, const char *line)
 {
     OFTP_PARTNER *p;
     char partner[16], out[80];
 
     kw(line, "PARTNER", partner, sizeof(partner));
     if ((p = oftp_cfg_find(&m->cfg, partner)) == NULL || !p->call) {
-        oftp_net_puts(s, "501 not a partner that can be called");
+        ctl_put(o, "501 not a partner that can be called");
         return;
     }
     m->callreq[ptn_index(m, p)] = 1;
     ecb_post(&m->wake, 0);
     snprintf(out, sizeof(out), "200 call of %s requested", p->peer.name);
-    oftp_net_puts(s, out);
+    ctl_put(o, out);
+}
+
+/* One request, whatever carried it: line in, lines out through o */
+static void
+ctl_request(OFTP_MON *m, CTLOUT *o, char *line)
+{
+    char *c;
+
+    for (c = line; *c; c++)
+        if (*c >= 'a' && *c <= 'z')
+            *c = (char)(*c - 'a' + 'A');
+    if (strncmp(line, "SEND ", 5) == 0)
+        ctl_send(m, o, line);
+    else if (strncmp(line, "LIST", 4) == 0)
+        ctl_list(m, o, line);
+    else if (strncmp(line, "SHOW", 4) == 0)
+        ctl_show(m, o, line);
+    else if (strncmp(line, "DELETE", 6) == 0)
+        ctl_change(m, o, "DELETE", line);
+    else if (strncmp(line, "HOLD", 4) == 0)
+        ctl_change(m, o, "HOLD", line);
+    else if (strncmp(line, "RELEASE", 7) == 0)
+        ctl_change(m, o, "RELEASE", line);
+    else if (strncmp(line, "RETRY", 5) == 0)
+        ctl_change(m, o, "RETRY", line);
+    else if (strncmp(line, "CALL", 4) == 0)
+        ctl_call(m, o, line);
+    else if (strncmp(line, "PARTNERS", 8) == 0)
+        ctl_partners(m, o);
+    else if (strncmp(line, "STATUS", 6) == 0)
+        ctl_status(m, o);
+    else if (strncmp(line, "REFRESH", 7) == 0) {
+        char out[80];
+        int on = oftp_mon_refresh(m);
+
+        if (on < 0)
+            ctl_put(o, "451 partner member cannot be read");
+        else {
+            snprintf(out, sizeof(out), "200 partners reloaded, %d enabled", on);
+            ctl_put(o, out);
+        }
+    }
+    else
+        ctl_put(o, "500 unknown request");
 }
 
 static int
@@ -1176,8 +1242,10 @@ ctl_thread(void *arg1, void *arg2)
 {
     OFTP_MON *m = arg1;
     char ip[16], line[256];
+    CTLOUT o;
 
     (void)arg2;
+    o.put = put_sock;
     while (!m->stop) {
         int s, n;
 
@@ -1192,48 +1260,11 @@ ctl_thread(void *arg1, void *arg2)
         }
         /* one request per connection; no security during development */
         m->cconn = s;
+        o.sock = s;
         oftp_net_puts(s, "220 OFTPD control port");
         n = oftp_net_gets(s, line, sizeof(line), 30);
-        if (n > 0) {
-            char *c;
-
-            for (c = line; *c; c++)
-                if (*c >= 'a' && *c <= 'z')
-                    *c = (char)(*c - 'a' + 'A');
-            if (strncmp(line, "SEND ", 5) == 0)
-                ctl_send(m, s, line);
-            else if (strncmp(line, "LIST", 4) == 0)
-                ctl_list(m, s, line);
-            else if (strncmp(line, "SHOW", 4) == 0)
-                ctl_show(m, s, line);
-            else if (strncmp(line, "DELETE", 6) == 0)
-                ctl_change(m, s, "DELETE", line);
-            else if (strncmp(line, "HOLD", 4) == 0)
-                ctl_change(m, s, "HOLD", line);
-            else if (strncmp(line, "RELEASE", 7) == 0)
-                ctl_change(m, s, "RELEASE", line);
-            else if (strncmp(line, "RETRY", 5) == 0)
-                ctl_change(m, s, "RETRY", line);
-            else if (strncmp(line, "CALL", 4) == 0)
-                ctl_call(m, s, line);
-            else if (strncmp(line, "PARTNERS", 8) == 0)
-                ctl_partners(m, s);
-            else if (strncmp(line, "STATUS", 6) == 0)
-                ctl_status(m, s);
-            else if (strncmp(line, "REFRESH", 7) == 0) {
-                char out[80];
-                int on = oftp_mon_refresh(m);
-
-                if (on < 0)
-                    oftp_net_puts(s, "451 partner member cannot be read");
-                else {
-                    snprintf(out, sizeof(out), "200 partners reloaded, %d enabled", on);
-                    oftp_net_puts(s, out);
-                }
-            }
-            else
-                oftp_net_puts(s, "500 unknown request");
-        }
+        if (n > 0)
+            ctl_request(m, &o, line);
         m->cconn = 0;
         oftp_net_close(s);
     }
