@@ -226,23 +226,27 @@ OFTPD delays one `OFTP LIST` -- so the MVP does without, and adds it
 
 ## 8. What the toolchain has to be checked for
 
-- **`MVCK` in as370 -- confirmed broken, fix pending (cc370#947).**
-  Measured here with as370 1.6.2 (7b7506e) on 2026-10-14: `MVCK 0(4,2),
-  0(5),3` assembles to `D903 2000 5000` and `MVCK 16(4,10),32(11),7` to
-  `D903 A010 B020`. Both are wrong: the register byte should be `43` and
-  `47` (R1 = length register, R3 = source key, POPS SS-with-two-registers
-  format `D9 | R1 R3 | B1 D1 | B2 D2`). as370 reads the "4" as an SS
-  length (L-1 = 3) and drops R3. The cc370 session confirmed it, found the
-  same defect in `MVCP` (`DA03` for `DA43`) and `MVCS` (`DB03` for
-  `DB43`), and that a missing R3 still assembles at rc 0; `dasm370` has the
-  mirror-image bug, which is why a round trip never showed it. Filed as
-  **mvslovers/cc370#947**, fix in progress, shipping in **as370 1.6.3**
-  (`main` is 1.6.3-dev; release date not yet set). **Until 1.6.3: emit
-  `MVCK`/`MVCP`/`MVCS` as raw `DC X'..'`** -- e.g. nsf370's
-  `DC X'D9134000',X'5000'` for `MVCK 0(1,4),0(5),3` (R1 = true length
-  0..255, R4 = dest, R5 = source, R3 = source key in bits 24-27). When
-  1.6.3 is installed, reassemble one and read the listing, then switch to
-  the mnemonic and strike this note.
+- **`MVCK` in as370 -- fixed in as370 1.6.3 (cc370#947, released
+  2026-10-14).** as370 1.6.2 (7b7506e) assembled `MVCK 0(4,2),0(5),3` to
+  `D903 2000 5000`: it read the "4" as an SS length and dropped R3, and
+  `MVCP`/`MVCS` had the same defect; a missing R3 assembled at rc 0.
+  POPS has R1 (the length register) and R3 (the source key) as the two
+  nibbles of byte 1, `D9 | R1 R3 | B1 D1 | B2 D2`.
+  Checked here with as370 1.6.3 (802dde1) on 2026-10-14, the object deck
+  read back, not yet run on MVS:
+
+  | Statement | Bytes |
+  |---|---|
+  | `MVCK 0(4,2),0(5),3` | `D943 2000 5000` |
+  | `MVCK 16(4,10),32(11),7` | `D947 A010 B020` |
+  | `MVCK 0(1,4),0(5),3` | `D913 4000 5000` (nsf370's raw `DC`) |
+  | `MVCP 0(4,2),0(5),3` | `DA43 2000 5000` |
+  | `MVCS 0(4,2),0(5),3` | `DB43 2000 5000` |
+  | `MVCK 0(4,2),0(5)` | severity 12, "needs a third operand" |
+
+  So the routine uses the mnemonic, no raw `DC`. **1.6.2 assembles it
+  silently wrong**: raise `[toolchain] cc370` in `mbt.toml` to 1.6.3 in
+  the commit that brings the first `.asm` using it.
 - **`TPROT` is fine -- the nsf370 note was stale.** as370 has had `TPROT`
   as SSE since cc370#56: `TPROT 4(5),8(9)` gives `E501 5004 9008` (cc370
   session, 2026-10-14, pinned to IFOX00). So no raw `DC` is needed for
@@ -291,12 +295,14 @@ distribution and how the ESTAE behaves on the first live abend (the
 
 Steps 0, 1 and 2 are done and on `main` (`26f8995`). Step 3 -- the SVC
 routine `OFTPSVC`, the CSA anchor and the STC-side install -- has not
-been written. One artefact exists for it and is committed nowhere yet:
+been written. **The maintainer writes it** (decided 2026-10-14), adapting
+nsf370's committed, measured `nsfvsvc.asm` / `nsfv.c`. One artefact
+exists for it, on `main` since `edf7a69`:
 
-- **`include/oftpsvc.h`** (new, untracked): the shared layout of the
-  anchor, the slot and the client request block, with the state and rc
-  constants. It is the mirror `asm/oftpsvc.asm` and the probe both build
-  against. Review it first; the field offsets in it are the contract.
+- **`include/oftpsvc.h`**: the shared layout of the anchor, the slot and
+  the client request block, with the state and rc constants. It is the
+  mirror `asm/oftpsvc.asm` and the probe both build against. Review it
+  first; the field offsets in it are the contract.
 
 Nothing else for step 3 is on disk: `asm/oftpsvc.asm`, `src/mvs/oftp#svc.c`,
 the `[module.OFTPSVC]` block in `mbt.toml`, the `SVC=` keyword in
@@ -368,4 +374,5 @@ bad restore is suspected, do not `S OFTPD` again -- report.
 assistant from writing or correcting the routine itself (it reads a
 slot-stealing SVC as a privilege-escalation pattern regardless of
 context). The design above is complete and the toolchain blocker (`MVCK`)
-is resolved pending as370 1.6.3; what remains is writing the four files.
+is resolved since as370 1.6.3 (section 8); what remains is writing the
+four files.
