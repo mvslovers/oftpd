@@ -13,6 +13,7 @@
 #include <time.h>
 
 #include <mvs/lock.h>
+#include <mvs/recovery.h>
 #include <mvs/rfile.h>
 #include <mvs/wto.h>
 
@@ -141,6 +142,8 @@ typedef struct sesctx {
     OFTP_DSF   *idsf;
     char        tmp[45];
     char        erpkey[8];
+    int         rc;                     /* oftp_sess_run(): try() keeps
+                                        ** only the abend code          */
     OFTP_SESS   s;
 } SESCTX;
 
@@ -566,13 +569,73 @@ s_log(void *ctx, const char *line)
     oftp_mon_msg("OFTP290I %s: %s", c->pt ? c->pt->peer.name : c->ip, line);
 }
 
+/* The session itself, for try(): which keeps only the abend code */
+static int
+run_session(SESCTX *c)
+{
+    c->rc = oftp_sess_run(&c->s);
+    return 0;
+}
+
+/* The files a session leaves open, under try(): after an abend the close
+** may fail again on what the abend left behind. Each handle is taken out
+** of the context before it is closed, so nothing is closed twice.
+*/
+static int
+end_files(SESCTX *c)
+{
+    OFTP_MON *m = c->m;
+    OFTP_DSF *f;
+
+    /* a file cut off in the middle: an attempt that failed, or with a
+    ** stop none at all; a receive is away */
+    if ((f = c->odsf) != NULL) {
+        c->odsf = NULL;
+        c->out.reasby = 'L';
+        settext(&c->out, "session ended during the transfer");
+        if (m->stop) {
+            c->out.state = SPL_WAITING;
+            c->out.tnext = 0;
+            if (c->out.attempts > 0)
+                c->out.attempts--;
+        } else
+            failed(m, &c->out);
+        oftp_spl_put(m->spool, &c->out);
+        oftp_dsf_close(f, 1);
+    }
+    if ((f = c->idsf) != NULL) {
+        c->idsf = NULL;
+        oftp_spl_del(m->spool, c->in.key);
+        oftp_dsf_close(f, 0);
+    }
+    return 0;
+}
+
+/* An abend code from try() as the console shows it */
+static void
+abend_text(unsigned ab, char *out, size_t cap)
+{
+    if (ab > 0xFFF)
+        snprintf(out, cap, "S%03X", (ab >> 12) & 0xFFF);
+    else
+        snprintf(out, cap, "U%04u", ab);
+}
+
+/* A session in a subtask of its own. cthread runs it without recovery,
+** so an abend would end the subtask with the session still counted, its
+** partner still busy and its socket still in m->ssock -- where a later
+** abend of OFTPD would close the number for whoever has it then. So the
+** session runs under try(), and whatever way it ends, the same cleanup
+** follows.
+*/
 static int
 session_thread(void *arg1, void *arg2)
 {
     SESCTX *c = arg1;
     OFTP_NETX nx;
     OFTP_MON *m = c->m;
-    int rc;
+    int ab;
+    char abt[8];
 
     (void)arg2;
     nx.sock = c->sock;
@@ -598,36 +661,53 @@ session_thread(void *arg1, void *arg2)
     if (c->initiator)
         c->s.peer = c->pt->peer;
 
-    rc = oftp_sess_run(&c->s);
-
-    /* a file cut off in the middle: an attempt that failed, or with a
-    ** stop none at all; a receive is away */
-    if (c->odsf != NULL) {
-        oftp_dsf_close(c->odsf, 1);
-        c->out.reasby = 'L';
-        settext(&c->out, "session ended during the transfer");
-        if (m->stop) {
-            c->out.state = SPL_WAITING;
-            c->out.tnext = 0;
-            if (c->out.attempts > 0)
-                c->out.attempts--;
-        } else
-            failed(m, &c->out);
-        oftp_spl_put(m->spool, &c->out);
+    c->rc = -1;
+    if ((ab = try(run_session, c)) < 0) {
+        /* no ESTAE: run it as before, unprotected */
+        oftp_mon_msg("OFTP208W %s: SESSION WITHOUT ABEND RECOVERY, RC %d",
+                     c->pt ? c->pt->peer.name : c->ip, ab);
+        ab = 0;
+        c->rc = oftp_sess_run(&c->s);
     }
-    if (c->idsf != NULL) {
-        oftp_dsf_close(c->idsf, 0);
-        oftp_spl_del(m->spool, c->in.key);
+    if (ab != 0) {
+        /* The abend may have come inside a lock(m) window. The task lives
+        ** on after try(), so MVS does not release it: we do. unlock() is
+        ** a DEQ RET=HAVE, so on a lock this task does not hold it only
+        ** returns a code.
+        */
+        unlock(m, 0);
+        abend_text((unsigned)ab, abt, sizeof(abt));
+        oftp_mon_msg("OFTP209E %s: SESSION ABEND %s, CLEANING UP",
+                     c->pt ? c->pt->peer.name : c->ip, abt);
+    }
+
+    if (c->odsf != NULL || c->idsf != NULL) {
+        int fab = try(end_files, c);
+
+        if (fab < 0)
+            end_files(c);
+        else if (fab > 0) {
+            abend_text((unsigned)fab, abt, sizeof(abt));
+            oftp_mon_msg("OFTP216E %s: ABEND %s CLOSING THE FILES OF THE SESSION",
+                         c->pt ? c->pt->peer.name : c->ip, abt);
+        }
     }
     if (c->slot >= 0)
         m->ssock[c->slot] = 0;
     oftp_net_close(c->sock);
-    oftp_mon_msg("OFTP203I %s: SESSION ENDED, ESID %02d %s, FILES %u OUT %u IN",
-                 c->pt ? c->pt->peer.name : c->ip, rc,
-                 c->s.esid_local ? "(OURS)" : "(PARTNER)",
-                 c->s.files_out, c->s.files_in);
-    /* a call that ended in an error before any file: not again at once */
-    if (c->initiator && rc != 0 && c->s.files_out == 0 && c->s.files_in == 0)
+    if (ab != 0)
+        oftp_mon_msg("OFTP203I %s: SESSION ENDED BY ABEND %s, FILES %u OUT %u IN",
+                     c->pt ? c->pt->peer.name : c->ip, abt,
+                     c->s.files_out, c->s.files_in);
+    else
+        oftp_mon_msg("OFTP203I %s: SESSION ENDED, ESID %02d %s, FILES %u OUT %u IN",
+                     c->pt ? c->pt->peer.name : c->ip, c->rc,
+                     c->s.esid_local ? "(OURS)" : "(PARTNER)",
+                     c->s.files_out, c->s.files_in);
+    /* a call that ended in an error before any file, or in an abend:
+    ** not again at once */
+    if (c->initiator && (ab != 0 || (c->rc != 0 && c->s.files_out == 0
+                                     && c->s.files_in == 0)))
         m->tcall[ptn_index(m, c->pt)] = (long)time(NULL) + m->cfg.retry;
     lock(m, 0);
     if (c->pt)
