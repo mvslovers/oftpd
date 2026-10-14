@@ -34,9 +34,9 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   test network steps 1-5 passed over up to four hops, EERP and NERP back
   (`internals/testnet.md`, Results). The first final release is 0.2.0
   (`TOFT020`, deletes `TOFT010`).
-- **Cross-memory transport** (#1, `internals/xmem.md`, a private SVC): step 0
-  is the read-only measurement of the free SVC numbers on dev1 and the
-  M38 stands. It replaces the TCP control port, which goes off by
+- **Cross-memory transport** (#1, `internals/xmem.md`, a private SVC):
+  SVC 237, free on all five stands (measured 2026-10-14); next the ESTAE
+  in OFTPD, then the output function under `ctl_*`. It replaces the TCP control port, which goes off by
   default in 0.2.0.
 - Control port: retry the bind on EADDRINUSE (a TIME-WAIT after a quick
   restart, `OFTP052W ... ERRNO 48` on m38b), as HTTPD does (`HTTPD030I`,

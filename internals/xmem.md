@@ -60,7 +60,7 @@ routine never walks the SSCT chain.
 
 ## 3. The SVC number
 
-`SVC=nnn` in `OFTPPRM0`, **no default**. At start OFTPD reads that SVC
+`SVC=nnn` in `OFTPPRM0` (237, section 3), **no default**. At start OFTPD reads that SVC
 table entry (`CVT` -> `CVTABEND` X'C8' -> `SCVTSVCT` X'84' -> `+nnn*8`,
 libc370 `ibm/mvs/ihascvt.h`) and steals it only if it holds the
 invalid-SVC entry point -- the entry point most of the slots 200-255
@@ -73,8 +73,32 @@ same slot.
 FMIDs: nsf370 took **SVC 239** on MVS/CE (240-255 were in use there). Proposed:
 a table in the root `CLAUDE.md` beside the FMID table, one row per
 product, with the stands each number was measured free on, with job
-numbers. Until it exists, OFTPD's number is chosen per stand after the
-measurement in section 9, step 0.
+numbers. Until it exists, this table is the record.
+
+**OFTPD takes SVC 237** (maintainer, 2026-10-14): free on MVS/CE and on
+TK5, two away from nsf370's 239, outside TK5's block 220-234 and not
+230, the one hole inside that block.
+
+### Measured 2026-10-14, read-only
+
+The SVC table 200-255 of every stand. "Free" means the entry point is the
+invalid-SVC routine's, the one most slots of 200-255 share -- not zero.
+dev1 through HTTPD's `/.dm`; the M38 stands with a BREXX batch job
+(`STORAGE()` along the same chain), purged afterwards.
+
+| Stand | System | Read by | Invalid-SVC EP | Used in 200-255 | Free in 200-255 |
+|---|---|---|---|---|---|
+| dev1 | MVS/CE | `/.dm` | `00CCC8` | 240-255 | 200-239 |
+| m38l | MVS/CE | JOB01705 | `00CCC8` | 240-255 | 200-239 |
+| m38x | MVS/CE | JOB00627 | `00CCC8` | 240-255 | 200-239 |
+| m38b | TK5 | JOB01099 | `017068` | 220-229, 231-234, 241-244, 248 | 200-219, 230, 235-240, 245-247, 249-255 |
+| m38r | TK5 | JOB00436 | `017068` | 220-229, 231-234, 241-244, 248 | 200-219, 230, 235-240, 245-247, 249-255 |
+
+Free on all five: 200-219, 230, 235-239. SVC 244 (the authorization SVC
+OFTPD, UFSD, FTPD and HTTPD use) is in use everywhere, as expected. No
+stand has an `IEASVCxx` member (MVS 3.8j has none) or an `SVC=` in
+`IEASYS00`/`IEASYS99`, so nothing beyond these tables is added at IPL.
+239 read free on dev1: NSFV was not running.
 
 ## 4. A request, step by step
 
@@ -209,10 +233,7 @@ OFTPD delays one `OFTP LIST` -- so the MVP does without, and adds it
 
 ## 9. The plan
 
-0. **Measure, read-only**: the SVC table 200-255 on dev1 and the four M38
-   stands (nsf370 `docs/measurements/64-3-0/svcread.py` reads it through
-   HTTPD's `/.dm`; where `/.dm` is not registered, a small batch program
-   that prints the table). Pick the number, start the registry.
+0. ~~Measure, read-only~~ -- done 2026-10-14 (section 3): SVC 237.
 1. ESTAE in OFTPD (useful on its own).
 2. The output function under `ctl_*` (socket or slot); host tests stay
    green.
