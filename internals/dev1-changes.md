@@ -117,3 +117,12 @@ The next start, STC00689, failed on the spool left not properly closed
 (JOB02258, CC 0, 36 records as before) mended it, and `S OFTPD` ->
 **STC00690**, both ports listening. The outputs of STC00688, STC00689 and
 JOB02258 purged afterwards (maintainer's OK).
+
+Then the fix for #2, in a slot of its own: `P OFTPD` (STC00690), deploy
+of `OFTPD` (source as committed next, banner `822ee57-dirty`), a plain
+`S OFTPD` -> STC00691 opened the spool without a VERIFY (35 transfers).
+`C OFTPD`; the next plain `S OFTPD` -> STC00692 printed `IEC161I
+056-084` for data and index, then `OFTP021W SPOOL WAS NOT CLOSED (OPEN
+RC 4), VERIFIED`, both ports listening, 35 transfers. So the open that
+an abend leaves behind answers rc 4. `P OFTPD` and a plain `S OFTPD`
+once more -> **STC00693**, no VERIFY, 35 transfers.

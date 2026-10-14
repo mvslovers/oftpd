@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include <mvs/ecb.h>
+#include <mvs/idcams.h>
 #include <mvs/lock.h>
 #include <mvs/thread.h>
 #include <mvs/vsam.h>
@@ -43,6 +44,7 @@ struct oftp_spool {
     ECB         work;
     CTHDTASK   *task;
     int         lastrc, lastrsn;        /* VSAM codes of the last failure */
+    int         verified;               /* open rc that made us VERIFY    */
     unsigned char buf[OFTP_SPLRECL];
 };
 
@@ -226,36 +228,53 @@ request(OFTP_SPOOL *sp, int op, const char *key, OFTP_SPREC *rec)
 }
 
 /* Opens for update; a cluster never loaded first gets its control record
-** through a sequential load.
+** through a sequential load. A cluster left open by an abend fails the
+** open (IEC161I 056-084 on the console): VERIFY it through the DD, once,
+** and open again. A failed open never leads to the load: on a cluster
+** with REUSE that would reset it.
 */
 static int
 open_update(OFTP_SPOOL *sp, char *why, int whylen)
 {
-    int rc;
+    int rc, orc, vrc;
 
-    if (vsopen(sp->ddname, VSTYPE_KSDS, VSACCESS_DYNAM, VSMODE_UPD, &sp->vs) == 0) {
-        rc = read_key(sp, ctlkey);
-        if (rc == 0)
-            return 0;
-        /* A cluster never loaded opens for update, but in load mode:
-        ** POINT and a direct PUT then both fail with reason 116 (X'74',
-        ** measured on MVS). Load it sequentially below instead.
-        */
-        if (sp->lastrsn == 116) {
-            vsclose(sp->vs);
-            goto load;
+    if ((orc = vsopen(sp->ddname, VSTYPE_KSDS, VSACCESS_DYNAM, VSMODE_UPD,
+                      &sp->vs)) != 0) {
+        vrc = idcams(" VERIFY FILE(%s)", sp->ddname);
+        if (vrc != 0) {
+            snprintf(why, (size_t)whylen,
+                     "open rc %d, VERIFY condition code %d", orc, vrc);
+            return -1;
         }
-        /* loaded once, control record missing: put it back */
-        memset(sp->buf, 0, OFTP_SPLRECL);
-        memcpy(sp->buf + 8, "0000000", 7);
-        if (vswrite(sp->vs, sp->buf, OFTP_SPLRECL, (void *)ctlkey, 8) == 0)
-            return 0;
-        snprintf(why, (size_t)whylen,
-                 "control record: lookup rc %d reason %d, insert rc %d reason %d",
-                 sp->lastrc, sp->lastrsn, sp->vs->rc, sp->vs->rsn);
-        vsclose(sp->vs);
-        return -1;
+        if ((rc = vsopen(sp->ddname, VSTYPE_KSDS, VSACCESS_DYNAM,
+                         VSMODE_UPD, &sp->vs)) != 0) {
+            snprintf(why, (size_t)whylen,
+                     "open rc %d, again rc %d after VERIFY", orc, rc);
+            return -1;
+        }
+        sp->verified = orc;
     }
+    rc = read_key(sp, ctlkey);
+    if (rc == 0)
+        return 0;
+    /* A cluster never loaded opens for update, but in load mode:
+    ** POINT and a direct PUT then both fail with reason 116 (X'74',
+    ** measured on MVS). Load it sequentially below instead.
+    */
+    if (sp->lastrsn == 116) {
+        vsclose(sp->vs);
+        goto load;
+    }
+    /* loaded once, control record missing: put it back */
+    memset(sp->buf, 0, OFTP_SPLRECL);
+    memcpy(sp->buf + 8, "0000000", 7);
+    if (vswrite(sp->vs, sp->buf, OFTP_SPLRECL, (void *)ctlkey, 8) == 0)
+        return 0;
+    snprintf(why, (size_t)whylen,
+             "control record: lookup rc %d reason %d, insert rc %d reason %d",
+             sp->lastrc, sp->lastrsn, sp->vs->rc, sp->vs->rsn);
+    vsclose(sp->vs);
+    return -1;
 load:
     /* never loaded: load the control record, then reopen */
     if (vsopen(sp->ddname, VSTYPE_KSDS, VSACCESS_SEQ, VSMODE_OUT, &sp->vs) != 0) {
@@ -275,6 +294,12 @@ load:
         return -1;
     }
     return 0;
+}
+
+int
+oftp_spl_verified(const OFTP_SPOOL *sp)
+{
+    return sp->verified;
 }
 
 OFTP_SPOOL *

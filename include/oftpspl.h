@@ -77,6 +77,10 @@ typedef struct oftp_spool OFTP_SPOOL;
 extern OFTP_SPOOL *oftp_spl_open(const char *ddname, char *why, int whylen)
                                                         asm("OFTPSPOP");
 extern void oftp_spl_close(OFTP_SPOOL *sp)              asm("OFTPSPCL");
+/* Not 0 when the open had to VERIFY the cluster first (left open by an
+** abend): the return code of the open that failed.
+*/
+extern int  oftp_spl_verified(const OFTP_SPOOL *sp)     asm("OFTPSPVF");
 
 /* 0 or a negative error. add assigns rec->key. */
 extern int  oftp_spl_add(OFTP_SPOOL *sp, OFTP_SPREC *rec) asm("OFTPSPAD");
