@@ -378,6 +378,18 @@ f_write(void *ctx, OFTP_FH *fh, const unsigned char *b, unsigned n, int eor)
     SESCTX *c = ctx;
 
     (void)fh;
+#ifdef OFTP_DEBUG_ABEND
+    /* Test builds only (-DOFTP_DEBUG_ABEND), never shipped: a file
+    ** received under this virtual name ends its session in an S0C4 with
+    ** the data set open and the spool record ACTIVE, to measure the
+    ** recovery in session_thread() on MVS.
+    */
+    if (strcmp(c->in.dsn, "OFTPD.TEST.ABEND") == 0) {
+        volatile int *trap = (volatile int *)0;
+
+        *trap = 1;
+    }
+#endif
     return oftp_dsf_write(c->idsf, b, n, eor);
 }
 
