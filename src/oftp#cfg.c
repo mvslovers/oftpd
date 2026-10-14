@@ -86,7 +86,7 @@ monitor_kw(OFTP_CONFIG *c, const char *k, const char *v)
     if (strcmp(k, "TMPPREFIX") == 0)
         return put(c->tmpprefix, sizeof(c->tmpprefix), v);
     if (strcmp(k, "MAXSESS") == 0)
-        return (n = num(v, 1, 16)) < 0 ? -1 : (c->maxsess = (int)n, 0);
+        return (n = num(v, 1, OFTP_MAXSESS)) < 0 ? -1 : (c->maxsess = (int)n, 0);
     if (strcmp(k, "SDEB") == 0)
         return (n = num(v, 128, OFTP_SDEB_MAX)) < 0 ? -1 : (c->sdeb = (unsigned)n, 0);
     if (strcmp(k, "CREDIT") == 0)

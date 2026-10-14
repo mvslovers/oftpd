@@ -17,6 +17,7 @@
 #include <mvs/console.h>
 #include <mvs/crt.h>
 #include <mvs/ecb.h>
+#include <mvs/recovery.h>
 
 #include "oftp.h"
 #include "oftpmon.h"
@@ -25,6 +26,31 @@ static void
 cfgmsg(void *ctx, const char *line)
 {
     oftp_mon_msg("OFTP010W %s: %s", (const char *)ctx, line);
+}
+
+/* The ESTAE (TERM=YES, so a CANCEL comes here too). A socket outlives
+** the program unless it is closed, and a listener left open holds its
+** port until Hercules is restarted; so close them all, then percolate
+** for the dump. SDWAPARM is the {routine, udata} pair estae() keeps,
+** not udata itself (ufsd#49). One message: in an S222 only the first and
+** the last WTO are sure to reach the console.
+*/
+static void
+recover(SDWA *sdwa)
+{
+    void **param;
+    OFTP_MON *m;
+
+    if (sdwa == NULL)
+        return;
+    param = (void **)sdwa->SDWAPARM;
+    m = param != NULL ? (OFTP_MON *)param[1] : NULL;
+    if (m != NULL && memcmp(m->eye, "OFTPMON ", 8) == 0)
+        oftp_mon_msg("OFTP098E OFTPD ABEND, %d SOCKETS CLOSED",
+                     oftp_mon_abend(m));
+    else
+        oftp_mon_msg("OFTP098E OFTPD ABEND, MONITOR BLOCK NOT FOUND");
+    sdwa->SDWARCDE = SDWACWT;
 }
 
 static void
@@ -43,7 +69,7 @@ main(int argc, char **argv)
     COM *com;
     CIB *cib;
     char why[80];
-    int on, running = 1, apf_entry, apf_rc;
+    int on, running = 1, apf_entry, apf_rc, rc = 8, stae;
 
     (void)argc;
     if ((com = __gtcom()) == NULL) {
@@ -69,14 +95,17 @@ main(int argc, char **argv)
         return 8;
     }
     memcpy(m->eye, "OFTPMON ", 8);
+    m->csock = -1;
+    if ((stae = estae(ESTAE_CREATE, recover, m) == 0) == 0)
+        oftp_mon_msg("OFTP006W NO ABEND RECOVERY (ESTAE FAILED)");
     oftp_cfg_defaults(&m->cfg);
     if (oftp_mon_load(&m->cfg, "OFTPPRM", 0) != 0) {
         oftp_mon_msg("OFTP011E DD OFTPPRM CANNOT BE OPENED");
-        return 8;
+        goto out;
     }
     if (m->cfg.odetteid[0] == '\0') {
         oftp_mon_msg("OFTP012E OFTPPRM HAS NO ODETTEID");
-        return 8;
+        goto out;
     }
     if (oftp_mon_load(&m->cfg, "OFTPPTN", 1) != 0)
         oftp_mon_msg("OFTP013W DD OFTPPTN CANNOT BE OPENED, NO PARTNERS");
@@ -86,13 +115,13 @@ main(int argc, char **argv)
 
     if ((m->spool = oftp_spl_open("OFTPSPL", why, sizeof(why))) == NULL) {
         oftp_mon_msg("OFTP020E SPOOL NOT OPEN: %s", why);
-        return 8;
+        goto out;
     }
     oftp_mon_recover(m);
     if (oftp_mon_start(m) != 0) {
         oftp_mon_stop(m);
         oftp_spl_close(m->spool);
-        return 8;
+        goto out;
     }
     oftp_mon_msg("OFTP001I OFTPD READY");
 
@@ -122,6 +151,11 @@ main(int argc, char **argv)
     oftp_mon_stop(m);
     oftp_spl_close(m->spool);
     oftp_mon_msg("OFTP003I OFTPD ENDED");
+    rc = 0;
+out:
+    /* the ESTAE points at m: delete it before m goes */
+    if (stae)
+        estae(ESTAE_DELETE, NULL, NULL);
     free(m);
-    return 0;
+    return rc;
 }

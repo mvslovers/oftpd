@@ -133,6 +133,7 @@ typedef struct sesctx {
     OFTP_PARTNER *pt;
     char        ip[16];
     int         sock;
+    int         slot;                   /* in m->ssock, or -1            */
     int         initiator;
     OFTP_SPREC  out;                    /* the file being sent           */
     OFTP_DSF   *odsf;
@@ -606,6 +607,8 @@ session_thread(void *arg1, void *arg2)
         oftp_dsf_close(c->idsf, 0);
         oftp_spl_del(m->spool, c->in.key);
     }
+    if (c->slot >= 0)
+        m->ssock[c->slot] = 0;
     oftp_net_close(c->sock);
     oftp_mon_msg("OFTP203I %s: SESSION ENDED, ESID %02d %s, FILES %u OUT %u IN",
                  c->pt ? c->pt->peer.name : c->ip, rc,
@@ -628,6 +631,7 @@ start_session(OFTP_MON *m, int sock, const char *ip, OFTP_PARTNER *pt)
 {
     SESCTX *c;
     CTHDTASK *t;
+    int i;
 
     if ((c = calloc(1, sizeof(*c))) == NULL) {
         oftp_net_close(sock);
@@ -638,8 +642,15 @@ start_session(OFTP_MON *m, int sock, const char *ip, OFTP_PARTNER *pt)
     c->pt = pt;
     c->initiator = pt != NULL;
     snprintf(c->ip, sizeof(c->ip), "%s", ip);
+    c->slot = -1;
     lock(m, 0);
     m->nsess++;
+    for (i = 0; i < OFTP_MAXSESS; i++)
+        if (m->ssock[i] == 0) {
+            m->ssock[i] = sock;
+            c->slot = i;
+            break;
+        }
     unlock(m, 0);
     t = cthread_create_ex(session_thread, c, NULL, 64 * 1024);
     if (t == NULL) {
@@ -647,6 +658,8 @@ start_session(OFTP_MON *m, int sock, const char *ip, OFTP_PARTNER *pt)
         m->nsess--;
         if (pt)
             m->busy[ptn_index(m, pt)] = 0;
+        if (c->slot >= 0)
+            m->ssock[c->slot] = 0;
         unlock(m, 0);
         oftp_net_close(sock);
         free(c);
@@ -1178,6 +1191,7 @@ ctl_thread(void *arg1, void *arg2)
             continue;
         }
         /* one request per connection; no security during development */
+        m->cconn = s;
         oftp_net_puts(s, "220 OFTPD control port");
         n = oftp_net_gets(s, line, sizeof(line), 30);
         if (n > 0) {
@@ -1220,6 +1234,7 @@ ctl_thread(void *arg1, void *arg2)
             else
                 oftp_net_puts(s, "500 unknown request");
         }
+        m->cconn = 0;
         oftp_net_close(s);
     }
     return 0;
@@ -1320,15 +1335,16 @@ oftp_mon_start(OFTP_MON *m)
                      m->cfg.port, err);
         return -1;
     }
-    oftp_mon_msg("OFTP051I LISTENING ON PORT %d", m->cfg.port);
+    oftp_mon_msg("OFTP051I LISTENING ON PORT %d, SOCKET %d", m->cfg.port,
+                 m->lsock);
     m->csock = -1;
     if (m->cfg.ctlport > 0) {
         if ((m->csock = oftp_net_listen(m->cfg.ctlport, &err)) < 0)
             oftp_mon_msg("OFTP052W CONTROL PORT %d NOT OPEN, ERRNO %d",
                          m->cfg.ctlport, err);
         else
-            oftp_mon_msg("OFTP053I CONTROL PORT %d (NO SECURITY)",
-                         m->cfg.ctlport);
+            oftp_mon_msg("OFTP053I CONTROL PORT %d (NO SECURITY), SOCKET %d",
+                         m->cfg.ctlport, m->csock);
     }
     m->t_listen = cthread_create_ex(listen_thread, m, NULL, 32 * 1024);
     m->t_sched = cthread_create_ex(sched_thread, m, NULL, 32 * 1024);
@@ -1356,8 +1372,13 @@ oftp_mon_stop(OFTP_MON *m)
     join(&m->t_listen);
     join(&m->t_sched);
     join(&m->t_ctl);
+    /* closed numbers go back to the system: forget them, or an abend
+    ** during the wait below would close whatever got them next
+    */
     oftp_net_close(m->lsock);
+    m->lsock = -1;
     oftp_net_close(m->csock);
+    m->csock = -1;
     for (i = 0; m->nsess > 0 && i < 60; i++) {
         ECB e = 0;
 
@@ -1365,6 +1386,40 @@ oftp_mon_stop(OFTP_MON *m)
             oftp_mon_msg("OFTP095I WAITING FOR %d SESSIONS", m->nsess);
         ecb_timed_wait(&e, 100, 0);
     }
+}
+
+int
+oftp_mon_abend(OFTP_MON *m)
+{
+    int i, n = 0, sk;
+
+    /* No lock: the task that held it may be the one that failed. A
+    ** session ending at this moment may close its socket as well; the
+    ** second close of a number nobody has reused yet is harmless.
+    */
+    m->stop = 1;
+    if (m->lsock > 0) {
+        oftp_net_close(m->lsock);
+        m->lsock = -1;
+        n++;
+    }
+    if (m->csock > 0) {
+        oftp_net_close(m->csock);
+        m->csock = -1;
+        n++;
+    }
+    if ((sk = m->cconn) > 0) {
+        m->cconn = 0;
+        oftp_net_close(sk);
+        n++;
+    }
+    for (i = 0; i < OFTP_MAXSESS; i++)
+        if ((sk = m->ssock[i]) > 0) {
+            m->ssock[i] = 0;
+            oftp_net_close(sk);
+            n++;
+        }
+    return n;
 }
 
 void

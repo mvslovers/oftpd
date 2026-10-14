@@ -192,6 +192,11 @@ section 4. A stolen slot left behind breaks that SVC number for every
 program on the system, so the restore is the one step that must not be
 skipped.
 
+**No SDWA, no recovery.** libc370's ESTAE stub percolates without
+calling the C routine when RTM passes no SDWA (R0 = 12, storage
+shortage). Such an abend skips the slot restore and the socket close; it
+cannot be fixed in C and stays a residual risk.
+
 **After an abend** the next `S OFTPD` finds the SSCT `OFT1` still
 installed with a retained anchor. MVP: it removes that SSCT and starts
 fresh, and the old anchor, pool and module stay in CSA until the next
@@ -234,7 +239,9 @@ OFTPD delays one `OFTP LIST` -- so the MVP does without, and adds it
 ## 9. The plan
 
 0. ~~Measure, read-only~~ -- done 2026-10-14 (section 3): SVC 237.
-1. ESTAE in OFTPD (useful on its own).
+1. ESTAE in OFTPD (useful on its own: it closes the listeners and the
+   open connections, which otherwise hold their ports until Hercules is
+   restarted).
 2. The output function under `ctl_*` (socket or slot); host tests stay
    green.
 3. `OFTPSVC` and the anchor; a probe client that round-trips `STATUS`.

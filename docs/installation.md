@@ -142,7 +142,7 @@ spool and the authority to create data sets under `INPREFIX` and
 Start it with `S OFTPD` (or `S OFTPD,S='MY.SPOOL'`). The console shows
 `OFTP000I` with the version, `OFTP004I` (step 4), `OFTP014I` with the Odette ID and the number
 of partners enabled, `OFTP001I OFTPD READY`, `OFTP051I LISTENING ON PORT
-3305` and `OFTP053I CONTROL PORT 3306 (NO SECURITY)`. A partner entry with
+3305, SOCKET n` and `OFTP053I CONTROL PORT 3306 (NO SECURITY), SOCKET n`. A partner entry with
 an error is reported with `OFTP010W` and disabled; the others still work.
 
 The operator commands are listed at the top of the procedure: `F OFTPD,D P`

@@ -29,6 +29,7 @@
 #include "oftpsess.h"
 
 #define OFTP_MAXPTN     32              /* partners in the table         */
+#define OFTP_MAXSESS    16              /* sessions at once (MAXSESS)    */
 
 typedef struct oftp_partner {
     OFTP_PEER   peer;                   /* what the session engine needs */

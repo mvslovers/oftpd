@@ -38,6 +38,11 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   SVC 237, free on all five stands (measured 2026-10-14); next the ESTAE
   in OFTPD, then the output function under `ctl_*`. It replaces the TCP control port, which goes off by
   default in 0.2.0.
+- **Before 0.2.0**: a session subtask that abends ends inside cthread's
+  try() and never reaches its cleanup, so its entry in `m->ssock` stays;
+  the number goes back to the system, and a later abend of OFTPD would
+  close whoever has it then. Catch the abend in `session_thread` (as
+  FTPD's dispatch does) and clear the entry there.
 - Control port: retry the bind on EADDRINUSE (a TIME-WAIT after a quick
   restart, `OFTP052W ... ERRNO 48` on m38b), as HTTPD does (`HTTPD030I`,
   up after about 50 s). Moot once the SVC transport is in.

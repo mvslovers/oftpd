@@ -25,6 +25,11 @@ typedef struct oftp_mon {
     unsigned    counter;                /* time counter of virtual files */
     ECB         wake;                   /* wakes the scheduler           */
     CTHDTASK   *t_listen, *t_sched, *t_ctl;
+    /* every open connection, for the abend: sockets are the system's,
+    ** not the program's, and outlive it unless closed (0 = none)
+    */
+    volatile int ssock[OFTP_MAXSESS];   /* sessions                      */
+    volatile int cconn;                 /* the control-port request      */
 } OFTP_MON;
 
 /* Console and log: one line, already carrying its message id */
@@ -34,6 +39,11 @@ extern void oftp_mon_msg(const char *fmt, ...)          asm("OFTPMMSG");
 extern int  oftp_mon_start(OFTP_MON *m)                 asm("OFTPMSTR");
 /* Stops them and waits for the sessions to end */
 extern void oftp_mon_stop(OFTP_MON *m)                  asm("OFTPMSTP");
+
+/* After an abend, from the ESTAE: closes the listeners and every open
+** connection, takes no lock and frees nothing. Returns the sockets closed.
+*/
+extern int  oftp_mon_abend(OFTP_MON *m)                 asm("OFTPMABD");
 
 /* Puts transfers left ACTIVE by an earlier run back in order */
 extern void oftp_mon_recover(OFTP_MON *m)               asm("OFTPMREC");
