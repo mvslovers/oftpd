@@ -44,14 +44,16 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 - ~~Before 0.2.0: the spool after an abend~~ (#2) -- OFTPD runs VERIFY
   itself when the open fails (rc 4 after a CANCEL, measured on dev1) and
   says so in `OFTP021W`.
-- **Before 0.2.0**: a session subtask that abends ends inside cthread's
-  try() and never reaches its cleanup, so its entry in `m->ssock` stays;
-  the number goes back to the system, and a later abend of OFTPD would
-  close whoever has it then. Catch the abend in `session_thread` (as
-  FTPD's dispatch does) and clear the entry there.
-- Control port: retry the bind on EADDRINUSE (a TIME-WAIT after a quick
-  restart, `OFTP052W ... ERRNO 48` on m38b), as HTTPD does (`HTTPD030I`,
-  up after about 50 s). Moot once the SVC transport is in.
+- ~~Before 0.2.0: a session subtask that abends~~ -- libc370's subtask
+  driver runs it with no recovery, so the session stayed counted, its
+  partner was refused (ESID 03), its spool record stayed ACTIVE and
+  `P OFTPD` hung (dev1, 2026-10-15). The session now runs under `try()`
+  and is cleaned up like one that ends (`OFTP209E`, `OFTP203I`); measured
+  on dev1 with a debug-only trigger (`-DOFTP_DEBUG_ABEND`). Left open: an
+  abend inside the spool's lock or a queued spool request, and the
+  session engine's buffer after an abend.
+- Session subtasks are never detached (#3): each may keep its stack and
+  TCB. Measure the storage over about 50 sessions first.
 - An EERP held at a relay after a call collision (testnet.md, Results):
   seen once at m38b, not reproduced. Find out whether a refused call
   (ESID 03, `OFTP202W`) can leave owed EERPs uncalled beyond RETRY.
