@@ -88,6 +88,7 @@ STCLAIM  EQU   1
 STPEND   EQU   2
 STDONE   EQU   3
 STSTOP   EQU   4
+STCPYO   EQU   5                   collected, copy-out in progress
 RCOK     EQU   0
 RCMORE   EQU   4
 RCBUSY   EQU   8
@@ -375,8 +376,23 @@ POSTOK   DS    0H
          BE    STOPDEC             shutdown while parked
          B     BADSTATE            anything else: protocol error
 *---------------------------------------------------------------------*
-* Validate the reply bounds before copying anything to caller storage.
-REPLYOK  L     R10,SLREPLEN(,R7)
+* Take the slot out of DONE and into COPYOUT before reading a field of
+* it. This is the only thing that tells OFTPD's sweep apart a routine
+* that woke and then died from a caller that has not been dispatched
+* yet -- the second can sit in DONE for minutes, because its address
+* space may be swapped out, and freeing that slot would hand it to
+* another caller while its owner is still coming (xmem.md section 6).
+*
+* CS, not ST: if the sweep got here first the slot is no longer DONE
+* and is very likely someone else's by now. Then this invocation owns
+* nothing -- it must not store into the slot and must not decrement,
+* because whoever freed the slot owns that decrement. SWEPT does
+* neither.
+REPLYOK  LA    R3,STDONE
+         LA    R4,STCPYO
+         CS    R3,R4,SLSTATE(R7)
+         BNE   SWEPT
+         L     R10,SLREPLEN(,R7)
          LTR   R10,R10
          BM    BADREPLY
          C     R10,=A(REPMAX)
@@ -443,6 +459,16 @@ DECLP    LR    R4,R3
          BR    R14
 *---------------------------------------------------------------------*
 * Header validation failed after claim. Return BADREQ and release.
+* The sweep freed our slot while we were parked: it is not ours any
+* more and may already be another caller's. Touch neither the slot nor
+* the in-flight count -- whoever frees a slot owns its decrement, and
+* a second one here would take the count below zero and leave every
+* later P OFTPD draining forever.
+SWEPT    LA    R15,RCDOWN
+         SLR   R0,R0
+         SLR   R1,R1
+         BR    R14
+*---------------------------------------------------------------------*
 BADHDR   LA    R15,RCBAD
          B     FREEDEC
 * An unusable reply, or a wake-up in a state OFTPD should never leave:
