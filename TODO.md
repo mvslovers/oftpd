@@ -47,12 +47,16 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   `oftpd.c` wiring, then a probe round-tripping `STATUS` on a dev1 slot.
   In pieces, since none of it runs off MVS: install and restore first,
   checked with `svcdm.py` before and after.
-  **Decide before that probe** whether a program check inside the
-  routine is covered by recovery in `OFTPSVC` or by widening OFTPD's
-  sweep (`internals/xmem.md` section 6): today it leaks the slot and the
-  in-flight count, and step 5's cancelled-client test does not tell the
-  two failure modes apart. It replaces the TCP control port, which goes
-  off by default in 0.2.0.
+  A program check inside the routine gets no recovery of its own: it is
+  prevented where it can be -- `TPROT` on both ends of every caller
+  range before the claim, so a forged pointer is refused instead of
+  faulting in key 0 -- and swept where it cannot
+  (`internals/xmem.md` section 6, with the `COPYOUT` state telling a
+  faulted copy-out from a caller that is merely swapped out). Both of
+  those are in; the sweep itself is part of `oftp#svc.c`, and whoever
+  frees a slot owns its in-flight decrement -- a second decrement
+  underflows the count and wedges `P OFTPD`. It replaces the TCP
+  control port, which goes off by default in 0.2.0.
 - ~~Before 0.2.0: the spool after an abend~~ (#2) -- OFTPD runs VERIFY
   itself when the open fails (rc 4 after a CANCEL, measured on dev1) and
   says so in `OFTP021W`.
