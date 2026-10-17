@@ -389,11 +389,10 @@ assembly first:
   to establish. The routine blank-fills the field and then moves only
   the declared bytes from `+1`, clamped to 8, like libc370's consumers
   (`httpd/src/httpxauth.c`, and oftpd's own `src/mvs/oftp#cli.c`).
-- **The branch POST needs R10** = the completion code, carrying the post
-  bit; POST does not supply it. libc370 `@@xmpost.c` ORs in
-  `X'40000000'` and nsf370 loads the same constant. Omitting it leaves
-  whatever the register happened to hold -- in the first draft, the
-  caller's TCB address, whose bit 1 is 0.
+- **The branch POST needs R10** = the completion code. It is required
+  input, but *not* because POST would otherwise leave the ECB
+  unposted -- see the interface note below, which corrects the first
+  version of this bullet.
 - **The reply WAIT must not be a loop.** OFTPD stores the reply and the
   state *before* the POST, so a wake-up in any other state is a
   protocol error. Re-WAITing on the already-posted ECB returns at once:
@@ -407,6 +406,46 @@ storage is touched before the `MVCK`**, the eye catcher included. A
 key-0 `CLC` on the caller's pointer is a 4-byte read oracle on any
 address and an S0C4 in key 0 on a bad one; the eye catcher is checked
 on the staged key-0 image, where it costs nothing.
+
+### The branch-entry POST interface, from IBM's source
+
+Read in `mvs38-ibmsrc` by the libc370 session on 2026-10-17, because
+the first version of the R10 bullet above had the right fix and the
+wrong reason. Primary source, not inferred from libc370's C:
+
+- **POST sets the post bit itself.** Every path in
+  `ibm/IEA/IEAVSY50.asm` does `N XRPTCODE,OFFWAIT` then
+  `O XRPTCODE,ONCOMPL` before storing the ECB (lines 966, 1101, 1359,
+  1386, and the cross-memory SRB path at 1498); `OFFWAIT DC XL4'7FFFFFFF'`
+  and `ONCOMPL DC XL4'40000000'` at 2013. So libc370's
+  `postcode | 0x40000000` in `@@xmpost.c` is redundant, and an omitted
+  R10 does **not** leave the ECB unposted.
+- **R10 is required all the same, for two other reasons.** The
+  interface block at `IEAVSY50.asm:628-646`: bits 2-31 are the
+  completion code whoever waits reads, and **the high bit requests the
+  ECBKEY option, with the key taken from R0 byte 3** (notes 3 and 7;
+  the XM path tests it at `ECBVALCK`, line 1660, `LTR`/`BNM`).
+  libc370's `& 0x7FFFFFFF` is what rules that out. So the constant is
+  exactly `X'40000000'`: completion code 0, ECBKEY off. Leaving a
+  24-bit TCB address there posts the ECB with a garbage code and, by
+  luck of bit 0 being off, no ECBKEY request.
+- **R9 *and* R14 survive the call**, not R9 alone: exit notes at
+  `IEAVSY50.asm:675-680`, "REGS 9,14 ARE SAVED OTHERS ARE LOST IF LOCAL
+  LOCK IS NOT HELD". libc370's `@@xmpost.c` comment and nsf370's say
+  only R9. The routine saves R14 in `RBEXSAVE` anyway, so this costs
+  nothing -- but do not tighten it on the strength of those comments.
+
+The same read settled `aceeuser`: the layout is IBM's, not a
+convention of its consumers -- `macros/maclib/IHAACEE.asm:53-55` is
+`ACEEUSER DS 0CL9` / `ACEEUSRL DS AL1` / `ACEEUSRI DS CL8`. libc370's
+`ihaacee.h:22` collapses the three into `char aceeuser[9]`, which is
+where the trap comes from. `ACEEUSRI` is treated as blank-padded to 8
+by IBM's own code (`ibm/IEF/IEFSMFIE.asm:395`, `HASPSSSM.asm:9055`) and
+by RAKF (`ICHSFR00.hlasm:527` compares `=CL8'STC'`), so a plain 8-byte
+move from `+1` would also have been correct; the length-clamped move is
+correct either way. Not read: the RACINIT path that *builds* the ACEE,
+so the padding is three consumers' worth of evidence, not the
+producer's.
 
 **The model is nsf370**, which solved exactly this problem and measured it
 live on MVS/CE. Read, in this order:

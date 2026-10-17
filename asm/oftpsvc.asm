@@ -272,10 +272,15 @@ CAPOK    ST    R3,SLCAP(,R7)
          O     R11,=X'80000000'
          LA    R12,POSTERR
          L     R13,ANCSASCB(,R2)     OFTPD's ASCB
-*  R10 is the POST completion code and carries the post bit; POST does
-*  not supply it (libc370 @@xmpost.c ORs in X'40000000', nsf370 loads
-*  the same constant). Without this R10 still held the caller's TCB
-*  address from the TCBPKF load above.
+*  R10 is the POST completion code and is required input. POST does set
+*  the post bit itself (IEAVSY50 ANDs OFFWAIT and ORs ONCOMPL before it
+*  stores the ECB), so this is not about whether the ECB gets posted.
+*  Two other things ride on R10: bits 2-31 are the code whoever waits
+*  reads, and the HIGH bit asks for the ECBKEY option, with the key
+*  taken from R0 byte 3 (IEAVSY50 interface notes 3 and 7, and the
+*  LTR/BNM at ECBVALCK). Hence exactly X'40000000': code 0, ECBKEY off.
+*  Without it R10 still held the caller's TCB address from the TCBPKF
+*  load above -- bit 0 off, so posted with a garbage code.
          L     R10,=X'40000000'      POST completion code (0)
          SLR   R15,R15
          L     R15,16(,R15)          CVT
