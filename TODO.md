@@ -40,9 +40,13 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   answer through an output function (eeace93); `asm/oftpsvc.asm` is
   written and assembles clean under as370 1.6.3, all 29 field offsets
   holding against `include/oftpsvc.h` under cc370, nothing run on MVS.
-  Next, in this order: the anchor and the STC-side install
-  (`src/mvs/oftp#svc.c`), `[module.OFTPSVC]` in `mbt.toml`, `SVC=` in
-  `oftp#cfg.c`, then a probe round-tripping `STATUS` on a dev1 slot.
+  `[module.OFTPSVC]` and `SVC=` (200-255, no default) are in too, so
+  mbt assembles and links the routine and `module-data` stays clean.
+  Next: `src/mvs/oftp#svc.c` -- anchor, `__loadhi` and patch, SVC
+  reserve/restore, SSCT, slot thread, liveness, sweep -- then the
+  `oftpd.c` wiring, then a probe round-tripping `STATUS` on a dev1 slot.
+  In pieces, since none of it runs off MVS: install and restore first,
+  checked with `svcdm.py` before and after.
   **Decide before that probe** whether a program check inside the
   routine is covered by recovery in `OFTPSVC` or by widening OFTPD's
   sweep (`internals/xmem.md` section 6): today it leaks the slot and the

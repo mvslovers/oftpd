@@ -27,6 +27,18 @@ rent = true
 reus = true
 ac = 1
 
+# The cross-memory SVC routine (internals/xmem.md). Hand-written S/370
+# assembler, no C runtime: OFTPD loads it into CSA with __loadhi, patches
+# the anchor address into its word at +4 and reserves the SVC slot named
+# by SVC= in OFTPPRM. It is entered by the SVC FLIH and never as a
+# program, hence startup=false and no main.
+[module.OFTPSVC]
+sources = ["asm/oftpsvc.asm"]
+entry = "OFTPSVC"
+startup = false
+rent = true
+reus = true
+
 # The TSO command and batch utility: a client of the monitor.
 [module.OFTP]
 sources = ["src/oftp.c"]

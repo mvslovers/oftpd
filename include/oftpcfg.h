@@ -8,9 +8,9 @@
 ** '*' in column 1 starts a comment line. In the partner member, PARTNER=
 ** opens a new entry and the keywords after it belong to that entry.
 **
-**   OFTPPRM:  ODETTEID= PORT= CONTROLPORT= INPREFIX= TMPPREFIX= MAXSESS=
-**             SDEB= CREDIT= TIMEOUT= TLRECL= UBLKSIZE= UNIT= VOLSER=
-**             RETRY= MAXRETRY= RELAY=
+**   OFTPPRM:  ODETTEID= PORT= CONTROLPORT= SVC= INPREFIX= TMPPREFIX=
+**             MAXSESS= SDEB= CREDIT= TIMEOUT= TLRECL= UBLKSIZE= UNIT=
+**             VOLSER= RETRY= MAXRETRY= RELAY=
 **   OFTPPTN:  PARTNER= ODETTEID= PASSWORD= OURPASSWORD= OURID= HOST=
 **             PORT= LEVEL= SDEB= CREDIT= MODE= COMPRESS= ENABLED= CALL=
 **             ADDRESS= XLATE= VIA=
@@ -47,6 +47,14 @@ typedef struct oftp_config {
     char        odetteid[OFTP_IDLEN + 1];
     int         port;
     int         ctlport;
+    /* SVC=nnn: the installation SVC the cross-memory transport reserves
+    ** while OFTPD runs, 200-255. 0 means no transport, and that is the
+    ** default on purpose -- two products each picking "a free one" at
+    ** start take the same slot on the same stand. The number comes from
+    ** the registry in the ecosystem CLAUDE.md (OFTPD's is 237), never
+    ** from a scan. internals/xmem.md section 3.
+    */
+    int         svc;
     char        inprefix[36];
     char        tmpprefix[36];
     int         maxsess;

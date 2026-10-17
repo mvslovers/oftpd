@@ -50,8 +50,24 @@ main(void)
     CHECK(strcmp(c.odetteid, "O0013000000MVS1") == 0, "values upper-cased");
     CHECK(c.maxsess == 2 && c.sdeb == 2048 && c.cred == 7, "numbers, comma as separator");
     CHECK_EQ(c.timeout, 60, "defaults kept");
+    CHECK_EQ(c.svc, 0, "SVC has no default: no number, no transport");
     CHECK_EQ(oftp_cfg_line(&c, 0, "PORT=0 BOGUS=1", 9, count, NULL), 2,
              "a bad value and an unknown keyword");
+
+    /* SVC= takes 200-255 only. Outside it has to be an error and must
+    ** leave the field alone: a typo that silently left the transport
+    ** off would say nothing at all.
+    */
+    CHECK_EQ(oftp_cfg_line(&c, 0, "SVC=237", 10, count, NULL), 0,
+             "SVC=237 accepted");
+    CHECK_EQ(c.svc, 237, "SVC=237 stored");
+    CHECK_EQ(oftp_cfg_line(&c, 0, "SVC=199", 11, count, NULL), 1,
+             "SVC below the installation range refused");
+    CHECK_EQ(oftp_cfg_line(&c, 0, "SVC=256", 12, count, NULL), 1,
+             "SVC above the installation range refused");
+    CHECK_EQ(oftp_cfg_line(&c, 0, "SVC=0", 13, count, NULL), 1,
+             "SVC=0 refused, not a silent off");
+    CHECK_EQ(c.svc, 237, "a refused SVC leaves the number alone");
 
     msgs = 0;
     for (i = 0; ptn[i]; i++)
