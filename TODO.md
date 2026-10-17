@@ -41,17 +41,26 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   written and assembles clean under as370 1.6.3, all 29 field offsets
   holding against `include/oftpsvc.h` under cc370, nothing run on MVS.
   `[module.OFTPSVC]` and `SVC=` (200-255, no default) are in too, so
-  mbt assembles and links the routine and `module-data` stays clean.
-  Next: `src/mvs/oftp#svc.c` -- anchor, `__loadhi` and patch, SVC
-  reserve/restore, SSCT, slot thread, liveness, sweep -- then the
-  `oftpd.c` wiring, then a probe round-tripping `STATUS` on a dev1 slot.
-  In pieces, since none of it runs off MVS: install and restore first,
-  with the SVC table entry read before `S OFTPD`, after it and after
-  `P OFTPD` (`internals/xmem.md` section 3's chain, through HTTPD's
-  `/.dm` on dev1 or a BREXX `STORAGE()` job on an M38 stand; there is
-  no `svcdm.py`, it was never written). Which stand takes the first
-  install is the maintainer's call -- a restore that does not take
-  lasts until the next IPL, and dev1 is in use all day.
+  mbt assembles and links the routine and `module-data` reports no
+  writable data (read the output, not the exit code -- `module-data`
+  warns and still exits 0, `internals/xmem.md` section 8).
+  **Piece one of the install is in**: `src/mvs/oftp#svc.c` with the
+  anchor GETMAIN, `__loadhi` and the anchor patch, the SVC
+  reserve/restore and the read-back, the new `OFTP_MON` fields, the
+  `oftpd.c` wiring and the restore as the first act of
+  `oftp_mon_abend()`. It installs and does **not** activate:
+  `OFTP_ANC_ACTIVE` stays clear, so a caller gets `OFTP_SVC_DOWN`
+  before claiming a slot and there is nothing to leak.
+  Next: the slot thread, the wake ECB, the SSCT, the liveness check and
+  the sweep, then the probe round-tripping `STATUS`.
+  First stand is **m38x** (MVSCE-EXP), not dev1 (maintainer,
+  2026-10-18): this writes into a running system's SVC table and a
+  restore that does not take costs the number until the next IPL. MBT
+  prepares `OFTPD.DEV.LINKLIB` + the PROC STEPLIB there and confirms the
+  slot. Proof is the SVC entry read before `S OFTPD`, after it and after
+  `P OFTPD` (section 3's chain, via a BREXX `STORAGE()` job on an M38
+  stand; there is no `svcdm.py`, it was never written), cross-checked
+  against OFTPD's own `OFTP031I`/`OFTP032I`.
   A program check inside the routine gets no recovery of its own: it is
   prevented where it can be -- `TPROT` on both ends of every caller
   range before the claim, so a forged pointer is refused instead of

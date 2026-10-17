@@ -416,6 +416,18 @@ OFTPD delays one `OFTP LIST` -- so the MVP does without, and adds it
   `awk 'length($0)>=72'` run, and reading the output rather than the
   status. Whether rc 4 should fail a build is a policy question for the
   maintainer; the MBT session is putting it to him.
+- **`mbt module-data` warns and still exits 0, so the exit code is not
+  the check.** Measured 2026-10-18 with a control: a deliberate
+  `static int` at the top of `oftp#svc.c` produced
+  `[mbt] WARNING: writable data in - ([internal], linked by autocall if
+  referenced): src/mvs/oftp#svc.c:1: static int …` and the command still
+  returned **0**. OFTPD is AC(1) and RENT, where writable module data is
+  an S0C4, so read the output: the check is the absence of a
+  `writable data in` line, not the status. Earlier notes in this file
+  and in two pull requests said "`module-data` stays clean" on the
+  strength of the exit code; the conclusion happened to hold, the method
+  did not. A `static const` table is fine -- `mirror_ok()`'s has one and
+  draws no warning.
 - **Never EQU a field name an IBM mapping macro also defines.** Both
   errors above came from one line, `CVT0PT01 EQU 152` beside
   `CVT DSECT=YES`: the duplicate is IFO196, and `CVT0PT01-CVTMAP` then
@@ -432,8 +444,14 @@ OFTPD delays one `OFTP LIST` -- so the MVP does without, and adds it
 2. The output function under `ctl_*` (socket or slot); host tests stay
    green.
 3. `OFTPSVC` and the anchor; a probe client that round-trips `STATUS`.
-   **The routine is written and assembles clean** (2026-10-17); the
-   anchor, the STC-side install and the probe are open (section 10).
+   In pieces (section 10). **The routine, the anchor and the
+   install/restore are written** (2026-10-18) and the transport is
+   installed but not activated; the slot thread, the SSCT, the liveness
+   check, the sweep and the probe are open. The first stand is **m38x**
+   (MVSCE-EXP), not dev1: this writes into the SVC table of a running
+   system, and a restore that does not take costs the number until the
+   next IPL, so it belongs on the experiment stand rather than under the
+   day's work (maintainer, 2026-10-18).
 4. `OFTP`/`OFTPI` switch over; OFTPD takes the owner from the slot.
 5. Tests on MVS, dev1 first, then the M38 stands:
    - `TESTAUTH FCTN=1` proves the client unauthorized;
@@ -457,7 +475,7 @@ stand time; uncertain mainly through how many SVC numbers are free per
 distribution and how the ESTAE behaves on the first live abend (the
 `MVCK` encoding is settled -- section 8).
 
-## 10. Where step 3 stands (2026-10-17)
+## 10. Where step 3 stands (2026-10-18)
 
 Steps 0, 1 and 2 are done and on `main` (`26f8995`). Of step 3, two
 artefacts are on disk:
@@ -475,17 +493,54 @@ and links the routine (`entry=OFTPSVC, no crt`), `mbt module-data` stays
 clean, and `SVC=` takes 200-255 with **no default**, an out-of-range
 number being an error rather than a silent 0 (`test/tstcfg.c`).
 
-Still to come: `src/mvs/oftp#svc.c` (the anchor, the `__loadhi` and
-patch, the SVC reserve/restore, the SSCT, the slot thread, the liveness
-check and the sweep) with its new `OFTP_MON` fields, the `oftpd.c`
-start/stop wiring -- where the restore is the *first* act of
-`oftp_mon_abend` -- and the probe `test/mvs/tstsvc.c`. None of it can be
-exercised off MVS, so it wants to land in pieces rather than as one
-block: the anchor, install and restore first, provable by reading the
-SVC slot back before and after -- section 3's chain, through HTTPD's
-`/.dm` on dev1 or a BREXX `STORAGE()` job on an M38 stand; there is no
-`svcdm.py` (section 10, MVS test plan) -- then the slot thread and the
-sweep.
+### Piece one: install and restore, deliberately not active
+
+`src/mvs/oftp#svc.c` is on `main` with the first of the three pieces
+step 3 was split into. It installs the transport and gives it back, and
+it does **not** activate it:
+
+- `oftp_svc_start()` -- the mirror check, one subpool-241 GETMAIN of
+  `sizeof(OFTP_ANCHOR)` (9536 bytes, anchor plus the four slots) in key
+  0, `__loadhi OFTPSVC`, the anchor address patched into the module's
+  word at EP+4, and the SVC entry reserved.
+- `oftp_svc_stop()` -- clear `ACTIVE`, drain, restore, **read the entry
+  back** and compare it with the saved bytes, and free the CSA only if
+  the drain and that read-back both agree.
+- `oftp_svc_restore()` -- the table write alone, shared by the stop and
+  the ESTAE, and the first act of `oftp_mon_abend()`.
+- `OFTP_MON` carries all of it (`anchor`, `svc_lpa/epa/size`,
+  `svc_slot`, `svc_saved[8]`, `svc_taken`); OFTPD is AC(1) and RENT, so
+  the ESTAE has to reach the state through the monitor block.
+
+**`OFTP_ANC_ACTIVE` stays clear, and that is what makes piece one safe
+to put on a shared system.** The routine tests `ANCFLAG` X'80' *before*
+it claims a slot (`asm/oftpsvc.asm`, right after the in-flight count),
+so a caller of the SVC number during the test counts itself in, finds
+the flag off and returns `OFTP_SVC_DOWN`. Nothing can park in a slot,
+there is no slot to leak, and the drain is trivially zero. The flag goes
+on with piece two, together with the slot thread, the wake ECB, the SSCT
+and the sweep.
+
+**"Free" is the modal entry point and no lock.** The entry point an
+unused slot carries differs per distribution (section 3), so the test
+cannot be a constant and must not be zero: `unused_ep()` takes the entry
+point shared by most of 200-255, exactly as nsf370's `src/nsfsx.c` does
+it (measured on MVS/CE). On top of that the slot's `svclock` at +6 has
+to be zero -- the FLIH takes the locks named there before entering, and
+the routine is written for a type-3 entry holding none. Only byte +4 is
+written, `X'C0'`: `SVCTYPE3` in the top three bits with `svcapf` off,
+because reaching the routine from an unauthorized caller is the whole
+point. Bytes +5 to +7 stay as found and come back from `svc_saved`.
+
+Still to come: the slot thread, the wake ECB, the SSCT, the liveness
+check and the sweep, then the probe `test/mvs/tstsvc.c`. None of it can
+be exercised off MVS. Piece one is provable by reading the SVC entry
+back before `S OFTPD`, after it and after `P OFTPD` -- section 3's
+chain, through HTTPD's `/.dm` on dev1 or a BREXX `STORAGE()` job on an
+M38 stand; there is no `svcdm.py` (MVS test plan, below). OFTPD now
+prints the same evidence itself: `OFTP031I` names the 8 bytes found
+before the write and `OFTP032I` the 8 read back after the restore, so
+the console and the job cross-check each other.
 
 ### The mirror check cannot be a host offsetof() test
 
@@ -493,19 +548,43 @@ sweep.
 pointers, so on a 64-bit host every field from `slot.ascb` on sits 4 or
 more bytes further along than its EQU and `sizeof(OFTP_SLOT)` comes out
 2376 instead of 2368 -- 24 of 28 offsets "fail" for reasons that have
-nothing to do with the `.asm`. Measured 2026-10-17. So the check is a
-**cc370 compile-time assert**, which is also the stronger check because
-it validates the layout the target actually gets:
+nothing to do with the `.asm`. Measured 2026-10-17. So the check belongs
+where only cc370 compiles, and it is in `oftp#svc.c`.
+
+**It cannot be one compile-time assert, and the example this section
+used to carry was wrong.** It read
 
 ```c
-#define A(n,e) typedef char assert_##n[(e)?1:-1]
-A(sl_reply, offsetof(OFTP_SLOT,reply)==320);
-A(sl_size,  sizeof(OFTP_SLOT)==2368);
+A(sl_reply, offsetof(OFTP_SLOT,reply)==320);    /* does not compile */
 ```
 
-A plain `cc370 -c` of such a file is enough; it needs no MVS and no
-link. Fold it into `test/mvs/tstsvc.c` when that is written, and keep
-the EQUs and the header in one commit either way.
+and that does not build: libc370's `offsetof` is the old
+`(size_t)&(((x *)0)->y)` form (`include/stddef.h:48`), which is not an
+integer constant expression, so a file-scope array size using it is a
+variably modified type. The obvious escape is not there either --
+**cc370 has no `__builtin_offsetof`**; it is a gcc 3.4.6 fork and the
+builtin is absent (measured 2026-10-18: `warning: implicit declaration
+of function '__builtin_offsetof'` and then a syntax error).
+
+So the check is in two halves:
+
+- **Compile time**, where `sizeof` makes it an integer constant
+  expression: `sizeof(OFTP_SLOT) == 2368`,
+  `sizeof(OFTP_ANCHOR) == 64 + 4 * 2368`, and the constants
+  `OFTP_SVC_NSLOT`, `OFTP_SVC_REQMAX`, `OFTP_SVC_REPMAX`. Verified to
+  bite: widening `slot.rsv` by four bytes gives
+  `error: size of array 'oftp_svc_sizes' is negative` and `mbt build`
+  exit 1 (2026-10-18).
+- **Run time**, in `mirror_ok()`, called from `oftp_svc_start()` before
+  anything is allocated or installed. It carries one row per EQU of the
+  `.asm` and refuses the transport with `OFTP034E` naming the field, its
+  offset and the expected one.
+
+The run-time half sits there rather than in a test on purpose: the
+install is what depends on the layout, so a field that moved stops the
+install instead of corrupting a slot in CSA, whether or not anybody
+remembered to run the test. Keep the EQUs, the header and that table in
+one commit.
 
 ### Three things in the routine that are load-bearing and silent
 
