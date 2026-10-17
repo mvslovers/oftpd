@@ -123,8 +123,13 @@ Client (problem state, its own key):
 `OFTPSVC` (supervisor state, key 0, throughout):
 
 4. Check the anchor (eye, `ACTIVE`); copy the block in with **`MVCK`
-   under the caller's key**, after checking address and length, so a
-   bad pointer faults instead of a key-0 move reading anything.
+   under the caller's key**, after checking each range with **`TPROT`**
+   (section 6). `MVCK` under the caller's key is *not* on its own what
+   stops a forged pointer: its source key need only permit a fetch, and
+   a key-8 fetch from differently keyed storage whose fetch-protection
+   bit is off is permitted -- the normal state of key-0 CSA. `TPROT`
+   asking for a store is what makes the range have to be the caller's
+   own. This step used to claim the `MVCK` alone was enough.
 5. **Read the caller's userid itself**: `PSAAOLD` X'224' -> ASCB ->
    `ASCBASXB` X'6C' -> `ASXBSENV` X'C8' -> ACEE -> `ACEEUSER` (the path
    of libc370 `racf_get_acee()`, in the caller's address space). The block
