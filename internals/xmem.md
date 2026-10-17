@@ -231,12 +231,63 @@ pointers from any unauthorized user disable the transport until the
 next IPL.
 
 nsf370 has no recovery routine either, so this is not a divergence from
-the model -- it is a gap both share and neither has measured. The two
-candidate fixes: a recovery routine in `OFTPSVC` that releases the slot
-and decrements, or widen OFTPD's sweep to DONE slots and derive the
-in-flight count from the pool instead of keeping a counter. Decide
-before step 5's cancelled-client test, because that test will not
-distinguish the two failure modes.
+the model -- it is a gap both share and neither has measured.
+
+**Decided 2026-10-17: prevent the fault first, then sweep what is
+left.** A recovery routine (`SETFRR`; the macro is in as370's maclib
+along with `IHAFRRS`) was the third candidate and was not taken: it is
+the only option that adds an unmeasured MVS mechanism to a routine that
+has none, and it is not needed for the cases a caller can provoke on
+purpose.
+
+**Prevention, in the routine, done.** `TPRNG` runs `TPROT` over both
+ends of each caller-supplied range before the range is touched: the
+24-byte header *before the anchor is read and before any slot is
+claimed*, and the request text and reply buffer right after the header
+describes them. A refused range is a return code instead of a program
+check. Three things about it are worth keeping in mind:
+
+- It asks for a **store**, not a fetch, even where the routine only
+  reads. That makes the range have to be in the caller's own key, which
+  closes a cross-key read `MVCK` alone does not: `MVCK`'s source key
+  check permits a fetch from differently keyed storage whose
+  fetch-protection bit is off, the normal state of key-0 CSA. The
+  routine's older comment claiming a forged pointer "fails the
+  caller-key check in MVCK" was true only for fetch-protected storage.
+- Two `TPROT`s per range are enough **because every range is at most
+  2048 bytes**, so it spans at most two 4K blocks and its first and
+  last byte cover both. That stops being true if `REPMAX` ever goes
+  above 4096; the check would then need a walk.
+- It does not close a TOCTOU window: a second task in the caller's
+  address space can free the storage between the `TPROT` and the
+  `MVCK`. That window is what the sweep is for.
+
+**The sweep, in `oftp#svc.c`, still to write -- and it is not purely
+OFTPD-side, which is how this was first framed.** The leak states are
+CLAIMED (the routine faulted before publishing) and DONE (it faulted
+during the copy-out); PENDING is not a leak, OFTPD answers it. For
+CLAIMED, OFTPD needs no clock: the claim-to-PENDING window contains no
+WAIT, so a slot seen CLAIMED on three consecutive sweeps cannot be
+legitimate, and the count lives in OFTPD's private storage keyed by
+slot index, reset whenever the slot is not CLAIMED. The sweep also has
+to decrement `inflight` for each slot it frees, because the routine
+that owned it never will -- a pool scan cannot replace the counter,
+since a caller between the increment and the claim owns no slot at all.
+
+**DONE is the hard one, and a timeout alone is wrong.** A DONE slot
+that has sat there a long time is either a routine that faulted mid
+copy-out or a *parked caller that has not been dispatched yet* -- and
+nsf370 measured a 12-minute stall of a swapped-out address space
+(ADR-0044, this section's "Swapping"). Freeing a slot in the second
+case is a live corruption: the caller resumes, copies out and sets
+FREE, while another caller has already claimed the same slot. Liveness
+does not separate them either, because the owner is alive in both. So
+either the timeout has to be longer than the worst swap stall, which is
+a guess, or **the routine must mark the slot when it begins the copy
+out** -- a new state (`OFTP_SL_COPYOUT`) that makes "woken and
+faulted" distinguishable from "not woken yet", at the cost of one
+store in the routine and one value in the shared header. Settle this
+before writing the sweep; do not write a DONE timeout without it.
 
 **Swapping**: open. nsf370 measured a 12-minute stall of a swapped-out
 STC and cures it with `SYSEVENT DONTSWAP` without explaining it

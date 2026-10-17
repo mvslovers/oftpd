@@ -132,6 +132,29 @@ OFTPGO   DS    0H
 *  oracle for the caller and an S0C4 in key 0 on a bad pointer. It is
 *  checked on the staged image after the MVCK instead (BADHDR).
 *---------------------------------------------------------------------*
+* The caller's key, then TPROT the request header before anything else.
+*
+* The first of three range checks (internals/xmem.md section 6). It
+* sits here, ahead of the anchor, because every exit from this point
+* back is free: no in-flight count, no slot. Past the claim a program
+* check leaks both, and the routine has no recovery.
+*
+* TPROT asks for a STORE, not a fetch, although the header is only
+* read. Requiring a store means the range has to be in the caller's own
+* key, and that closes a cross-key READ that MVCK alone does not:
+* MVCK's source key check permits a fetch from differently keyed
+* storage whose fetch-protection bit is off, which is the normal state
+* of key-0 CSA.
+         SLR   R10,R10
+         L     R10,PSATOLD(,R10)
+         SLR   R9,R9
+         IC    R9,TCBPKF(,R10)      caller key, bits 24-27
+         LR    R4,R8
+         LA    R11,23(,R8)
+         BAL   R15,TPRNG
+         LTR   R1,R1
+         BNZ   BADREQ
+*---------------------------------------------------------------------*
 * Locate and check the published anchor. No caller storage is touched.
          L     R2,OFTANCH
          LTR   R2,R2
@@ -175,12 +198,9 @@ CLAIMOK  LR    R7,R10               R7 = our slot
          ST    R3,SLASID(,R7)
          MVC   SLUSER(8,R7),=CL8' '
 *---------------------------------------------------------------------*
-* Get the caller's storage key and authoritative userid from its own
-* control blocks. The request cannot supply or override the userid.
-         SLR   R10,R10
-         L     R10,PSATOLD(,R10)
-         SLR   R9,R9
-         IC    R9,TCBPKF(,R10)      caller key in high nibble
+* The authoritative userid, from the caller's own control blocks: the
+* request cannot supply or override it. R9 already holds the caller's
+* key from the header range check above, and R10 its TCB.
          L     R3,ASCBASXB(,R5)
          LTR   R3,R3
          BZ    UIDOK
@@ -239,6 +259,36 @@ CAPOK    ST    R3,SLCAP(,R7)
          C     R3,=A(REQMAX)
          BH    BADHDR
          ST    R3,SLREQLEN(,R7)
+*---------------------------------------------------------------------*
+* The other two range checks, now that the header describes them: the
+* request text this routine reads, and the reply buffer it will store
+* into after the WAIT. Both are at most 2048 bytes and a range that
+* size spans at most two 4K blocks, so its first and last byte cover
+* every block in it -- which is what makes two TPROTs per range enough.
+*
+* Checking the reply buffer here rather than at the copy-out is worth
+* a word: a refused buffer is answered before OFTPD is woken at all,
+* instead of after it has built a reply and this routine has spent its
+* send budget. TPROT also rejects a reply buffer the caller can read
+* but not store into, which the copy-out would otherwise meet as a
+* program check under SPKA.
+*
+* These two sit past the claim, so a refusal releases the slot
+* (BADHDR). What they prevent is the program check that would not.
+         LA    R4,REQTEXT(,R8)
+         L     R11,SLREQLEN(,R7)
+         ALR   R11,R4
+         BCTR  R11,0                last byte of the request text
+         BAL   R15,TPRNG
+         LTR   R1,R1
+         BNZ   BADHDR
+         L     R4,SLRPLYPT(,R7)
+         L     R11,SLCAP(,R7)
+         ALR   R11,R4
+         BCTR  R11,0                last byte of the reply buffer
+         BAL   R15,TPRNG
+         LTR   R1,R1
+         BNZ   BADHDR
 *---------------------------------------------------------------------*
 * Copy only the declared request bytes. Append a NUL within req[256].
          LA    R5,REQTEXT(,R8)
@@ -463,6 +513,29 @@ MVCPIEC  MVC   0(1,R4),0(R5)
 * EX target for the ACEE userid: R1 = length-1, R4 = slot.user,
 * R12 = aceeuser+1. Key 0 throughout -- the ACEE is not caller input.
 UIDMVC   MVC   0(1,R4),0(R12)
+*---------------------------------------------------------------------*
+* TPRNG: does the caller's own key permit a STORE at both ends of a
+* caller-supplied range? TPROT answers without faulting, which is the
+* whole point -- it turns a program check inside this routine into a
+* return code.
+*
+* In:  R4 = first byte, R11 = last byte, R9 = the caller's key as an
+*      operand (bits 24-27, straight from TCBPKF).
+* Out: R1 = 0 when a store is permitted at both ends, nonzero when it
+*      is not. Clobbers R1 only. Link R15.
+*
+* CC 0 is store permitted; 1 is fetch only, 2 no access, 3 storage not
+* available. Only CC 0 passes, so mask 7 rejects the other three. A
+* caller in key 0 gets CC 0 everywhere, which is correct: it could
+* store there itself.
+TPRNG    DS    0H
+         LA    R1,1                 assume refused
+         TPROT 0(R4),0(R9)
+         BC    7,TPRNGX
+         TPROT 0(R11),0(R9)
+         BC    7,TPRNGX
+         SLR   R1,R1                both ends permit a store
+TPRNGX   BR    R15
 *---------------------------------------------------------------------*
          LTORG ,
          CVT   DSECT=YES,LIST=NO
