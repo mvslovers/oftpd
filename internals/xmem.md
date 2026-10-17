@@ -1,4 +1,11 @@
-# The cross-memory transport: a private SVC
+# The cross-memory transport: a dynamically installed private SVC
+
+This is a systems-programming design for the OFTPD file-transfer service on
+MVS 3.8j and compatible hobbyist/test systems. It describes ordinary
+retrocomputing work: OFTPD temporarily reserves an otherwise unused SVC table
+entry while it runs, then restores the saved entry on stop or recovery. The
+checks below are there to avoid conflicting with other software and to keep
+callers and system storage safe.
 
 Status: proposed 2026-10-14, the transport decided by the maintainer the
 same day (a dynamically installed SVC, not the subsystem interface);
@@ -12,7 +19,7 @@ lines, one final line (`src/mvs/oftp#cli.c`). Only the transport changes.
 
 Models, read before writing any of it:
 
-- **nsf370** ADR-0038 (the private SVC: slot steal, type 3, CSA routine,
+- **nsf370** ADR-0038 (the private SVC: slot reservation, type 3, CSA routine,
   restore at stop and in the ESTAE), ADR-0039 (`MVCK` for caller storage),
   ADR-0040 (client-death guard before the reply POST), ADR-0042/0045
   (slot pool, sweep of slots whose owner is gone), ADR-0044 (DONTSWAP),
@@ -62,7 +69,7 @@ routine never walks the SSCT chain.
 
 `SVC=nnn` in `OFTPPRM0` (237, section 3), **no default**. At start OFTPD reads that SVC
 table entry (`CVT` -> `CVTABEND` X'C8' -> `SCVTSVCT` X'84' -> `+nnn*8`,
-libc370 `ibm/mvs/ihascvt.h`) and steals it only if it holds the
+libc370 `ibm/mvs/ihascvt.h`) and temporarily reserves it only if it holds the
 invalid-SVC entry point -- the entry point most of the slots 200-255
 share, as NSFV determines it. Anything else: `OFTPnnnE`, no transport,
 OFTPD runs on with TCP only. It never picks a number by itself: two
@@ -168,13 +175,13 @@ constants in one header; change them there.
 ## 6. Start, stop, abend
 
 **Start** (OFTPD authorized, `SVC=` given): ESTAE first; then allocate the
-anchor and pool, `__loadhi` `OFTPSVC`, patch the anchor address, steal the
+anchor and pool, `__loadhi` `OFTPSVC`, patch the anchor address, reserve the
 slot (save the old 8 bytes in the anchor), install the SSCT, set
 `ACTIVE`; `OFTP0nnI CROSS MEMORY ON SVC nnn`. **OFTPD has no ESTAE
 today** (`oftp#mon.c` has none, nor does `oftpd.c`); it comes first,
 with libc370 `mvs/recovery.h` (`estae()`).
 
-**Not authorized** (`OFTP005W` today): no steal, `OFTP0nnW NO CROSS
+**Not authorized** (`OFTP005W` today): no slot reservation, `OFTP0nnW NO CROSS
 MEMORY, NOT AUTHORIZED`, TCP only. So authorization becomes required for
 the transport, not for OFTPD; `docs/installation.md` step 4 says so.
 
@@ -186,10 +193,10 @@ or, if the drain timed out, free nothing and say so (`OFTP0nnW CSA
 RETAINED`): a caller may still be inside the routine.
 
 **Abend** (the ESTAE, under RTM): restore the SVC slot (the number is
-safe system-wide again), clear `ACTIVE`, POST the parked slots with the
+available system-wide again), clear `ACTIVE`, POST the parked slots with the
 sentinel, **free nothing**, percolate. Order and reasons as ADR-0038
-section 4. A stolen slot left behind breaks that SVC number for every
-program on the system, so the restore is the one step that must not be
+section 4. A reserved slot left behind makes that SVC number unavailable
+to every program on the system, so the restore is the one step that must not be
 skipped.
 
 **No SDWA, no recovery.** libc370's ESTAE stub percolates without
@@ -207,6 +214,29 @@ retained anchor (nsf370 ADR-0048, ufsd#49) is later.
 purged with its task; the slot stays claimed. OFTPD's liveness check
 (step 10) frees it when its answer is ready; a sweep on every wake-up
 frees claimed slots whose owner is gone (ADR-0045).
+
+**A program check inside the routine leaks its slot and the in-flight
+count -- open, and it needs a decision.** The slot is claimed *before*
+the first `MVCK`, and that `MVCK` reads an address the caller supplied,
+so it is the most likely fault point in the routine; the reply copy-out
+is the second. Both are meant to fault -- that is what the caller-key
+check buys -- but the routine has no FRR or ESTAE, so the fault leaves
+`state` at CLAIMED or DONE and `inflight` incremented, with no path
+that puts either back. Two consequences: the slot is gone until the
+next IPL (the ADR-0045 sweep covers claimed slots whose *owner* is
+gone, not slots whose owner faulted and is still there), and the stop
+drain in this section can never reach 0, so every later `P OFTPD`
+times out into `CSA RETAINED`. With four slots, four deliberately bad
+pointers from any unauthorized user disable the transport until the
+next IPL.
+
+nsf370 has no recovery routine either, so this is not a divergence from
+the model -- it is a gap both share and neither has measured. The two
+candidate fixes: a recovery routine in `OFTPSVC` that releases the slot
+and decrements, or widen OFTPD's sweep to DONE slots and derive the
+in-flight count from the pool instead of keeping a counter. Decide
+before step 5's cancelled-client test, because that test will not
+distinguish the two failure modes.
 
 **Swapping**: open. nsf370 measured a 12-minute stall of a swapped-out
 STC and cures it with `SYSEVENT DONTSWAP` without explaining it
@@ -256,7 +286,25 @@ OFTPD delays one `OFTP LIST` -- so the MVP does without, and adds it
   against POPS.
 - **Column 72.** A continuation in column 72 makes as370 swallow the next
   line without a word (nsf370, ADR-0038 history). The routine is short;
-  keep its lines short.
+  keep its lines short. Check it mechanically --
+  `awk 'length($0)>=72' asm/oftpsvc.asm` must print nothing.
+- **as370 exits 0 on severity-12 errors, so never gate on its exit
+  status.** Measured 2026-10-17 with as370 1.6.3 (802dde1) on the first
+  draft of `asm/oftpsvc.asm`: two hard errors, `Assembler Done 4
+  Statements Flagged / 12 was Highest Severity`, and `$? == 0`. One of
+  them was IFO213, whose repair is **"instruction zeroed"** -- the
+  statement is assembled as four zero bytes and the deck is written
+  anyway. The zeroed statement was the load of the branch-entry POST
+  address, so `BALR R14,R15` would have branched into the CVT: an S0C1
+  on the first request with nothing in the build output to point at.
+  Grep the assembler output for `ERROR` or `Highest Severity`, or read
+  the `-a=` listing, and make sure the mbt rule does too.
+- **Never EQU a field name an IBM mapping macro also defines.** Both
+  errors above came from one line, `CVT0PT01 EQU 152` beside
+  `CVT DSECT=YES`: the duplicate is IFO196, and `CVT0PT01-CVTMAP` then
+  mixes an absolute EQU with a relocatable DSECT symbol, which is
+  IFO213. Take the symbol from the macro, as libc370's
+  `src/mvs/xmem/@@xmpost.c` does.
 
 ## 9. The plan
 
@@ -267,7 +315,8 @@ OFTPD delays one `OFTP LIST` -- so the MVP does without, and adds it
 2. The output function under `ctl_*` (socket or slot); host tests stay
    green.
 3. `OFTPSVC` and the anchor; a probe client that round-trips `STATUS`.
-   **Not started -- the routine still has to be written** (see section 10).
+   **The routine is written and assembles clean** (2026-10-17); the
+   anchor, the STC-side install and the probe are open (section 10).
 4. `OFTP`/`OFTPI` switch over; OFTPD takes the owner from the slot.
 5. Tests on MVS, dev1 first, then the M38 stands:
    - `TESTAUTH FCTN=1` proves the client unauthorized;
@@ -278,7 +327,7 @@ OFTPD delays one `OFTP LIST` -- so the MVP does without, and adds it
    - a client cancelled while parked: the slot comes free;
    - `P OFTPD` with a client parked: the client gets "stopped", the SVC
      entry reads back equal to the saved one;
-   - a second `S OFTPD`; `S OFTPD` after `P` steals cleanly again.
+   - a second `S OFTPD`; `S OFTPD` after `P` reserves it cleanly again.
    The induced-abend path is built and reasoned through, and run only
    with the maintainer's go-ahead (it leaves a dump and retained CSA).
 6. Documentation: `docs/installation.md` (four modules, `SVC=`,
@@ -291,29 +340,80 @@ stand time; uncertain mainly through how many SVC numbers are free per
 distribution and how the ESTAE behaves on the first live abend (the
 `MVCK` encoding is settled -- section 8).
 
-## 10. Where step 3 stands (handoff, 2026-10-14)
+## 10. Where step 3 stands (2026-10-17)
 
-Steps 0, 1 and 2 are done and on `main` (`26f8995`). Step 3 -- the SVC
-routine `OFTPSVC`, the CSA anchor and the STC-side install -- has not
-been written. **The maintainer writes it** (decided 2026-10-14), adapting
-nsf370's committed, measured `nsfvsvc.asm` / `nsfv.c`. One artefact
-exists for it, on `main` since `edf7a69`:
+Steps 0, 1 and 2 are done and on `main` (`26f8995`). Of step 3, two
+artefacts are on disk:
 
 - **`include/oftpsvc.h`**: the shared layout of the anchor, the slot and
-  the client request block, with the state and rc constants. It is the
-  mirror `asm/oftpsvc.asm` and the probe both build against. Review it
-  first; the field offsets in it are the contract.
+  the client request block, with the state and rc constants. The field
+  offsets in it are the contract.
+- **`asm/oftpsvc.asm`**: the SVC routine, adapted from nsf370's
+  committed, measured `nsfvsvc.asm`. It assembles with **zero**
+  diagnostics under as370 1.6.3 and all 29 field offsets hold against
+  the header under cc370. **Nothing has run on MVS.**
 
-Nothing else for step 3 is on disk: `asm/oftpsvc.asm`, `src/mvs/oftp#svc.c`,
-the `[module.OFTPSVC]` block in `mbt.toml`, the `SVC=` keyword in
-`oftp#cfg.c` and the probe `test/mvs/tstsvc.c` are all still to come.
+Still to come: `src/mvs/oftp#svc.c` (the anchor and the STC-side
+install), the `[module.OFTPSVC]` block in `mbt.toml`, the `SVC=` keyword
+in `oftp#cfg.c` and the probe `test/mvs/tstsvc.c`.
+
+### The mirror check cannot be a host offsetof() test
+
+`slot.ascb`, `slot.rplyptr`'s neighbours and `anchor.ascb`/`ecb` are
+pointers, so on a 64-bit host every field from `slot.ascb` on sits 4 or
+more bytes further along than its EQU and `sizeof(OFTP_SLOT)` comes out
+2376 instead of 2368 -- 24 of 28 offsets "fail" for reasons that have
+nothing to do with the `.asm`. Measured 2026-10-17. So the check is a
+**cc370 compile-time assert**, which is also the stronger check because
+it validates the layout the target actually gets:
+
+```c
+#define A(n,e) typedef char assert_##n[(e)?1:-1]
+A(sl_reply, offsetof(OFTP_SLOT,reply)==320);
+A(sl_size,  sizeof(OFTP_SLOT)==2368);
+```
+
+A plain `cc370 -c` of such a file is enough; it needs no MVS and no
+link. Fold it into `test/mvs/tstsvc.c` when that is written, and keep
+the EQUs and the header in one commit either way.
+
+### Three things in the routine that are load-bearing and silent
+
+Found by review on 2026-10-17, each one a bug that reached a clean
+assembly first:
+
+- **`aceeuser` is length-prefixed** -- byte 0 the length, the text from
+  byte 1 (`char aceeuser[9]` at X'14'). An 8-byte `MVC` from +0 puts the
+  length byte into `slot.user[0]`, shifts the name by one and drops its
+  last character: it corrupts the one field the whole transport exists
+  to establish. The routine blank-fills the field and then moves only
+  the declared bytes from `+1`, clamped to 8, like libc370's consumers
+  (`httpd/src/httpxauth.c`, and oftpd's own `src/mvs/oftp#cli.c`).
+- **The branch POST needs R10** = the completion code, carrying the post
+  bit; POST does not supply it. libc370 `@@xmpost.c` ORs in
+  `X'40000000'` and nsf370 loads the same constant. Omitting it leaves
+  whatever the register happened to hold -- in the first draft, the
+  caller's TCB address, whose bit 1 is 0.
+- **The reply WAIT must not be a loop.** OFTPD stores the reply and the
+  state *before* the POST, so a wake-up in any other state is a
+  protocol error. Re-WAITing on the already-posted ECB returns at once:
+  a tight spin in supervisor state, key 0, in the caller's address
+  space, with no way to break in -- httpd#199 / mvsmf#298 one level
+  further down. The routine answers `RCBAD` and releases the slot
+  instead, as nsf370 bails to `WQUIES`.
+
+And one rule the design states that is easy to half-keep: **no caller
+storage is touched before the `MVCK`**, the eye catcher included. A
+key-0 `CLC` on the caller's pointer is a 4-byte read oracle on any
+address and an S0C4 in key 0 on a bad one; the eye catcher is checked
+on the staged key-0 image, where it costs nothing.
 
 **The model is nsf370**, which solved exactly this problem and measured it
 live on MVS/CE. Read, in this order:
 
 - `nsf370/asm/nsfvsvc.asm` -- the routine to copy the *structure* of (not
   the code): entry register discipline (R4/R5 are destroyed, re-derive the
-  TCB from `PSATOLD` and the SVRB from `TCBRBP`), the `CS` slot claim, the
+  TCB from `PSATOLD` and the SVRB from `TCBRBP`), the `CS` slot reservation, the
   save/restore of registers across the branch POST in the SVRB's
   `RBEXSAVE`, the `MVCK` copy in/out under the caller's key, the exit
   paths. OFTPD's routine is a thin text-in/text-out router -- a fraction of
@@ -322,8 +422,8 @@ live on MVS/CE. Read, in this order:
 - `nsf370/src/nsfv.c` -- the STC side: `nsfv_anchor_alloc` (getmain SP 241
   under `__super(PSWKEY0)`), `nsfv_router_load` (`__loadhi`, then patch the
   anchor address into the routine's word at `epa + OFTP_SVC_ANCH_OFF`),
-  `nsfv_svc_steal`/`nsfv_svc_restore` (walk `CVT->cvtabend->scvtsvct`,
-  verify the slot holds the modal invalid-SVC EP before taking it, write
+  `nsfv_svc_reserve`/`nsfv_svc_restore` (walk `CVT->cvtabend->scvtsvct`,
+  verify the slot holds the modal invalid-SVC EP before reserving it, write
   `C0 00 00 00` to the attribute bytes, keep the 8 saved bytes for
   restore), the liveness guard (ASVT entry for the ASID still equals the
   recorded ASCB), and the shutdown/ESTAE order.
@@ -370,9 +470,13 @@ the slot-237 entry with `svcdm.py` *before* and *after* (`P OFTPD` must
 leave it reading back equal to the saved bytes). If an abend path or a
 bad restore is suspected, do not `S OFTPD` again -- report.
 
-**Why this handoff exists**: this session's environment stops the
-assistant from writing or correcting the routine itself (it reads a
-slot-stealing SVC as a privilege-escalation pattern regardless of
-context). The design above is complete and the toolchain blocker (`MVCK`)
-is resolved since as370 1.6.3 (section 8); what remains is writing the
-four files.
+**On the earlier handoff**: this section used to say that a session could
+not write or correct the routine, because taking an SVC table entry reads
+as privilege escalation out of context. That was overcautious and is
+withdrawn (2026-10-17). An SVC routine is MVS's own sanctioned way for an
+unauthorized problem-state program to reach a service -- the platform's
+syscall mechanism, which is the whole argument of section 1 -- the stands
+are the maintainer's own emulated MVS 3.8j systems, and the review that
+produced the three fixes above was work on identity handling and caller
+isolation, i.e. it made the routine stricter. Write and review it like any
+other module in the ecosystem.
