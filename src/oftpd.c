@@ -45,10 +45,20 @@ recover(SDWA *sdwa)
         return;
     param = (void **)sdwa->SDWAPARM;
     m = param != NULL ? (OFTP_MON *)param[1] : NULL;
-    if (m != NULL && memcmp(m->eye, "OFTPMON ", 8) == 0)
-        oftp_mon_msg("OFTP098E OFTPD ABEND, %d SOCKETS CLOSED",
-                     oftp_mon_abend(m));
-    else
+    if (m != NULL && memcmp(m->eye, "OFTPMON ", 8) == 0) {
+        /* Read before the call: oftp_mon_abend() gives the SVC entry
+        ** back as its first act, so afterwards svc_taken alone cannot
+        ** tell "restored" from "never taken" -- and that is exactly the
+        ** difference an operator needs, because an entry left reserved
+        ** costs the SVC number until the next IPL.
+        */
+        int had = m->svc_taken;
+        int n   = oftp_mon_abend(m);
+
+        oftp_mon_msg("OFTP098E OFTPD ABEND, %d SOCKETS CLOSED, SVC %s", n,
+                     !had ? "NOT TAKEN"
+                          : m->svc_taken ? "NOT RESTORED" : "RESTORED");
+    } else
         oftp_mon_msg("OFTP098E OFTPD ABEND, MONITOR BLOCK NOT FOUND");
     sdwa->SDWARCDE = SDWACWT;
 }
@@ -126,6 +136,11 @@ main(int argc, char **argv)
         oftp_spl_close(m->spool);
         goto out;
     }
+    /* The transport last, after the monitor is up: it reports its own
+    ** outcome and OFTPD runs on with TCP when it does not install, so
+    ** the return code is deliberately not tested here.
+    */
+    oftp_svc_start(m);
     oftp_mon_msg("OFTP001I OFTPD READY");
 
     while (running) {
@@ -151,6 +166,11 @@ main(int argc, char **argv)
     }
 
     oftp_mon_msg("OFTP002I OFTPD STOPPING");
+    /* The transport first on the way down, so a caller of the SVC gets
+    ** "stopped" at once and the entry is back in the table before the
+    ** sessions are waited for.
+    */
+    oftp_svc_stop(m);
     oftp_mon_stop(m);
     oftp_spl_close(m->spool);
     oftp_mon_msg("OFTP003I OFTPD ENDED");

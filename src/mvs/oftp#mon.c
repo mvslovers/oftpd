@@ -1595,6 +1595,17 @@ oftp_mon_abend(OFTP_MON *m)
 {
     int i, n = 0, sk;
 
+    /* The SVC entry FIRST, ahead of every socket. An entry nobody gives
+    ** back makes that SVC number unavailable to every program on the
+    ** system until the next IPL, where a socket left open costs one
+    ** port until Hercules restarts -- and the closes below are the slow
+    ** part. It issues no message of its own: in an S222 only the first
+    ** and the last WTO are sure to reach the console, so the ESTAE
+    ** spends its one on OFTP098E and reads m->svc_taken to say how this
+    ** went.
+    */
+    oftp_svc_restore(m);
+
     /* No lock: the task that held it may be the one that failed. A
     ** session ending at this moment may close its socket as well; the
     ** second close of a number nobody has reused yet is harmless.
