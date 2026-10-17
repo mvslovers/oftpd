@@ -490,7 +490,10 @@ The same read settled `aceeuser`: the layout is IBM's, not a
 convention of its consumers -- `macros/maclib/IHAACEE.asm:53-55` is
 `ACEEUSER DS 0CL9` / `ACEEUSRL DS AL1` / `ACEEUSRI DS CL8`. libc370's
 `ihaacee.h:22` collapses the three into `char aceeuser[9]`, which is
-where the trap comes from. `ACEEUSRI` is treated as blank-padded to 8
+where the trap comes from -- **libc370#581 will show the sub-fields**
+for `aceeuser` and `aceegrp` (the arrays stay, so this stays true of
+any libc370 before it), and the routine's comment can name
+`ACEEUSRL`/`ACEEUSRI` once it lands. `ACEEUSRI` is treated as blank-padded to 8
 by IBM's own code (`ibm/IEF/IEFSMFIE.asm:395`, `HASPSSSM.asm:9055`) and
 by RAKF (`ICHSFR00.hlasm:527` compares `=CL8'STC'`), so a plain 8-byte
 move from `+1` would also have been correct; the length-clamped move is
