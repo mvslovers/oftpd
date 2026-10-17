@@ -156,3 +156,13 @@ handles after every tenth call (the last session, freed at the
 scheduler's next wake), 7536 KB and 5 handles 15 s later, as at the start.
 `P OFTPD` ended within a second; `S OFTPD` -> **STC00769**, the fix
 build. STC00767 and STC00768 left on the spool.
+
+A third, short slot from the MBT session, about 12:09-12:11 MVS time:
+which thread the fifth handle `D M` counts is. `P OFTPD` (STC00769),
+`mbt deploy --module OFTPD` with a diagnostic `D M` that listed every
+handle (never committed), `S OFTPD` -> STC00771, one `D M`: handle 0 is
+the main task itself (no function, no stack), which `cthread_create_ex()`
+registers as the owner when a task without a handle attaches its first
+thread; the other four are the spool, listener, scheduler and
+control-port threads. Then `P OFTPD`, deploy of the clean build, `S
+OFTPD` -> **STC00772**, banner `15335f5`. STC00771 left on the spool.
