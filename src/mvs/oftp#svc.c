@@ -258,8 +258,15 @@ oftp_svc_start(OFTP_MON *m)
     void         *lpa = NULL, *epa = NULL;
     int           rc;
 
-    if (m->cfg.svc == 0)
-        return -1;              /* no SVC=: no transport, by design   */
+    /* No SVC= is a legitimate configuration -- it is how the transport
+    ** is turned off -- but it must not be silent. An absent install
+    ** that says nothing is indistinguishable from one that worked, and
+    ** the first thing anyone does on a new stand is forget the keyword.
+    */
+    if (m->cfg.svc == 0) {
+        oftp_mon_msg("OFTP038I NO SVC= IN OFTPPRM, NO CROSS MEMORY");
+        return -1;
+    }
     if (!__isauth()) {
         oftp_mon_msg("OFTP035W NO CROSS MEMORY, NOT AUTHORIZED");
         return -1;

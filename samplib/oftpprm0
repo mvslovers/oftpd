@@ -24,6 +24,21 @@
 * RELAY        Y: act as a node: take files for Odette IDs of our
 *              partners (direct or VIA) and pass them on unchanged,
 *              their EERP/NERP back to the sender               (N)
+* SVC          the SVC number the cross-memory transport takes at
+*              start, 200-255, NO DEFAULT: without it there is no
+*              transport, and OFTPD says so (OFTP038I). OFTPD's
+*              number is 237, assigned once for the whole ecosystem
+*              -- never scan for a free one, because two products
+*              that each pick "a free one" take the same slot on the
+*              same system. OFTPD checks at start that the entry
+*              still holds the invalid-SVC routine and refuses it
+*              otherwise; it gives the entry back at stop and in its
+*              recovery exit.
+*
+*              Leave it off until the transport is released. To turn
+*              it on, uncomment the line below.
+*
+* SVC=237
 *
 ODETTEID=O0000000000MYMVS
 PORT=3305 CONTROLPORT=3306
