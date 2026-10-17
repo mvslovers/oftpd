@@ -134,3 +134,25 @@ compared byte for byte with those taken from STC00693 just before:
 `PARTNERS`, `LIST` (37 lines), `SHOW 0000001` and an unknown request
 identical, `STATUS` only in its version line. `mbt test --tso --only
 ispf` passed.
+
+2026-10-17, slot from the MBT session, from about 11:17 MVS time: the
+storage measurement for #3. `P OFTPD` (STC00715), `mbt deploy --module
+OFTPD` (IEBCOPY merge into `OFTPD.DEV.LINKLIB`, a build with the display
+`D M`, banner `b6e4ed5-dirty`), `S OFTPD` -> STC00765; 50 calls `F
+OFTPD,CALL MAC1` to mendelson on the Mac, all ESID 00, no files. Largest
+free block in subpool 0 fell from 7536 KB to 4096 KB, about 69 KB per
+session (issue #3, comment of the same day). `P OFTPD` ended within a
+second; `S OFTPD` -> **STC00766**, 7536 KB again. STC00765's output left
+on the spool. `OFTPD.DEV.LINKLIB` is 94% full (180 tracks, 2 extents).
+
+Then, in a second slot from the MBT session, the fix for #3 measured the
+same way. `P OFTPD` (STC00766); the plain deploy refused (10 of 180
+tracks free, 19 needed, nothing copied) and OFTPD was started on the old
+build as STC00767. With the maintainer's OK: `P OFTPD` (STC00767), `D
+TS,L` 0 users, `mbt deploy --reallocate` (deleted and allocated again on
+WORK00 as 180 tracks, OFTP, OFTPD, OFTPI copied in, 21% used), `S OFTPD`
+-> STC00768. 50 calls to MAC1, all ESID 00: `D M` read 7448 KB and 6
+handles after every tenth call (the last session, freed at the
+scheduler's next wake), 7536 KB and 5 handles 15 s later, as at the start.
+`P OFTPD` ended within a second; `S OFTPD` -> **STC00769**, the fix
+build. STC00767 and STC00768 left on the spool.
