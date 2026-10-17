@@ -344,17 +344,37 @@ OFTPD delays one `OFTP LIST` -- so the MVP does without, and adds it
   line without a word (nsf370, ADR-0038 history). The routine is short;
   keep its lines short. Check it mechanically --
   `awk 'length($0)>=72' asm/oftpsvc.asm` must print nothing.
-- **as370 exits 0 on severity-12 errors, so never gate on its exit
-  status.** Measured 2026-10-17 with as370 1.6.3 (802dde1) on the first
-  draft of `asm/oftpsvc.asm`: two hard errors, `Assembler Done 4
-  Statements Flagged / 12 was Highest Severity`, and `$? == 0`. One of
-  them was IFO213, whose repair is **"instruction zeroed"** -- the
-  statement is assembled as four zero bytes and the deck is written
-  anyway. The zeroed statement was the load of the branch-entry POST
-  address, so `BALR R14,R15` would have branched into the CVT: an S0C1
-  on the first request with nothing in the build output to point at.
-  Grep the assembler output for `ERROR` or `Highest Severity`, or read
-  the `-a=` listing, and make sure the mbt rule does too.
+- **IFO213 zeroes the offending instruction, and the hard errors are
+  caught by the exit status while the warnings are not.** Measured
+  2026-10-17 with as370 1.6.3 (802dde1) on the first draft of
+  `asm/oftpsvc.asm`: two hard errors, `Assembler Done 2 Statements
+  Flagged / 12 was Highest Severity`, **exit 12**. The IFO213 statement
+  really is assembled as four zero bytes -- `000202 0000 0000` in the
+  listing where `58F0 F098` belongs -- and it was the load of the
+  branch-entry POST address, so `BALR R14,R15` would have branched into
+  the CVT. But nothing would have got that far: as370 exits with the
+  severity, mbt's `as` step fails at rc >= 8 and deletes the object deck
+  so a later build cannot take it for up to date, and a `cc370` step
+  fails on any rc != 0 (MBT session, measured on its side the same
+  day).
+
+  **An earlier version of this bullet claimed as370 exits 0 at severity
+  12.** It does not. That reading came from `as370 … 2>&1 | head -40;
+  echo $?`, which reports *head's* status -- the shell-as-instrument
+  trap in the root `CLAUDE.md`, in a session that had already caught the
+  same mistake once that day. The real measurement is above; re-derive
+  it with no pipe (`as370 … > out 2>&1; echo $?`) before trusting any
+  exit code in this file.
+
+- **What does pass silently is rc 4.** Warnings return 4, mbt passes
+  rc 4 by design (like `COND=(8,LT)`), and as370 has no
+  warnings-as-errors switch. That includes **IFO026, the column-72
+  continuation** -- the one warning that silently swallows the next
+  source line, which cost httprexx a `BALR` and an S0C1. So the
+  mechanical check below is the defence, not the exit code: the
+  `awk 'length($0)>=72'` run, and reading the output rather than the
+  status. Whether rc 4 should fail a build is a policy question for the
+  maintainer; the MBT session is putting it to him.
 - **Never EQU a field name an IBM mapping macro also defines.** Both
   errors above came from one line, `CVT0PT01 EQU 152` beside
   `CVT DSECT=YES`: the duplicate is IFO196, and `CVT0PT01-CVTMAP` then
