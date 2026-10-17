@@ -12,9 +12,12 @@
 #include <string.h>
 #include <time.h>
 
+#include <ext/array.h>
+#include <mvs/crt.h>
 #include <mvs/lock.h>
 #include <mvs/recovery.h>
 #include <mvs/rfile.h>
+#include <mvs/storage.h>
 #include <mvs/wto.h>
 
 #include "oftp.h"
@@ -718,13 +721,85 @@ session_thread(void *arg1, void *arg2)
     return 0;
 }
 
+/* Session subtasks are kept until they have ended, then DETACHed and
+** freed with their stack: an ended subtask's TCB and its 64 KB stack stay
+** until then (#3, measured about 69 KB per session). Only the task that
+** attached a subtask may DETACH it, so each attaching thread keeps its own
+** array and reaps it itself. The ATTACH ECB tells which have ended; nothing
+** waits on it, so its posted bit stays set. cthread_delete() would refuse
+** a live one too, but with a console message.
+*/
+#define NOWN    (OFTP_MAXSESS * 2)
+
 static int
-start_session(OFTP_MON *m, int sock, const char *ip, OFTP_PARTNER *pt)
+ended(const CTHDTASK *t)
+{
+    return (t->termecb & ECB_POSTED_BIT) != 0;
+}
+
+/* Frees the ended ones; returns how many are still running */
+static int
+reap(CTHDTASK **own)
+{
+    int i, live = 0;
+
+    for (i = 0; i < NOWN; i++) {
+        if (own[i] == NULL)
+            continue;
+        if (ended(own[i]))
+            cthread_delete(&own[i]);
+        else
+            live++;
+    }
+    return live;
+}
+
+/* When the attaching thread stops: a task that ends with a subtask still
+** running takes it down with it (S0A03), so wait for the sessions, which
+** end on m->stop, then free them. Bounded: what is left after a minute
+** stays, and OFTPD's own end takes it.
+*/
+static void
+reap_all(CTHDTASK **own, const char *who)
+{
+    int i, live;
+
+    for (i = 0; (live = reap(own)) > 0 && i < 600; i++) {
+        ECB e = 0;
+
+        if (i % 100 == 0)
+            oftp_mon_msg("OFTP095I %s: WAITING FOR %d SESSIONS", who, live);
+        ecb_timed_wait(&e, 10, 0);
+    }
+    if (live > 0)
+        oftp_mon_msg("OFTP096W %s: %d SESSION SUBTASKS STILL RUNNING", who,
+                     live);
+}
+
+static int
+start_session(OFTP_MON *m, CTHDTASK **own, int sock, const char *ip,
+              OFTP_PARTNER *pt)
 {
     SESCTX *c;
     CTHDTASK *t;
-    int i;
+    int i, k;
 
+    /* a place for the handle first: without one the subtask could never
+    ** be freed */
+    reap(own);
+    for (k = 0; k < NOWN && own[k] != NULL; k++)
+        ;
+    if (k == NOWN) {
+        oftp_mon_msg("OFTP217W %s: NO ROOM FOR ANOTHER SESSION SUBTASK",
+                     pt ? pt->peer.name : ip);
+        if (pt) {
+            lock(m, 0);
+            m->busy[ptn_index(m, pt)] = 0;
+            unlock(m, 0);
+        }
+        oftp_net_close(sock);
+        return -1;
+    }
     if ((c = calloc(1, sizeof(*c))) == NULL) {
         oftp_net_close(sock);
         return -1;
@@ -757,7 +832,7 @@ start_session(OFTP_MON *m, int sock, const char *ip, OFTP_PARTNER *pt)
         free(c);
         return -1;
     }
-    cthread_detach(t);
+    own[k] = t;
     return 0;
 }
 
@@ -777,6 +852,7 @@ listen_thread(void *arg1, void *arg2)
         ecb_timed_wait(&e, 100, 0);
         if (m->stop)
             break;
+        reap(m->lsess);
         if ((s = oftp_net_accept(m->lsock, ip, sizeof(ip))) < 0)
             continue;
         if (m->nsess >= m->cfg.maxsess) {
@@ -786,8 +862,9 @@ listen_thread(void *arg1, void *arg2)
             continue;
         }
         oftp_mon_msg("OFTP205I CALL FROM %s", ip);
-        start_session(m, s, ip, NULL);
+        start_session(m, m->lsess, s, ip, NULL);
     }
+    reap_all(m->lsess, "LISTENER");
     return 0;
 }
 
@@ -856,6 +933,7 @@ sched_thread(void *arg1, void *arg2)
         ecb_timed_wait(&m->wake, 1000, 0);     /* 10 s or when woken */
         if (m->stop)
             break;
+        reap(m->ssess);
         due(m, work);
         for (i = 0; i < m->cfg.nptn && !m->stop; i++) {
             OFTP_PARTNER *p = &m->cfg.ptn[i];
@@ -882,9 +960,10 @@ sched_thread(void *arg1, void *arg2)
                 unlock(m, 0);
                 continue;
             }
-            start_session(m, s, p->host, p);
+            start_session(m, m->ssess, s, p->host, p);
         }
     }
+    reap_all(m->ssess, "SCHEDULER");
     return 0;
 }
 
@@ -1575,6 +1654,27 @@ oftp_mon_recover(OFTP_MON *m)
                      sends, recvs);
 }
 
+/* The largest block of subpool 0 a GETMAIN still gets, to 4 KB: what a
+** new session's stack needs. Each probe is freed at once.
+*/
+static unsigned
+largest_free(void)
+{
+    unsigned lo = 0, hi = 16u * 1024 * 1024;
+
+    while (hi - lo > 4096) {
+        unsigned mid = (lo + (hi - lo) / 2) & ~4095u;
+        void *p = getmain(mid, 0);
+
+        if (p != NULL) {
+            freemain(p);
+            lo = mid;
+        } else
+            hi = mid;
+    }
+    return lo;
+}
+
 static void
 cmd_display(OFTP_MON *m, const char *what)
 {
@@ -1603,6 +1703,14 @@ cmd_display(OFTP_MON *m, const char *what)
             n++;
         }
         oftp_mon_msg("OFTP111I %d TRANSFERS IN THE SPOOL", n);
+    } else if (what[0] == 'M') {
+        CLIBGRT *grt = __grtget();
+        /* the array's address, not the array: arraycount(&array) */
+        unsigned th = grt != NULL && grt->grtcthrd != NULL
+                      ? array_count(&grt->grtcthrd) : 0;
+
+        oftp_mon_msg("OFTP102I LARGEST FREE BLOCK %u KB, %u SUBTASK HANDLES, "
+                     "%d SESSIONS", largest_free() / 1024, th, m->nsess);
     } else
         oftp_mon_msg("OFTP101I %d SESSIONS", m->nsess);
 }

@@ -25,6 +25,11 @@ typedef struct oftp_mon {
     unsigned    counter;                /* time counter of virtual files */
     ECB         wake;                   /* wakes the scheduler           */
     CTHDTASK   *t_listen, *t_sched, *t_ctl;
+    /* the session subtasks, one array per task that attaches them: only
+    ** the attaching task may DETACH, so each reaps its own (#3)
+    */
+    CTHDTASK   *lsess[OFTP_MAXSESS * 2];  /* attached by the listener     */
+    CTHDTASK   *ssess[OFTP_MAXSESS * 2];  /* attached by the scheduler    */
     /* every open connection, for the abend: sockets are the system's,
     ** not the program's, and outlive it unless closed (0 = none)
     */
