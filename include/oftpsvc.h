@@ -4,9 +4,13 @@
 /* oftpsvc.h - the cross-memory transport: anchor, slots and the request
 ** block a client passes to the SVC routine OFTPSVC (internals/xmem.md).
 **
-** asm/oftpsvc.asm mirrors every offset below in its EQUs; test/tstsvc.c
-** checks them against offsetof(), so a change here that is not made
-** there fails the host tests.
+** asm/oftpsvc.asm mirrors every offset below in its EQUs. Nothing
+** checks that automatically yet (test/tstsvc.c is still to come); when
+** it does, the check has to be a cc370 COMPILE-TIME assert, because a
+** host offsetof() test cannot work here: void* is 8 bytes on a 64-bit
+** host, which moves every field from slot.ascb on and makes
+** sizeof(OFTP_SLOT) 2376 instead of 2368. See internals/xmem.md
+** section 10.
 */
 
 #define OFTP_SVC_SSNAME   "OFT1"        /* the SSCT, discovery only      */
@@ -47,7 +51,10 @@ typedef struct oftp_slot {
     unsigned    next;                   /* 28 resume index, rc MORE      */
     unsigned    rc;                     /* 2C OFTP_SVC_*                 */
     unsigned    stamp;                  /* 30 OFTPD's time of the answer */
-    char        rsv[12];                /* 34                            */
+    unsigned    rplyptr;                /* 34 caller's reply buffer, set
+                                        **    and read by OFTPSVC only;
+                                        **    OFTPD must not clear it   */
+    char        rsv[8];                 /* 38                            */
     char        req[256];               /* 40 the request line           */
     char        reply[OFTP_SVC_REPMAX]; /* 140 lines, each ending '\n'   */
 } OFTP_SLOT;                            /* 940                           */
