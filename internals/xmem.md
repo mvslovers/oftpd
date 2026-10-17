@@ -392,6 +392,13 @@ OFTPD delays one `OFTP LIST` -- so the MVP does without, and adds it
   fails on any rc != 0 (MBT session, measured on its side the same
   day).
 
+  **Confirmed end to end here once `[module.OFTPSVC]` existed**, which
+  is the first time mbt assembled this file at all: the same bad line
+  put back gives `mbt build` exit 1, `[mbt] ERROR: [as370]
+  asm/oftpsvc.asm failed (rc=12)`, and no `oftpsvc.o` survives. So the
+  gate that would have caught the zeroed instruction is real and is now
+  in the path.
+
   **An earlier version of this bullet claimed as370 exits 0 at severity
   12.** It does not. That reading came from `as370 … 2>&1 | head -40;
   echo $?`, which reports *head's* status -- the shell-as-instrument
@@ -463,9 +470,20 @@ artefacts are on disk:
   diagnostics under as370 1.6.3 and all 29 field offsets hold against
   the header under cc370. **Nothing has run on MVS.**
 
-Still to come: `src/mvs/oftp#svc.c` (the anchor and the STC-side
-install), the `[module.OFTPSVC]` block in `mbt.toml`, the `SVC=` keyword
-in `oftp#cfg.c` and the probe `test/mvs/tstsvc.c`.
+`[module.OFTPSVC]` and the `SVC=` keyword are in as well: mbt assembles
+and links the routine (`entry=OFTPSVC, no crt`), `mbt module-data` stays
+clean, and `SVC=` takes 200-255 with **no default**, an out-of-range
+number being an error rather than a silent 0 (`test/tstcfg.c`).
+
+Still to come: `src/mvs/oftp#svc.c` (the anchor, the `__loadhi` and
+patch, the SVC reserve/restore, the SSCT, the slot thread, the liveness
+check and the sweep) with its new `OFTP_MON` fields, the `oftpd.c`
+start/stop wiring -- where the restore is the *first* act of
+`oftp_mon_abend` -- and the probe `test/mvs/tstsvc.c`. None of it can be
+exercised off MVS, so it wants to land in pieces rather than as one
+block: the anchor, install and restore first, provable by reading the
+SVC slot back with `svcdm.py` before and after, then the slot thread
+and the sweep.
 
 ### The mirror check cannot be a host offsetof() test
 
