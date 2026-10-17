@@ -37,10 +37,18 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 - **Cross-memory transport** (#1, `internals/xmem.md`, a private SVC):
   SVC 237, free on all five stands (measured 2026-10-14); the ESTAE is
   in (d5b8bdc, measured with a CANCEL on dev1), #2 too; the handlers
-  answer through an output function (eeace93); next `OFTPSVC`, the anchor
-  and a probe round-tripping `STATUS` (step 3, the maintainer writes it;
-  `MVCK` assembles right since as370 1.6.3). It replaces the TCP control
-  port, which goes off by default in 0.2.0.
+  answer through an output function (eeace93); `asm/oftpsvc.asm` is
+  written and assembles clean under as370 1.6.3, all 29 field offsets
+  holding against `include/oftpsvc.h` under cc370, nothing run on MVS.
+  Next, in this order: the anchor and the STC-side install
+  (`src/mvs/oftp#svc.c`), `[module.OFTPSVC]` in `mbt.toml`, `SVC=` in
+  `oftp#cfg.c`, then a probe round-tripping `STATUS` on a dev1 slot.
+  **Decide before that probe** whether a program check inside the
+  routine is covered by recovery in `OFTPSVC` or by widening OFTPD's
+  sweep (`internals/xmem.md` section 6): today it leaks the slot and the
+  in-flight count, and step 5's cancelled-client test does not tell the
+  two failure modes apart. It replaces the TCP control port, which goes
+  off by default in 0.2.0.
 - ~~Before 0.2.0: the spool after an abend~~ (#2) -- OFTPD runs VERIFY
   itself when the open fails (rc 4 after a CANCEL, measured on dev1) and
   says so in `OFTP021W`.
