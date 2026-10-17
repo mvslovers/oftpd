@@ -12,9 +12,12 @@
 #include <string.h>
 #include <time.h>
 
+#include <ext/array.h>
+#include <mvs/crt.h>
 #include <mvs/lock.h>
 #include <mvs/recovery.h>
 #include <mvs/rfile.h>
+#include <mvs/storage.h>
 #include <mvs/wto.h>
 
 #include "oftp.h"
@@ -1575,6 +1578,27 @@ oftp_mon_recover(OFTP_MON *m)
                      sends, recvs);
 }
 
+/* The largest block of subpool 0 a GETMAIN still gets, to 4 KB: what a
+** new session's stack needs. Each probe is freed at once.
+*/
+static unsigned
+largest_free(void)
+{
+    unsigned lo = 0, hi = 16u * 1024 * 1024;
+
+    while (hi - lo > 4096) {
+        unsigned mid = (lo + (hi - lo) / 2) & ~4095u;
+        void *p = getmain(mid, 0);
+
+        if (p != NULL) {
+            freemain(p);
+            lo = mid;
+        } else
+            hi = mid;
+    }
+    return lo;
+}
+
 static void
 cmd_display(OFTP_MON *m, const char *what)
 {
@@ -1603,6 +1627,14 @@ cmd_display(OFTP_MON *m, const char *what)
             n++;
         }
         oftp_mon_msg("OFTP111I %d TRANSFERS IN THE SPOOL", n);
+    } else if (what[0] == 'M') {
+        CLIBGRT *grt = __grtget();
+        /* the array's address, not the array: arraycount(&array) */
+        unsigned th = grt != NULL && grt->grtcthrd != NULL
+                      ? array_count(&grt->grtcthrd) : 0;
+
+        oftp_mon_msg("OFTP102I LARGEST FREE BLOCK %u KB, %u SUBTASK HANDLES, "
+                     "%d SESSIONS", largest_free() / 1024, th, m->nsess);
     } else
         oftp_mon_msg("OFTP101I %d SESSIONS", m->nsess);
 }
