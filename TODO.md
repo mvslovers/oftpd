@@ -73,8 +73,11 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   on dev1 with a debug-only trigger (`-DOFTP_DEBUG_ABEND`). Left open: an
   abend inside the spool's lock or a queued spool request, and the
   session engine's buffer after an abend.
-- Session subtasks are never detached (#3): each may keep its stack and
-  TCB. Measure the storage over about 50 sessions first.
+- ~~Session subtasks are never detached~~ (#3) -- each kept about 69 KB
+  until a restart (50 sessions on dev1, 7536 KB to 4096 KB largest free
+  block). The listener and the scheduler now free each subtask once it
+  has ended and wait for the rest at stop; flat over 50 sessions, and
+  `D M` shows the largest free block and the subtask handles.
 - An EERP held at a relay after a call collision (testnet.md, Results):
   seen once at m38b, not reproduced. Find out whether a refused call
   (ESID 03, `OFTP202W`) can leave owed EERPs uncalled beyond RETRY.
