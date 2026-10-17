@@ -3,7 +3,7 @@
 ** DD OFTPPRM  the monitor's settings      DD OFTPPTN  the partners
 ** DD OFTPSPL  the spool, a KSDS KEYS(8 0) RECORDSIZE(512 512)
 **
-** Operator: F OFTPD,D P | D Q | D S | CALL partner | REFRESH     P OFTPD
+** Operator: F OFTPD,D P | D Q | D S | D M | CALL partner | REFRESH     P OFTPD
 **
 ** The startup order follows FTPD: console set-up while main is the only
 ** task, then APF, then the banner. The monitor block is a main() local:
