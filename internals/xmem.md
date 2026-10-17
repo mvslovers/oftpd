@@ -416,18 +416,32 @@ OFTPD delays one `OFTP LIST` -- so the MVP does without, and adds it
   `awk 'length($0)>=72'` run, and reading the output rather than the
   status. Whether rc 4 should fail a build is a policy question for the
   maintainer; the MBT session is putting it to him.
-- **`mbt module-data` warns and still exits 0, so the exit code is not
-  the check.** Measured 2026-10-18 with a control: a deliberate
-  `static int` at the top of `oftp#svc.c` produced
-  `[mbt] WARNING: writable data in - ([internal], linked by autocall if
-  referenced): src/mvs/oftp#svc.c:1: static int …` and the command still
-  returned **0**. OFTPD is AC(1) and RENT, where writable module data is
-  an S0C4, so read the output: the check is the absence of a
-  `writable data in` line, not the status. Earlier notes in this file
-  and in two pull requests said "`module-data` stays clean" on the
-  strength of the exit code; the conclusion happened to hold, the method
-  did not. A `static const` table is fine -- `mirror_ok()`'s has one and
-  draws no warning.
+- **`mbt module-data` is an error for a module's own sources and only a
+  warning for `[internal]` ones -- and everything in `src/` here is
+  `[internal]`.** Two controls, 2026-10-18:
+
+  | Writable `static` in | `mbt module-data` |
+  |---|---|
+  | `src/oftpd.c`, a `[module.OFTPD]` source with `rent = true` | `ERROR: writable data in OFTPD (rent = true)`, **exit 1**; `mbt build` fails too |
+  | `src/mvs/oftp#svc.c`, an `[internal]` source | `WARNING: writable data in - ([internal], linked by autocall if referenced)`, **exit 0** |
+
+  The warning path is by design: the check cannot know which module the
+  autocall will pull an `[internal]` object into (MBT, 2026-10-18, ML02-0002).
+  But `[internal]` is where almost all of this project's code lives, and
+  it is autocalled into OFTPD, which is `rent = true` -- where writable
+  module data is an S0C4. **So for anything under `src/`, read the
+  output: the check is the absence of a `writable data in` line, not the
+  exit code.** Closing that gap needs the `[internal]` members
+  attributed per module (from ld370's map); MBT is raising it as an
+  issue rather than deciding it.
+
+  Earlier notes in this file and in two pull requests said
+  "`module-data` stays clean" on the strength of the exit status. The
+  conclusion held and the method did not -- and the first correction of
+  it, written from the `[internal]` control alone, overstated the other
+  half: it claimed the exit code is never the check. One control, one
+  sentence wider than the control. A `static const` table draws no
+  warning on either path; `mirror_ok()`'s is one.
 - **Never EQU a field name an IBM mapping macro also defines.** Both
   errors above came from one line, `CVT0PT01 EQU 152` beside
   `CVT DSECT=YES`: the duplicate is IFO196, and `CVT0PT01-CVTMAP` then
