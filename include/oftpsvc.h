@@ -26,8 +26,15 @@
 #define OFTP_SL_FREE      0
 #define OFTP_SL_CLAIMED   1             /* the routine is filling it     */
 #define OFTP_SL_PENDING   2             /* OFTPD's to answer             */
-#define OFTP_SL_DONE      3             /* answered, the routine copies  */
+#define OFTP_SL_DONE      3             /* answered, not yet collected   */
 #define OFTP_SL_STOP      4             /* OFTPD stops: no answer        */
+#define OFTP_SL_COPYOUT   5             /* collected: the routine is in
+                                        ** the copy-out. Set by OFTPSVC
+                                        ** with CS from DONE, so a slot
+                                        ** the sweep took is detected.
+                                        ** It is what separates "woke
+                                        ** and died" from "not woken
+                                        ** yet" -- see xmem.md s6     */
 
 /* the routine's R15 (R0 = reply bytes, R1 = resume index for rc 4) */
 #define OFTP_SVC_OK       0             /* complete answer               */

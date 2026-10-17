@@ -279,20 +279,54 @@ to decrement `inflight` for each slot it frees, because the routine
 that owned it never will -- a pool scan cannot replace the counter,
 since a caller between the increment and the claim owns no slot at all.
 
-**DONE is the hard one, and a timeout alone is wrong.** A DONE slot
-that has sat there a long time is either a routine that faulted mid
-copy-out or a *parked caller that has not been dispatched yet* -- and
-nsf370 measured a 12-minute stall of a swapped-out address space
-(ADR-0044, this section's "Swapping"). Freeing a slot in the second
-case is a live corruption: the caller resumes, copies out and sets
-FREE, while another caller has already claimed the same slot. Liveness
-does not separate them either, because the owner is alive in both. So
-either the timeout has to be longer than the worst swap stall, which is
-a guess, or **the routine must mark the slot when it begins the copy
-out** -- a new state (`OFTP_SL_COPYOUT`) that makes "woken and
-faulted" distinguishable from "not woken yet", at the cost of one
-store in the routine and one value in the shared header. Settle this
-before writing the sweep; do not write a DONE timeout without it.
+**DONE would be the hard one, and a timeout alone would be wrong.** A
+DONE slot that has sat there a long time is either a routine that
+faulted mid copy-out or a *parked caller that has not been dispatched
+yet* -- and nsf370 measured a 12-minute stall of a swapped-out address
+space (ADR-0044, this section's "Swapping"). Freeing a slot in the
+second case is a live corruption: the caller resumes, copies out and
+sets FREE while another caller has already claimed the same slot.
+Liveness does not separate them, because the owner is alive in both.
+
+**So the routine says when it woke: `OFTP_SL_COPYOUT`** (state 5, in
+the shared header since 2026-10-17). The first thing the routine does
+after the WAIT, before it reads a single field of the slot, is take it
+out of DONE and into COPYOUT. The sweep then reads:
+
+| State, and old | Means | Do |
+|---|---|---|
+| CLAIMED, 3 sweeps | faulted before publishing | free it |
+| PENDING | OFTPD's own to-do | nothing |
+| DONE | **not dispatched yet** -- may be swapped out | **nothing, however long** |
+| COPYOUT, > 1 s | woke, then faulted | free it |
+
+A copy-out is microseconds of work and by definition its task is
+running, so any COPYOUT older than a second is dead. That is a fact,
+not the guess a DONE timeout would have been.
+
+It is a **`CS` from DONE, not a store.** If the sweep got there first
+the slot is no longer DONE and is very likely another caller's already,
+so the routine takes the `SWEPT` exit: it stores nothing into the slot
+and does **not** decrement. **Whoever frees a slot owns its
+decrement** -- that is the invariant the sweep has to keep, because a
+second decrement here would take `inflight` below zero (the `BCTR`
+loops do not guard against it) and leave every later `P OFTPD`
+draining forever.
+
+**One case remains, and it is why a long timeout still has a job.** A
+client whose task is purged while parked -- a cancelled TSO command,
+`S322` -- never wakes, so it never writes COPYOUT: the slot stays DONE
+with its address space alive, indistinguishable from a swapped-out
+caller. COPYOUT does not fix that; what it does is take the *common*
+case out of the guess, so the residual timeout only has to cover a rare
+one, where being generous costs nothing. Pick it in minutes, not
+seconds, and say in the code that it is covering this case and not the
+copy-out.
+
+Adding state 5 does not change any offset, so `OFTP_SVC_VER` stays 1.
+It does change the routine/OFTPD protocol -- harmless today because
+neither side is deployed, and the reason it had to land before the
+sweep rather than after it.
 
 **Swapping**: open. nsf370 measured a 12-minute stall of a swapped-out
 STC and cures it with `SYSEVENT DONTSWAP` without explaining it
