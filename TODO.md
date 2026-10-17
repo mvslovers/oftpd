@@ -46,7 +46,12 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   reserve/restore, SSCT, slot thread, liveness, sweep -- then the
   `oftpd.c` wiring, then a probe round-tripping `STATUS` on a dev1 slot.
   In pieces, since none of it runs off MVS: install and restore first,
-  checked with `svcdm.py` before and after.
+  with the SVC table entry read before `S OFTPD`, after it and after
+  `P OFTPD` (`internals/xmem.md` section 3's chain, through HTTPD's
+  `/.dm` on dev1 or a BREXX `STORAGE()` job on an M38 stand; there is
+  no `svcdm.py`, it was never written). Which stand takes the first
+  install is the maintainer's call -- a restore that does not take
+  lasts until the next IPL, and dev1 is in use all day.
   A program check inside the routine gets no recovery of its own: it is
   prevented where it can be -- `TPROT` on both ends of every caller
   range before the claim, so a forged pointer is refused instead of

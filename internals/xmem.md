@@ -482,8 +482,10 @@ start/stop wiring -- where the restore is the *first* act of
 `oftp_mon_abend` -- and the probe `test/mvs/tstsvc.c`. None of it can be
 exercised off MVS, so it wants to land in pieces rather than as one
 block: the anchor, install and restore first, provable by reading the
-SVC slot back with `svcdm.py` before and after, then the slot thread
-and the sweep.
+SVC slot back before and after -- section 3's chain, through HTTPD's
+`/.dm` on dev1 or a BREXX `STORAGE()` job on an M38 stand; there is no
+`svcdm.py` (section 10, MVS test plan) -- then the slot thread and the
+sweep.
 
 ### The mirror check cannot be a host offsetof() test
 
@@ -635,10 +637,32 @@ A host test that asserts `offsetof()` on every `oftpsvc.h` field against
 the `.asm` EQUs is the only mirror check runnable off-MVS; run it before
 any deploy.
 
-**MVS test plan**: section 9 step 5. Ask MBT for a dev1 slot first; read
-the slot-237 entry with `svcdm.py` *before* and *after* (`P OFTPD` must
-leave it reading back equal to the saved bytes). If an abend path or a
-bad restore is suspected, do not `S OFTPD` again -- report.
+**MVS test plan**: section 9 step 5. Ask MBT for a slot first; read the
+slot-237 entry three times -- before `S OFTPD`, after it, and after
+`P OFTPD`. The third read must give back what the first one did: the
+invalid-SVC entry point, `00CCC8` on MVS/CE and `017068` on TK5, and
+**not** zero. If an abend path or a bad restore is suspected, do not
+`S OFTPD` again -- report.
+
+**There is no `svcdm.py`.** It appeared in this file and in `TODO.md`
+as the tool that would prove the install, and it was never written
+(MBT, 2026-10-18: nothing of that name under `~/repos/mvs` or
+`~/.mbt`). The read is section 3's chain -- `CVT` -> `CVTABEND` X'C8'
+-> `SCVTSVCT` X'84' -> `+237*8` -- through HTTPD's `/.dm` on dev1, or a
+BREXX `STORAGE()` batch job on an M38 stand, as the 2026-10-14 table in
+section 3 was taken. Name the job or the `/.dm` call in the notes, so
+"free" carries its evidence rather than being asserted. And **re-read
+at the start of the slot, before anything writes**: the 2026-10-14
+reading is memory, not inventory.
+
+**Which stand takes the first install is open** (MBT put it to the
+maintainer, 2026-10-18). Writing into the SVC table of a running shared
+system is not a deploy: a restore that does not take leaves SVC 237
+pointing at CSA that OFTPD has freed, and that state lasts until the
+next IPL. dev1 carries libc370, oftpd and mvsMF work all day, so a
+stuck restore there sits under all of them; m38x (MVSCE-EXP) is the
+experiment stand and is MVS/CE like dev1, so the same invalid-SVC entry
+point and the same chain apply.
 
 **On the earlier handoff**: this section used to say that a session could
 not write or correct the routine, because taking an SVC table entry reads
