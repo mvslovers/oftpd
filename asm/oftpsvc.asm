@@ -226,8 +226,14 @@ UIDLEN   BCTR  R1,0                 EX wants length-1
 UIDOK    DS    0H
 *---------------------------------------------------------------------*
 * MVCK the fixed 24-byte request header into key-0 slot storage before
-* interpreting any fields. A forged pointer into differently keyed
-* storage fails the caller-key check in MVCK.
+* interpreting any fields.
+*
+* What makes this safe is the TPROT above, not MVCK's own key check:
+* MVCK's source key only has to permit a FETCH, and a fetch with key 8
+* from storage whose key differs but whose fetch-protection bit is off
+* is permitted -- which is the normal state of key-0 CSA. So MVCK alone
+* does not stop a forged pointer from reading key-0 storage. Requiring
+* a STORE through TPROT does.
          LA    R1,24
          LR    R3,R9
          LR    R5,R8
