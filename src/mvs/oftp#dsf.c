@@ -92,7 +92,8 @@ size_kb(const char *dsn)
     /* DS4DEVTK by offset, not through d.dscb4: __dscbv() returns the
     ** format-4 DSCB from its format byte on (F4 at work[0], measured),
     ** while libc370's struct dscb4 starts with the 44-byte key, so
-    ** dscb4.devtk lands 44 bytes too far (it read 256 for 19254). 0x16
+    ** dscb4.devtk lands 44 bytes too far (it read 256 for 19254;
+    ** libc370#173). 0x16
     ** is X'42' less the key.
     */
     memset(&d, 0, sizeof(d));
