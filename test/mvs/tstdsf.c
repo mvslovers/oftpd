@@ -244,6 +244,58 @@ t_text(void)
     }
 }
 
+/* #21: a file of unknown size (SFIDFSIZ 0) is received whole, and sending
+** it again announces a size that covers it. 40 000 records of 80 are
+** 3125 KB -- more than the 5 + 15 x 3 tracks a zero size used to get on
+** any of 3350, 3380 or 3390.
+*/
+#define SIZE_RECS 40000UL
+
+static void
+t_size(void)
+{
+    OFTP_SFIDCMD sf;
+    OFTP_DSF *f;
+    char dsn[60];
+    unsigned char rec[80];
+    unsigned long i, kb = SIZE_RECS * 80 / 1024;
+    int rc = 0;
+
+    dsname(dsn, "SIZE");
+    memset(&sf, 0, sizeof(sf));
+    sf.fmt = 'F';
+    sf.lrecl = 80;
+    sf.fsiz = 0;
+    CHECK_EQ(oftp_dsf_open_in(dsn, &sf, OFTP_XLATE_NONE, &opt, &f), 0,
+             "size: allocate FB 80 with no size given");
+    memset(rec, 0xC1, sizeof(rec));
+    for (i = 0; i < SIZE_RECS && rc == 0; i++)
+        rc = oftp_dsf_write(f, rec, 80, 1);
+    CHECK_EQ(rc, 0, "size: every record written");
+    CHECK_EQ(oftp_dsf_close(f, 1), 0, "size: 3 MB of unknown size fit");
+    if (rc != 0)
+        printf("    (size: the write failed after %lu records)\n", i);
+
+    memset(&sf, 0, sizeof(sf));
+    CHECK_EQ(oftp_dsf_open_out(dsn, 0, OFTP_XLATE_NONE, &sf, &f), 0,
+             "size: open it for sending");
+    printf("    (size: %lu records, %lu KB of data, SFID size %lu KB)\n",
+           SIZE_RECS, kb, sf.fsiz);
+    CHECK(sf.fsiz >= kb, "size: the SFID size covers the data");
+    CHECK(sf.fsiz <= 3 * kb, "size: and is not wildly larger");
+    oftp_dsf_close(f, 1);
+
+    /* a member has no size of its own in the VTOC: none is announced */
+    memset(&sf, 0, sizeof(sf));
+    sf.fsiz = 99;
+    if (oftp_dsf_open_out("SYS1.PARMLIB(IEASYS00)", 0, OFTP_XLATE_NONE,
+                          &sf, &f) == 0) {
+        CHECK_EQ(sf.fsiz, 0, "size: a member announces no size");
+        oftp_dsf_close(f, 1);
+    }
+    remove(dsn);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -254,5 +306,6 @@ main(int argc, char **argv)
     t_variable();
     t_undefined();
     t_text();
+    t_size();
     return mbt_test_summary("TSTDSF");
 }

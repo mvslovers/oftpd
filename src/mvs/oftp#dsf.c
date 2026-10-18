@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <mvs/dscb.h>
 #include <mvs/dynalloc.h>
 #include <mvs/rfile.h>
 
@@ -22,6 +23,9 @@
 #define R_LRECL     5
 #define R_ACCESS    12
 #define R_DUP       13
+
+#define TRKLEN_3350 19254       /* track length when the volume's own is
+                                ** not to be had (DS4DEVTK of a 3350) */
 
 struct oftp_dsf {
     RFILE      *rf;
@@ -61,6 +65,48 @@ dsf_free(OFTP_DSF *f)
 
 /* ---- sending ----------------------------------------------------- */
 
+/* The SFID's size estimate in 1K blocks (#21): the tracks the data set
+** uses, from DS1LSTAR, at the volume's full track length. That is more
+** than the data, never less, which is the right side to err on for a
+** receiver that allocates by it. 0 means "not known": a member (the VTOC
+** knows only the library), a data set not catalogued, or a DSCB that
+** cannot be read -- the receiver then takes its own default.
+*/
+static unsigned long
+size_kb(const char *dsn)
+{
+    LOCWORK  lw;
+    DSCB     d;
+    unsigned trks, trklen = TRKLEN_3350;
+
+    if (strchr(dsn, '(') != NULL || strlen(dsn) > 44)
+        return 0;
+    memset(&lw, 0, sizeof(lw));
+    if (__locate(dsn, &lw) != 0)
+        return 0;
+    memset(&d, 0, sizeof(d));
+    if (__dscbdv(dsn, lw.volser, &d) != 0)
+        return 0;
+    trks = (((unsigned)d.dscb1.lstar[0] << 8) | d.dscb1.lstar[1]) + 1;
+
+    /* DS4DEVTK by offset, not through d.dscb4: __dscbv() returns the
+    ** format-4 DSCB from its format byte on (F4 at work[0], measured),
+    ** while libc370's struct dscb4 starts with the 44-byte key, so
+    ** dscb4.devtk lands 44 bytes too far (it read 256 for 19254). 0x16
+    ** is X'42' less the key.
+    */
+    memset(&d, 0, sizeof(d));
+    if (__dscbv(lw.volser, &d) == 0 && (unsigned char)d.work[0] == 0xF4) {
+        unsigned t = ((unsigned)(unsigned char)d.work[0x16] << 8)
+                   | (unsigned char)d.work[0x17];
+
+        if (t != 0)
+            trklen = t;
+    }
+    /* 65536 tracks of a 3390 are 3.7e9 bytes: still inside 32 bits */
+    return ((unsigned long)trks * trklen + 1023) / 1024;
+}
+
 int
 oftp_dsf_open_out(const char *dsn, char fmt, int xl, OFTP_SFIDCMD *sfid,
                   OFTP_DSF **out)
@@ -98,7 +144,7 @@ oftp_dsf_open_out(const char *dsn, char fmt, int xl, OFTP_SFIDCMD *sfid,
     sfid->fmt = fmt;
     sfid->lrecl = fmt == 'F' ? f->lrecl
                 : fmt == 'V' ? f->lrecl - 4 : 0;
-    sfid->fsiz = 0;                     /* not known in advance */
+    sfid->fsiz = size_kb(dsn);
     *out = f;
     return 0;
 }
@@ -217,7 +263,7 @@ oftp_dsf_open_in(const char *dsn, const OFTP_SFIDCMD *sfid, int xl,
 {
     OFTP_DSF *f;
     const char *recfm;
-    unsigned lrecl, blksize, trk;
+    unsigned lrecl, blksize, trk, sec;
     char opts[200], dd[16];
     int n;
 
@@ -250,14 +296,24 @@ oftp_dsf_open_in(const char *dsn, const OFTP_SFIDCMD *sfid, int xl,
         return R_FORMAT;
     }
 
-    /* about 15 KB a track; the SFID's size is an estimate in 1K blocks */
-    trk = (unsigned)(sfid->fsiz / 15) + 1;
-    if (trk < 5)
-        trk = 5;
+    /* about 15 KB a track; the SFID's size is an estimate in 1K blocks.
+    ** No size at all (0) is a sender that did not say, which is what
+    ** OFTPD itself sent before #21: TRK(15,15), up to 240 tracks, about
+    ** 4 MB on a 3350, instead of the 50 tracks the estimate rule gives.
+    */
+    if (sfid->fsiz == 0) {
+        trk = 15;
+        sec = 15;
+    } else {
+        trk = (unsigned)(sfid->fsiz / 15) + 1;
+        if (trk < 5)
+            trk = 5;
+        sec = trk / 2 + 1;
+    }
     n = snprintf(opts, sizeof(opts),
                  "DSN=%s;DISP=(NEW,CATLG,DELETE);DSORG=PS;RECFM=%s;"
                  "LRECL=%u;BLKSIZE=%u;SPACE=TRK(%u,%u)",
-                 dsn, recfm, lrecl, blksize, trk, trk / 2 + 1);
+                 dsn, recfm, lrecl, blksize, trk, sec);
     if (opt->unit[0] && n > 0 && n < (int)sizeof(opts))
         n += snprintf(opts + n, sizeof(opts) - (size_t)n, ";UNIT=%s", opt->unit);
     if (opt->volser[0] && n > 0 && n < (int)sizeof(opts))
