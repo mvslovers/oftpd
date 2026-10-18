@@ -125,10 +125,11 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   34/34; then on the stand m38b as a test instance beside its OFTPD
   (`TSTSVC` 20/20, SVC 237 back to `00017068` at the end). Open from it:
   - The dialog has not run on TK5 at all.
-  - **`SEND` reads the data set with OFTPD's authority**, not the
-    caller's: an ordinary user can send what they could not read. Same
-    as over TCP, but now visible. `RACINIT`/`RACHECK` for the caller is
-    the candidate; not decided.
+  - ~~**`SEND` reads the data set with OFTPD's authority**~~: over the
+    SVC the caller's READ is checked at queue time (RACINIT PASSCHK=NO,
+    RACHECK), measured in a TK5 container with a deny profile
+    (`internals/xmem.md` section 14). Not shown: a caller without an
+    ACEE, a system without a security product.
   - A request over 255 bytes is refused by the client before the SVC
     (`TSTSVC` step 2b); the routine's own length check is still
     exercised by no test.

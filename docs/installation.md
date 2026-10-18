@@ -197,6 +197,12 @@ may change. `OFTP` needs no authorization of its own:
 it reaches OFTPD through OFTPD's SVC, and OFTPD reads the userid of the
 job or TSO session itself.
 
+`SEND` checks your authority, not OFTPD's: OFTPD asks the security
+product (RAKF) whether your userid may read the data set, and refuses
+with `not authorized` (RC 8) when it may not -- an administrator
+included. So a data set needs the profile that protects it; under RAKF a
+data set no profile covers may be read by everyone.
+
 A transfer belongs to the userid that queued it. That userid sees and
 changes it; so does a userid named in `ADMIN=`, which sees and changes
 every transfer, including the received ones, which belong to nobody.

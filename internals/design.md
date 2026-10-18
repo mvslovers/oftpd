@@ -524,7 +524,9 @@ Until then the client sends its userid and OFTPD believes it. That is a
 development shortcut, not a security model, and the TCP transport is not
 to be offered as one.
 
-**The check itself** is the same for both transports: OFTPD builds an ACEE
+**Built for the SVC** (2026-10-18, `src/mvs/oftp#sec.c`, measured in
+`internals/xmem.md` section 14); the TCP port, which knows nobody, is
+not checked. **The check itself** was planned for both transports: OFTPD builds an ACEE
 for the requester's userid without a password (RACINIT, possible because
 OFTPD is APF) and checks READ on the data set to be sent — and for
 post-processing, on the job library. Under RAKF a missing profile means

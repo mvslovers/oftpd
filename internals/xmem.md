@@ -1384,7 +1384,10 @@ SVC` (RAKF's SVC 244). SVC 235-239, read by a BREXX `STORAGE()` job
 235, 236, 238 and 239 read `00017068 80000000` throughout: `017068` is
 TK5's invalid-SVC routine, as on m38b and m38r (section 3).
 
-**Two RAKF userids.** `ADMIN=HERC01`; HERC02 is an ordinary TSO user.
+**Two RAKF userids.** `ADMIN=HERC01`; HERC02 is not in `ADMIN=`. (On
+TK5 HERC02 is in RAKF's group ADMIN all the same, as HERC01 is; that
+decides data set access, not OFTPD's rights. Corrected 2026-10-18: this
+line used to call HERC02 an ordinary TSO user.)
 `OFTP` from `HERC01.OFTP.LOAD`, not in `IEAAPF00`.
 
 A trap first: **mvsMF rewrites the job card's `USER=` to the userid
@@ -1442,9 +1445,10 @@ PSW `075C2000 00F1BB0C`, step `COND CODE 0000`, nothing on the console.
 That is the dump of mvslovers/oftpd#12 on MVS/CE, so not new and not
 TK5's.
 
-**`SEND` and the caller's authority** stayed out of reach: HERC02 may
-read `HERC01.OFTP.TESTA` itself (IEBGENER as HERC02, JOB00052, CC 0), so
-sending it shows nothing.
+**`SEND` and the caller's authority** stayed out of reach here: HERC02
+may read `HERC01.OFTP.TESTA` itself (IEBGENER as HERC02, JOB00052, CC 0),
+as RAKF group ADMIN and through TK5's `DATASET * READ`, so sending it
+shows nothing. Measured since with HERC03 (section 14).
 
 ### TK5 stand m38b
 
@@ -1497,10 +1501,50 @@ on the stand: `HERC01.OFTPD.V0R1M0D.TESTLIB` from `mbt test --mvs`.
 - **Two RAKF userids on a stand**: m38b ran HERC01 only. The container
   covered HERC02.
 - **A caller without an ACEE**, which owns nothing by this rule.
-- **`SEND` reads the data set with OFTPD's authority, not the
-  caller's.** With a real caller identity this is now visible: an
-  ordinary user can send a data set they could not read themselves. It
-  was the same over TCP, so nothing got worse, but the SVC was meant to
-  make the identity count. A `RACHECK` on the caller's behalf needs an
-  ACEE for that userid (`RACINIT` without a password, which OFTPD as an
-  authorized task could issue). Open, not decided.
+- ~~**`SEND` reads the data set with OFTPD's authority, not the
+  caller's.**~~ Checked at queue time since section 14: over the SVC,
+  OFTPD asks RACHECK whether the caller may read the data set.
+
+## 14. A send needs the caller's READ (2026-10-18)
+
+`design.md` 7.1 as written: OFTPD reads a data set it sends with its own
+authority, so a send over the SVC -- where the userid is real -- is
+checked when it is queued (`src/mvs/oftp#sec.c`):
+
+- `racf_login(user, NULL)`: RACINIT `ENVIR=CREATE,PASSCHK=NO`, which
+  OFTPD may issue because it is authorized;
+- `racf_auth(acee, "DATASET", dsn, READ)` on the data set (a member's
+  library), RC 0 or 4 allowed, as OPEN itself would proceed;
+- `racf_logout()`.
+
+Every caller is checked, an `ADMIN=` userid as well: `ADMIN=` is about
+transfers, not data sets. The answer is `509 not authorized: <user> may
+not read <dsn>` (RC 8) and `OFTP238W` on the console, and it comes before
+the existence check, so a data set the caller may not read answers the
+same whether it exists or not. A caller without a userid is refused on a
+system with a security product; without one (`CVTRAC` 0, or RACINIT
+answering 32) there is nothing to check. The TCP port is unchanged.
+
+Measured in a throwaway TK5 container (`tk5:target`), OFTPD authorized
+by SVC 244, with a profile of the container's own in
+`SYS1.SECURE.CNTL(PROFILES)` reloaded by `S RAKF` (`RAKFPROF7`):
+`DATASET HERC01.OFTPSEC.*` NONE, group ADMIN ALTER. HERC03 is not in
+ADMIN; HERC01 and HERC02 are.
+
+| Who | What | Result |
+|---|---|---|
+| HERC03, IEBGENER (the control) | read `HERC01.OFTPSEC.DATA` | S913-38, `RAKF0005 INVALID ATTEMPT` (JOB00048) |
+| HERC03, `OFTP SEND` | `HERC01.OFTPSEC.DATA` | RC 8, `not authorized: HERC03 may not read HERC01.OFTPSEC.DATA`; `OFTP238W` (JOB00049) |
+| HERC03, `OFTP SEND` | `HERC01.OFTPSEC.NOSUCH` | RC 8, the same answer, not `data set not found` |
+| HERC03, `LIST` | | `0 transfers` |
+| HERC01, `OFTP SEND` | `HERC01.OFTPSEC.DATA` | queued (JOB00047) |
+| HERC01 and HERC02, `OFTP SEND` | `HERC01.OFTP.TESTA` | queued (JOB00042, 00043) |
+| HERC02, `OFTP SEND` | `HERC01.NOSUCH.DATA` | `data set not found` |
+
+The check writes nothing to the console: RACINIT and the RACHECK
+(`LOG=NONE`) left no RAKF message for OFTPD's checks, only for the
+IEBGENER control.
+
+Not shown: a caller without an ACEE, and a system without a security
+product -- both are read off the code.
+
