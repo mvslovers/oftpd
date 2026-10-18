@@ -73,7 +73,8 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   subpool 241** -- fetch legal, store refused -- against a key-8 heap
   control at CC 0. Paging had to be forced to be tested at all
   (`LIST` on a fresh spool is 0 rows); forced, 5 rows came across in
-  2 pieces, each exactly once. **MVS/CE only; TK5 unverified**, the
+  2 pieces, each exactly once. On TK5 since in a container only
+  (#16: `TSTSVC` 34/34; #15's `TSTPROT` not run there), the
   sweep's state table is still unexercised, and the storage-key
   granularity is explicitly NOT settled.
   **#15 is answered** (`test/mvs/tstprot.c`, `tstprot.jcl`):
@@ -117,15 +118,21 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   and changes every transfer (everyone else: only their own). Measured
   in two throwaway containers: `OFTP` batch from a library that is not
   APF-authorized, two owners with and without `ADMIN=`, paging through
-  the client, the dialog on a 43-row screen. Open from it:
-  - **TK5 with `SVC=237`** (m38r or m38b): the first run of the
-    transport on a stand at all. Needs a confirmed slot.
+  the client, the dialog on a 43-row screen. Then in a TK5 container
+  (2026-10-18): OFTPD authorized through SVC 244 from a library not in
+  `IEAAPF00`, SVC 237 taken and given back (read by a second party),
+  two RAKF userids (HERC01 in `ADMIN=`, HERC02 not), paging, `TSTSVC`
+  34/34. Open from it:
+  - **A TK5 stand** with `SVC=237` (m38r or m38b): the first run of the
+    transport on a stand at all. Needs a confirmed slot. The dialog has
+    not run on TK5 at all.
   - **`SEND` reads the data set with OFTPD's authority**, not the
     caller's: an ordinary user can send what they could not read. Same
     as over TCP, but now visible. `RACINIT`/`RACHECK` for the caller is
     the candidate; not decided.
-  - A second RAKF userid on the SVC, and `TSTSVC` step 2b (a request
-    over 255 bytes), are written and not run.
+  - A request over 255 bytes is refused by the client before the SVC
+    (`TSTSVC` step 2b); the routine's own length check is still
+    exercised by no test.
   - The dialog's profile on dev1 still holds `127.0.0.1`: clear the host
     under option 5 when the SVC is on there.
 - ~~Before 0.2.0: the spool after an abend~~ (#2) -- OFTPD runs VERIFY
