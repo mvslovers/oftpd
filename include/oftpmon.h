@@ -22,7 +22,9 @@ typedef struct oftp_mon {
     int         lsock;                  /* OFTP listener                 */
     int         csock;                  /* control port listener         */
     volatile int nsess;
-    volatile char busy[OFTP_MAXPTN];    /* partner in a session          */
+    volatile char busy[OFTP_MAXPTN];    /* sessions with the partner now */
+    volatile char calling[OFTP_MAXPTN]; /* of them, our calls that have
+                                        ** not yet claimed anything      */
     volatile char callreq[OFTP_MAXPTN]; /* operator asked for a call     */
     long        tcall[OFTP_MAXPTN];     /* not reached: no call before   */
     unsigned    counter;                /* time counter of virtual files */
@@ -37,6 +39,13 @@ typedef struct oftp_mon {
     ** not the program's, and outlive it unless closed (0 = none)
     */
     volatile int ssock[OFTP_MAXSESS];   /* sessions                      */
+    /* The EERP or NERP each session is sending, by spool key, in the
+    ** session's ssock slot (all zeros: none). A received file stays
+    ** RECEIVED until its EERP is sent, so this is what keeps a second
+    ** session from sending it too (#18). It lives only as long as the
+    ** run: a claim is given back with the session, abend or not.
+    */
+    char        erpheld[OFTP_MAXSESS][8];
     volatile int cconn;                 /* the control-port request      */
     /* The cross-memory transport (internals/xmem.md, src/mvs/oftp#svc.c).
     ** It lives here and nowhere else: OFTPD is AC(1) and reentrant, so

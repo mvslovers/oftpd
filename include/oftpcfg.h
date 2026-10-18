@@ -13,7 +13,12 @@
 **             VOLSER= RETRY= MAXRETRY= RELAY=
 **   OFTPPTN:  PARTNER= ODETTEID= PASSWORD= OURPASSWORD= OURID= HOST=
 **             PORT= LEVEL= SDEB= CREDIT= MODE= COMPRESS= ENABLED= CALL=
-**             ADDRESS= XLATE= VIA=
+**             ADDRESS= XLATE= VIA= SESSIONS=
+**
+** SESSIONS=n (1-16, default 1) is how many sessions with the partner may
+** run at once, under MAXSESS. A call from a partner at its limit ends
+** with ESID 08; while work no session holds is waiting, the monitor
+** opens another session to it, up to the limit (internals/design.md 6.1).
 **
 ** VIA=name makes a partner one that is reached through another: files for
 ** it go in sessions with name, addressed to its Odette ID (SFIDDEST). It
@@ -37,6 +42,7 @@ typedef struct oftp_partner {
     int         port;
     int         enabled;                /* ENABLED=Y and no error        */
     int         call;                   /* CALL=Y: we may call it        */
+    int         sessions;               /* SESSIONS=: at once, at most   */
     char        address[16];            /* calls must come from here     */
     int         xlate;                  /* F/V/U translation default     */
     char        via[9];                 /* reached through this partner  */

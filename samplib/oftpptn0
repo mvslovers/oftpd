@@ -17,6 +17,8 @@
 * ADDRESS      calls from it must come from this IP address    (-)
 * XLATE        Y: translate F, V and U data EBCDIC<->ASCII     (N)
 * ENABLED      N: refuse it and never call it                 (Y)
+* SESSIONS     sessions with it at once, 1-16, under MAXSESS;
+*              a call beyond it is refused with ESID 08       (1)
 * VIA          the name of the partner it is reached through (a
 *              clearing centre): files for it go in sessions with that
 *              partner, addressed to its ODETTEID. It needs no HOST,
