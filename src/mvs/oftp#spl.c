@@ -338,6 +338,15 @@ oftp_spl_close(OFTP_SPOOL *sp)
     free(sp);
 }
 
+/* unlock() is a DEQ RET=HAVE: on a lock held by another task, or by
+** none, it only returns a code */
+void
+oftp_spl_release(OFTP_SPOOL *sp)
+{
+    if (sp != NULL)
+        unlock(sp, 0);
+}
+
 int
 oftp_spl_add(OFTP_SPOOL *sp, OFTP_SPREC *rec)
 {

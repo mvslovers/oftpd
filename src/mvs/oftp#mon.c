@@ -673,12 +673,15 @@ session_thread(void *arg1, void *arg2)
         c->rc = oftp_sess_run(&c->s);
     }
     if (ab != 0) {
-        /* The abend may have come inside a lock(m) window. The task lives
-        ** on after try(), so MVS does not release it: we do. unlock() is
-        ** a DEQ RET=HAVE, so on a lock this task does not hold it only
-        ** returns a code.
+        /* The abend may have come inside a lock(m) window, or inside the
+        ** spool's while queueing a request. The task lives on after try(),
+        ** so MVS does not release them: we do. unlock() is a DEQ RET=HAVE,
+        ** so on a lock this task does not hold it only returns a code.
         */
         unlock(m, 0);
+        oftp_spl_release(m->spool);
+        /* and the record buffer of a file the abend cut off */
+        oftp_sess_free(&c->s);
         abend_text((unsigned)ab, abt, sizeof(abt));
         oftp_mon_msg("OFTP209E %s: SESSION ABEND %s, CLEANING UP",
                      c->pt ? c->pt->peer.name : c->ip, abt);

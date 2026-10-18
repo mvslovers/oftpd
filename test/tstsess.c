@@ -6,6 +6,7 @@
 */
 #include <errno.h>
 #include <poll.h>
+#include <setjmp.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -92,7 +93,12 @@ typedef struct mfiles {
     int         nerps;              /* NERPs received                     */
     int         nreas;              /* the last one's reason and creator  */
     char        ncrea[OFTP_IDLEN + 1];
+    int         jump;               /* 'R' read, 'W' write: leave the
+                                       engine by longjmp, as an abend
+                                       under try() does                 */
 } MFILES;
+
+static jmp_buf abend_jb;
 
 static int
 m_next_out(void *ctx, const OFTP_PEER *peer, OFTP_SFIDCMD *f, OFTP_FH **fh)
@@ -124,7 +130,8 @@ m_read(void *ctx, OFTP_FH *fh, unsigned char *b, unsigned cap, unsigned *n,
     MOUT *o = fh;
     const char *r;
 
-    (void)ctx;
+    if (((MFILES *)ctx)->jump == 'R')
+        longjmp(abend_jb, 1);
     if (o->fmt == 'U' || o->fmt == 'T') {
         r = o->recs[0];
         *n = (unsigned)strlen(r);
@@ -180,7 +187,8 @@ m_write(void *ctx, OFTP_FH *fh, const unsigned char *b, unsigned n, int eor)
 {
     MIN *in = fh;
 
-    (void)ctx;
+    if (((MFILES *)ctx)->jump == 'W')
+        longjmp(abend_jb, 1);
     memcpy(in->data + in->len, b, n);
     in->len += n;
     if (eor)
@@ -372,6 +380,8 @@ run_initiator(const SCEN *sc, int fd)
     strcpy(sess.peer.pswd_out, sc->ipw);
     rc = oftp_sess_run(&sess);
 
+    if (sess.xbuf != NULL)
+        return 20;
     if (strcmp(sc->ipw, "PW") != 0)
         return rc == 4 && !sess.esid_local ? 0 : 10;
     if (sc->refuse)
@@ -431,6 +441,8 @@ scenario(const SCEN *sc)
     rc = oftp_sess_run(&sess);
     close(sv[1]);
     waitpid(pid, &status, 0);
+    snprintf(msg, sizeof(msg), "%s: no record buffer left", sc->name);
+    CHECK(sess.xbuf == NULL, msg);
 
     snprintf(msg, sizeof(msg), "%s: initiator side (child rc %d)", sc->name,
              WIFEXITED(status) ? WEXITSTATUS(status) : -1);
@@ -460,6 +472,58 @@ scenario(const SCEN *sc)
     CHECK(m.eerps == 1 && m.out[0].done == 1, msg);
 }
 
+/* An abend in the middle of a file, as try() sees it: the engine is left
+** by longjmp from a callback, with the record buffer of the file still
+** allocated. It must be in sess.xbuf, and oftp_sess_free() frees it.
+** 'W': in the responder's write, receiving the initiator's F file;
+** 'R': in the responder's read, sending its V file back.
+*/
+static void
+abend_scenario(int where)
+{
+    static const SCEN sc = { "abend", 5, 5, 4096, 99, 0, "PW", 0, 0 };
+    MFILES m;
+    int sv[2], status = -1;
+    pid_t pid;
+    char msg[120];
+
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) != 0) {
+        CHECK(0, "socketpair");
+        return;
+    }
+    pid = fork();
+    if (pid == 0) {
+        close(sv[1]);
+        run_initiator(&sc, sv[0]);      /* sees the line drop */
+        close(sv[0]);
+        _exit(0);
+    }
+    close(sv[0]);
+
+    resp_files(&m);
+    m.jump = where;
+    peer_init(&resp_view, "MVS1", "O0013000000MVS1", "O0013000000MVS2",
+              sc.rlevel, sc.sdeb, sc.cred, sc.cmpr);
+    sess_init(&sess, &sv[1], &m, 0);
+    strcpy(sess.localcode, "O0013000000MVS2");
+    if (setjmp(abend_jb) == 0) {
+        oftp_sess_run(&sess);
+        snprintf(msg, sizeof(msg), "abend in %s: callback reached",
+                 where == 'W' ? "write" : "read");
+        CHECK(0, msg);
+    } else {
+        snprintf(msg, sizeof(msg), "abend in %s: record buffer in the session",
+                 where == 'W' ? "write" : "read");
+        CHECK(sess.xbuf != NULL, msg);
+        oftp_sess_free(&sess);
+        snprintf(msg, sizeof(msg), "abend in %s: freed by oftp_sess_free",
+                 where == 'W' ? "write" : "read");
+        CHECK(sess.xbuf == NULL, msg);
+    }
+    close(sv[1]);
+    waitpid(pid, &status, 0);
+}
+
 int
 main(void)
 {
@@ -483,5 +547,7 @@ main(void)
     printf("=== TSTSESS session engine ===\n");
     for (i = 0; i < sizeof(sc) / sizeof(sc[0]); i++)
         scenario(&sc[i]);
+    abend_scenario('W');
+    abend_scenario('R');
     return mbt_test_summary("TSTSESS");
 }

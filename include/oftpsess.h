@@ -131,6 +131,10 @@ typedef struct oftp_sess {
     int         esid_local;             /* 1: we sent it, 0: received    */
     unsigned    files_out, files_in, erps_out, erps_in;
 
+    /* the record buffer of the file in transfer, NULL between files: an
+    ** abend in the middle leaves it here for oftp_sess_free() */
+    unsigned char *xbuf;
+
     /* buffers: STH + exchange buffer */
     unsigned char ib[4 + OFTP_SDEB_MAX];
     unsigned char ob[4 + OFTP_SDEB_MAX];
@@ -140,5 +144,10 @@ typedef struct oftp_sess {
 ** way), else the ESID reason. The transport is not closed.
 */
 extern int oftp_sess_run(OFTP_SESS *s)                  asm("OFTPSRUN");
+
+/* After a session left by an abend (longjmp, try()): frees what the
+** engine still holds. Does nothing after a normal end.
+*/
+extern void oftp_sess_free(OFTP_SESS *s)                asm("OFTPSFRE");
 
 #endif /* OFTPSESS_H */
