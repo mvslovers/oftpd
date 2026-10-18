@@ -28,6 +28,7 @@ typedef struct oftp_mon {
     volatile char callreq[OFTP_MAXPTN]; /* operator asked for a call     */
     long        tcall[OFTP_MAXPTN];     /* not reached: no call before   */
     unsigned    counter;                /* time counter of virtual files */
+    long        tpurge;                 /* last housekeeping (KEEPDAYS=) */
     ECB         wake;                   /* wakes the scheduler           */
     CTHDTASK   *t_listen, *t_sched, *t_ctl;
     /* the session subtasks, one array per task that attaches them: only

@@ -154,5 +154,22 @@ main(void)
         CHECK_EQ(oftp_cfg_line(&c, 0, "MAXRETRY=256", 1, count, NULL), 1,
                  "MAXRETRY above 255 refused");
     }
+
+    /* housekeeping: finished transfers are kept KEEPDAYS days */
+    {
+        OFTP_CONFIG k;
+
+        oftp_cfg_defaults(&k);
+        CHECK_EQ(k.keepdays, 7, "KEEPDAYS default 7");
+        CHECK_EQ(oftp_cfg_line(&k, 0, "KEEPDAYS=0", 1, count, NULL), 0,
+                 "KEEPDAYS=0: keep for ever");
+        CHECK_EQ(k.keepdays, 0, "KEEPDAYS=0 taken");
+        CHECK_EQ(oftp_cfg_line(&k, 0, "KEEPDAYS=9999", 1, count, NULL), 0,
+                 "KEEPDAYS=9999 accepted");
+        CHECK_EQ(oftp_cfg_line(&k, 0, "KEEPDAYS=10000", 1, count, NULL), 1,
+                 "KEEPDAYS above 9999 refused");
+        CHECK_EQ(oftp_cfg_line(&k, 0, "KEEPDAYS=X", 1, count, NULL), 1,
+                 "KEEPDAYS not a number refused");
+    }
     return mbt_test_summary("TSTCFG");
 }

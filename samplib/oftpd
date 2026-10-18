@@ -18,6 +18,7 @@
 //*              /F OFTPD,D S            (sessions)
 //*              /F OFTPD,CALL partner   (call a partner now)
 //*              /F OFTPD,REFRESH        (read the partner member again)
+//*              /F OFTPD,PURGE 30       (finished transfers > 30 days)
 //* Stopping:    /P OFTPD
 //*
 //OFTPD    EXEC PGM=OFTPD,REGION=8M,TIME=1440

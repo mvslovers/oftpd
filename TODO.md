@@ -217,6 +217,12 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   row or byte. A 0.1 s select() tick on the client changed nothing (A/B
   on dev1). Next suspects: connect() and closesocket() through DYN75.
 
+- ~~Spool housekeeping~~ (from rvsMVS's cleanup job): `KEEPDAYS=n`
+  (default 7) deletes finished transfers once a day, `PURGE [DAYS(n)]`
+  and `F OFTPD,PURGE [n]` on request (design 3.3.1). Measured in two
+  MVS/CE containers and `TSTSPL` 27/27; the daily run deleting a
+  transfer really older than a day is not observed, only its rule and the
+  request it makes. Later: purge by partner or name, a spool backup job.
 - Log to a SYSOUT data set instead of every line by WTO; a log-only
   message class (design 8).
 - `docs/`: a configuration guide beside `docs/installation.md`.
