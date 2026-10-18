@@ -1048,8 +1048,22 @@ without waking it leaves a task that cannot even be cancelled.
 ### Open after this piece
 
 - **Nothing has run on MVS.** `test/mvs/tstsvc.c` is the probe and it
-  needs a stand with OFTPD up and `SVC=` set; #15 wants the same
-  stand, so they are one slot request and not two.
+  needs a stand with OFTPD up and `SVC=` set.
+- **#15 has a program now too** (`test/mvs/tstprot.c`), and it turned
+  up a fact that changes how `TPROT` can ever be used here:
+  **`TPROT` is privileged.** Hercules checks it with `PRIV_CHECK` in
+  its `E501` handler (`control.c`, `test_protection`), so a
+  problem-state caller gets S0C2. Three consequences. The probe job
+  needs an **APF-authorized STEPLIB** — it checks `__isauth()` and
+  fails rather than skipping, because a job that passes because it
+  was not allowed to look is worse than no job. It needs no OFTPD,
+  because with authority it can do #15's original recipe — its own
+  `getmain(n, 241)` and `__loadhi()` — and probes OFTPD's live anchor
+  only as a confirmation when one is up. And, the part that is a
+  design fact rather than a test detail: **an unauthorized caller can
+  never check its own access**, so the service has to do every check
+  on the caller's behalf, which is what `TPRNG` in the routine
+  already is.
 - **The SSCT block is unchained and never freed**, ours included: 24
   bytes of CSA per start/stop. The chain walk in another address space
   is unserialised on MVS, so freeing it has a window that unchaining

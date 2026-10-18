@@ -66,8 +66,17 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   caller's key with no MODESET, which is the evidence -- one library's
   source, not a measurement.
   **What is left of #16 is one run**: `test/mvs/tstsvc.jcl` against a
-  stand with OFTPD up and `SVC=` set. It wants the same stand as #15,
-  so the two go in as **one slot request**.
+  stand with OFTPD up and `SVC=` set. Approved for m38x
+  (maintainer, 2026-10-18); MBT owns the PROC/PARMLIB writes and the
+  reset, and nothing from here touches that stand.
+  **#15 has its program too** (`test/mvs/tstprot.c`, `tstprot.jcl`):
+  `TPROT` against our own `getmain(n, 241)` and `__loadhi()`, with
+  ordinary key-8 heap as the control and a scan for a 2K-but-not-4K
+  key boundary. It needs **no OFTPD** but it does need an
+  **APF-authorized STEPLIB**, because `TPROT` turns out to be a
+  privileged instruction (Hercules `control.c`, `PRIV_CHECK` in the
+  `E501` handler) -- so the two runs are independent after all, and
+  only #16 needs the stand prepared.
   **Measured on m38x 2026-10-18** (`internals/xmem.md` section 10): the
   SVC entry taken and given back, twice -- once through the abend path
   and once through the clean stop -- every reading taken by a second
