@@ -196,3 +196,18 @@ lists DEV1, MAC1 and the three other stands only, on each. The ISPF test
 Now running: dev1 STC00676 (a plain `S OFTPD` since the PROC fix,
 `internals/dev1-changes.md`), m38l STC00798, m38x STC00528, m38b STC00076,
 m38r STC00038.
+
+## m38b: the SVC transport, 2026-10-18, about 22:01-22:06 MVS time
+
+Slot from the MBT session. A test instance `OFTPDT` beside the running
+OFTPD, which was not touched; `internals/xmem.md` section 13, "TK5 stand
+m38b". Everything it created had a name of its own and was absent before:
+`SYS2.PROCLIB(OFTPDT)`, `SYS2.PARMLIB(OFTPPRMT)`, `(OFTPPTNT)`, and
+`HERC01.OFTPDT.LOAD`, `HERC01.OFTPT.LOAD`, `HERC01.OFTPDT.SPOOL`,
+`HERC01.OFTPDT.TESTA`. Port 3337, no control port.
+
+SVC 237 read before, while active and after (JOB02714, 02720, 02725):
+`00017068 80000000` again at the end. Removed at the end: the members
+(mvsMF DELETE, then only OFTPD/OFTPPRM0/OFTPPTN0 left in the lists) and
+the data sets (OFTPDEL JOB02727, CC 0); the job outputs JOB02714-02727
+and STC00109 were purged. Left: `HERC01.OFTPD.V0R1M0D.TESTLIB`.
