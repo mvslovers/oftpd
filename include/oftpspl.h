@@ -99,6 +99,12 @@ extern int  oftp_spl_get(OFTP_SPOOL *sp, const char *key, OFTP_SPREC *rec)
 extern int  oftp_spl_put(OFTP_SPOOL *sp, const OFTP_SPREC *rec)
                                                         asm("OFTPSPPT");
 extern int  oftp_spl_del(OFTP_SPOOL *sp, const char *key) asm("OFTPSPDL");
+/* put, but only while the record in the spool still has state `was`:
+** CHANGED when something else changed it since it was read (a session
+** that claimed it, say). Read, compare and write are one request.
+*/
+extern int  oftp_spl_putif(OFTP_SPOOL *sp, const OFTP_SPREC *rec, char was)
+                                                        asm("OFTPSPPI");
 /* The first transfer with a key above key ("" for the first of all) */
 extern int  oftp_spl_next(OFTP_SPOOL *sp, const char *key, OFTP_SPREC *rec)
                                                         asm("OFTPSPNX");
@@ -121,8 +127,14 @@ extern int  oftp_spl_finished(const OFTP_SPREC *r)      asm("OFTPSPFI");
 extern long oftp_spl_changed(const OFTP_SPREC *r)       asm("OFTPSPCH");
 extern int  oftp_spl_purgeable(const OFTP_SPREC *r, long before)
                                                         asm("OFTPSPPB");
+/* A HOLD or RELEASE by partner and name (portable as well): partner "*"
+** or "" is any, vfn "" any, "ABC*" a prefix, else the exact name.
+*/
+extern int  oftp_spl_match(const OFTP_SPREC *r, const char *partner,
+                           const char *vfn)             asm("OFTPSPMA");
 
 #define OFTP_SPL_NOTFOUND   (-1)
 #define OFTP_SPL_ERROR      (-2)
+#define OFTP_SPL_CHANGED    (-3)
 
 #endif /* OFTPSPL_H */

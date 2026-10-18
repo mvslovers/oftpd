@@ -223,6 +223,14 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   MVS/CE containers and `TSTSPL` 27/27; the daily run deleting a
   transfer really older than a day is not observed, only its rule and the
   request it makes. Later: purge by partner or name, a spool backup job.
+- ~~HOLD/RELEASE per partner~~ (rvsMVS `H-ALL`/`S-sid`): `HOLD|RELEASE
+  PARTNER(name|*) [VFN(prefix*)]` from the utility (what the caller may
+  change) and `F OFTPD,HOLD|RELEASE name|ALL`; the changes and the
+  single-key HOLD/RELEASE/RETRY are conditional puts now
+  (`oftp_spl_putif()`). Measured in an MVS/CE container, `TSTSPL` 33/33.
+  Still open from design 8: `STOP partner`, `TRACE`, the three stop
+  strengths, and rvs `C-sid` (cancel the running transfer into HELD).
+  The session's own claim (`claim_out`) is still a plain get and put.
 - Log to a SYSOUT data set instead of every line by WTO; a log-only
   message class (design 8).
 - `docs/`: a configuration guide beside `docs/installation.md`.

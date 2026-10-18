@@ -12,6 +12,7 @@
 ** position (libc370#514). Existence is tested with vssteq(), which
 ** reports a missing key as reason 16.
 */
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,7 +28,7 @@
 /* the struct must fit the fixed record */
 typedef char sprec_fits[sizeof(OFTP_SPREC) <= OFTP_SPLRECL ? 1 : -1];
 
-enum { OP_ADD, OP_GET, OP_PUT, OP_DEL, OP_NEXT, OP_PURGE, OP_STOP };
+enum { OP_ADD, OP_GET, OP_PUT, OP_PUTIF, OP_DEL, OP_NEXT, OP_PURGE, OP_STOP };
 
 typedef struct spl_req {
     struct spl_req *next;
@@ -35,6 +36,7 @@ typedef struct spl_req {
     char        key[8];
     OFTP_SPREC *rec;
     long        before;                 /* OP_PURGE                      */
+    char        was;                    /* OP_PUTIF: the state expected  */
     unsigned    count;                  /* OP_PURGE: records deleted     */
     int         rc;
     ECB         done;
@@ -177,6 +179,20 @@ serve(OFTP_SPOOL *sp, SPL_REQ *r)
         break;
     case OP_PUT:
         if ((r->rc = read_key(sp, r->key)) == 0) {
+            memset(sp->buf, 0, OFTP_SPLRECL);
+            memcpy(sp->buf, r->rec, sizeof(*r->rec));
+            if (vsupdate(sp->vs, sp->buf, OFTP_SPLRECL) != 0) {
+                vsclear(sp->vs);
+                r->rc = OFTP_SPL_ERROR;
+            }
+        }
+        break;
+    case OP_PUTIF:
+        if ((r->rc = read_key(sp, r->key)) == 0) {
+            if (sp->buf[offsetof(OFTP_SPREC, state)] != (unsigned char)r->was) {
+                r->rc = OFTP_SPL_CHANGED;
+                break;
+            }
             memset(sp->buf, 0, OFTP_SPLRECL);
             memcpy(sp->buf, r->rec, sizeof(*r->rec));
             if (vsupdate(sp->vs, sp->buf, OFTP_SPLRECL) != 0) {
@@ -409,6 +425,19 @@ int
 oftp_spl_put(OFTP_SPOOL *sp, const OFTP_SPREC *rec)
 {
     return request(sp, OP_PUT, rec->key, (OFTP_SPREC *)rec);
+}
+
+int
+oftp_spl_putif(OFTP_SPOOL *sp, const OFTP_SPREC *rec, char was)
+{
+    SPL_REQ r;
+
+    memset(&r, 0, sizeof(r));
+    r.op = OP_PUTIF;
+    memcpy(r.key, rec->key, 8);
+    r.rec = (OFTP_SPREC *)rec;
+    r.was = was;
+    return enqueue(sp, &r);
 }
 
 int

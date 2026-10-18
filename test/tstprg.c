@@ -58,5 +58,20 @@ main(void)
     r.key[0] = 'E';
     CHECK(!oftp_spl_purgeable(&r, 1000), "an E record is never purged");
 
+    /* HOLD/RELEASE by partner and name */
+    r = rec(SPL_QUEUED, 1, 1, 1);
+    strcpy(r.partner, "PEER");
+    strcpy(r.dsn, "ORDERS.DAILY");
+    CHECK(oftp_spl_match(&r, "PEER", ""), "the partner, every name");
+    CHECK(oftp_spl_match(&r, "*", ""), "every partner");
+    CHECK(oftp_spl_match(&r, "", ""), "no partner given: every partner");
+    CHECK(!oftp_spl_match(&r, "OTHER", ""), "another partner: no");
+    CHECK(!oftp_spl_match(&r, "PEE", ""), "a partner name is not a prefix");
+    CHECK(oftp_spl_match(&r, "PEER", "ORDERS.DAILY"), "the exact name");
+    CHECK(!oftp_spl_match(&r, "PEER", "ORDERS"), "a name is not a prefix");
+    CHECK(oftp_spl_match(&r, "PEER", "ORDERS*"), "a prefix with *");
+    CHECK(oftp_spl_match(&r, "*", "*"), "* alone is every name");
+    CHECK(!oftp_spl_match(&r, "PEER", "INVOICES*"), "another prefix: no");
+
     return mbt_test_summary("TSTPRG");
 }

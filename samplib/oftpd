@@ -18,6 +18,8 @@
 //*              /F OFTPD,D S            (sessions)
 //*              /F OFTPD,CALL partner   (call a partner now)
 //*              /F OFTPD,REFRESH        (read the partner member again)
+//*              /F OFTPD,HOLD partner   (every send to it; ALL)
+//*              /F OFTPD,RELEASE partner
 //*              /F OFTPD,PURGE 30       (finished transfers > 30 days)
 //* Stopping:    /P OFTPD
 //*
