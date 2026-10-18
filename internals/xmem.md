@@ -1288,7 +1288,9 @@ containers on mvsdev, one after the other, and not on a stand.
   owner, is an administrator's. `LIST MINE` sends `MINE=Y`, which the SVC
   needs, and `OWNER=` as well, which only the control port reads.
 - **The TCP port is unchanged**: it believes `OWNER=`, treats it as
-  `MINE` in `LIST` as a 0.1.0 client expects, and may do everything. It
+  `MINE` in `LIST` as a 0.1.0 client expects (read off the code, not
+  run: the measured `LIST PORT(3306)` carried no `OWNER=`), and may do
+  everything. It
   is the development port without security, and it goes off by default
   in 0.2.0.
 - The console names who changed a transfer: `OFTP231I … DELETED BY
@@ -1339,7 +1341,8 @@ visible from outside; that each crosses exactly once is `TSTSVC` step 5b.
 **Negative control** after `P OFTPD` (JOB00030): `LIST` CC 12,
 `OFTP010E OFTPD not reached: not running, or without SVC=`.
 
-**The dialog**, second container: started from the More menu as
+**The dialog**, second container, with `ADMIN=IBMUSER` -- which is why
+it sees OTHER's transfer at all: started from the More menu as
 `CMD(OFTPI) NEWAPPL(OFTP)`, panels in `SYSGEN.ISPF.PLIB`, the module in
 `SYSGEN.REVIEW.LOAD` (`SYSGEN.ISPF.LLIB` was full, D37). From a fresh
 profile, so with no host: the menu says `OFTPD reached by cross memory
