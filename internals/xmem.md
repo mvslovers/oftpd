@@ -599,10 +599,17 @@ Fixed in `c138465` (`0720819` after the rebase onto `main`), and the
 drain's read of `inflight` now takes the bracket too: subpool 241 is
 *meant* to be non-fetch-protected, which would make a key-8 read legal,
 but nothing has measured that here and the cost of being wrong is
-another abend and another stand slot. **That question is still open and
-piece two needs it answered**, because the slot thread reads slots from
-key 8 continuously. It is now oftpd#15, with `TPROT` as the instrument
-and the three ranges to probe.
+another abend and another stand slot. It is now oftpd#15, with `TPROT`
+as the instrument and the three ranges to probe.
+
+**It informs piece two, it does not block it** -- an earlier wording
+here said the slot thread "reads slots from key 8 continuously", which
+is wrong about this design: the thread waits on the wake ECB and does
+not poll (section 7's key/ECB rules), so the key-0 brackets cost one
+per wake-up plus one per sweep tick, the order of magnitude piece one
+already pays for its `inflight` read. Piece two can be written with
+every CSA read bracketed; #15 decides whether the bracket comes off
+afterwards.
 
 The build ids in the two run tables below are what the running program
 printed, i.e. the commits as they were on the branch. The branch was

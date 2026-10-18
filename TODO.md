@@ -53,8 +53,10 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   `OFTP_ANC_ACTIVE` stays clear, so a caller gets `OFTP_SVC_DOWN`
   before claiming a slot and there is nothing to leak.
   Next is **#16**: the slot thread, the wake ECB, the SSCT, the liveness
-  check and the sweep, then the probe round-tripping `STATUS`. It is
-  blocked by **#15**, the key-8 measurement below.
+  check and the sweep, then the probe round-tripping `STATUS`. It can be
+  written with every CSA read bracketed; **#15**, the key-8 measurement
+  below, decides whether the bracket comes off the read path and settles
+  the storage-key granularity the two-ended `TPROT` check depends on.
   **Measured on m38x 2026-10-18** (`internals/xmem.md` section 10): the
   SVC entry taken and given back, twice -- once through the abend path
   and once through the clean stop -- every reading taken by a second
@@ -66,8 +68,8 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   next run.
   Open from that run: **whether a key-8 read of subpool 241 is legal**
   is assumed, not measured, and piece two depends on it (the slot
-  thread reads slots from key 8 continuously) -- **#15**, with `TPROT`
-  as the instrument. The second open point has been withdrawn: "no
+  thread reads CSA when posted) -- **#15**, with `TPROT` as the
+  instrument. The second open point has been withdrawn: "no
   SYSUDUMP appeared" was never observed, only the console log was read
   and a dump goes to SYSOUT (#12 covers the dumps OFTPD leaves on dev1;
   `internals/xmem.md` section 10 says what is and is not known).
