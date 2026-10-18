@@ -269,11 +269,14 @@ static const OFTP_FILES mfiles_ops = {
 /* ---- partners ---------------------------------------------------- */
 
 static OFTP_PEER resp_view;     /* how the responder sees the initiator */
+static int lookup_rc;           /* not 0: the lookup answers this        */
 
 static int
 lookup(void *ctx, const char *code, OFTP_PEER *peer)
 {
     (void)ctx;
+    if (lookup_rc != 0)
+        return lookup_rc;
     if (strcmp(code, resp_view.code) != 0)
         return -1;
     *peer = resp_view;
@@ -524,6 +527,58 @@ abend_scenario(int where)
     waitpid(pid, &status, 0);
 }
 
+/* The caller is refused by the lookup: -1 (unknown) ends the session
+** with ESID 03, a reason code (8, the partner is busy) with that one.
+** Both sides must see it, the initiator as the partner's.
+*/
+static void
+refuse_scenario(int lrc, int esid)
+{
+    static const SCEN sc = { "refused", 5, 5, 4096, 99, 0, "PW", 0, 0 };
+    MFILES m;
+    int sv[2], status = -1, rc;
+    pid_t pid;
+    char msg[120];
+
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) != 0) {
+        CHECK(0, "socketpair");
+        return;
+    }
+    pid = fork();
+    if (pid == 0) {
+        MFILES im;
+        int fd = sv[0];
+
+        close(sv[1]);
+        init_files(&im);
+        sess_init(&sess, &fd, &im, 1);
+        peer_init(&sess.peer, "MVS2", "O0013000000MVS2", "O0013000000MVS1",
+                  sc.ilevel, sc.sdeb, sc.cred, sc.cmpr);
+        rc = oftp_sess_run(&sess);
+        close(sv[0]);
+        _exit(rc == esid && !sess.esid_local && im.out[0].done == 0 ? 0 : 1);
+    }
+    close(sv[0]);
+
+    resp_files(&m);
+    peer_init(&resp_view, "MVS1", "O0013000000MVS1", "O0013000000MVS2",
+              sc.rlevel, sc.sdeb, sc.cred, sc.cmpr);
+    sess_init(&sess, &sv[1], &m, 0);
+    strcpy(sess.localcode, "O0013000000MVS2");
+    lookup_rc = lrc;
+    rc = oftp_sess_run(&sess);
+    lookup_rc = 0;
+    close(sv[1]);
+    waitpid(pid, &status, 0);
+
+    snprintf(msg, sizeof(msg), "lookup %d: responder ends with ESID %02d (rc %d)",
+             lrc, esid, rc);
+    CHECK(rc == esid && sess.esid_local, msg);
+    snprintf(msg, sizeof(msg), "lookup %d: initiator sees the partner's ESID %02d",
+             lrc, esid);
+    CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0, msg);
+}
+
 int
 main(void)
 {
@@ -549,5 +604,7 @@ main(void)
         scenario(&sc[i]);
     abend_scenario('W');
     abend_scenario('R');
+    refuse_scenario(-1, 3);
+    refuse_scenario(8, 8);
     return mbt_test_summary("TSTSESS");
 }

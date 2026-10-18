@@ -316,7 +316,11 @@ start_responder(OFTP_SESS *s)
     if (rc != 0)
         return end_local(s, ESID_DATA);
 
-    if (s->p.lookup(s->p.ctx, t.code, &s->peer) != 0) {
+    if ((rc = s->p.lookup(s->p.ctx, t.code, &s->peer)) > 0) {
+        slog(s, "caller %s refused, reason %02d", t.code, rc);
+        return end_local(s, rc);
+    }
+    if (rc != 0) {
         slog(s, "unknown caller %s", t.code);
         return end_local(s, ESID_USER);
     }

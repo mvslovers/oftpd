@@ -13,6 +13,7 @@
 #include <time.h>
 
 #include <ext/array.h>
+#include <mvs/clock.h>
 #include <mvs/crt.h>
 #include <mvs/lock.h>
 #include <mvs/recovery.h>
@@ -555,7 +556,7 @@ p_lookup(void *ctx, const char *code, OFTP_PEER *peer)
     if (c->m->busy[i]) {
         unlock(c->m, 0);
         oftp_mon_msg("OFTP202W %s ALREADY IN A SESSION", p->peer.name);
-        return -1;
+        return 8;                       /* ESID 08: retry later (#18)   */
     }
     c->m->busy[i] = 1;
     unlock(c->m, 0);
@@ -622,6 +623,20 @@ abend_text(unsigned ab, char *out, size_t cap)
         snprintf(out, cap, "S%03X", (ab >> 12) & 0xFFF);
     else
         snprintf(out, cap, "U%04u", ab);
+}
+
+/* 5 to 60 seconds, from the low bits of the TOD clock: two monitors
+** whose calls collided at the same second wait different times. It
+** keeps no state; rand() keeps a seed, and where libc370 keeps it for a
+** reentrant module was not checked.
+*/
+static long
+busy_pause(void)
+{
+    unsigned char tod[8];
+
+    __getclk(tod);
+    return 5 + (long)(((unsigned)tod[4] << 8 | tod[5]) % 56);
 }
 
 /* A session in a subtask of its own. cthread runs it without recovery,
@@ -711,9 +726,19 @@ session_thread(void *arg1, void *arg2)
                      c->s.esid_local ? "(OURS)" : "(PARTNER)",
                      c->s.files_out, c->s.files_in);
     /* a call that ended in an error before any file, or in an abend:
-    ** not again at once */
-    if (c->initiator && (ab != 0 || (c->rc != 0 && c->s.files_out == 0
-                                     && c->s.files_in == 0)))
+    ** not again at once. A partner that answered ESID 08 is in a
+    ** session already, most likely one it is calling us for at this
+    ** moment: called again after a short pause of its own, so that two
+    ** monitors calling each other drift apart (#18) */
+    if (c->initiator && ab == 0 && c->rc == 8 && !c->s.esid_local
+        && c->s.files_out == 0 && c->s.files_in == 0) {
+        long w = busy_pause();
+
+        oftp_mon_msg("OFTP218I %s BUSY, CALLED AGAIN IN %ld S",
+                     c->pt->peer.name, w);
+        m->tcall[ptn_index(m, c->pt)] = (long)time(NULL) + w;
+    } else if (c->initiator && (ab != 0 || (c->rc != 0 && c->s.files_out == 0
+                                            && c->s.files_in == 0)))
         m->tcall[ptn_index(m, c->pt)] = (long)time(NULL) + m->cfg.retry;
     lock(m, 0);
     if (c->pt)
@@ -932,8 +957,15 @@ sched_thread(void *arg1, void *arg2)
 
     (void)arg2;
     while (!m->stop) {
+        long now = (long)time(NULL), t = 1000;
+
+        /* 10 s, earlier when a partner is due to be called again before
+        ** then (a pause after ESID 08 counts in seconds), or when woken */
+        for (i = 0; i < m->cfg.nptn; i++)
+            if (m->tcall[i] > now && (m->tcall[i] - now) * 100 < t)
+                t = (m->tcall[i] - now) * 100;
         m->wake = 0;
-        ecb_timed_wait(&m->wake, 1000, 0);     /* 10 s or when woken */
+        ecb_timed_wait(&m->wake, (unsigned)t, 0);
         if (m->stop)
             break;
         reap(m->ssess);
