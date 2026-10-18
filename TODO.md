@@ -53,14 +53,20 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   before claiming a slot and there is nothing to leak.
   Next: the slot thread, the wake ECB, the SSCT, the liveness check and
   the sweep, then the probe round-tripping `STATUS`.
-  First stand is **m38x** (MVSCE-EXP), not dev1 (maintainer,
-  2026-10-18): this writes into a running system's SVC table and a
-  restore that does not take costs the number until the next IPL. MBT
-  prepares `OFTPD.DEV.LINKLIB` + the PROC STEPLIB there and confirms the
-  slot. Proof is the SVC entry read before `S OFTPD`, after it and after
-  `P OFTPD` (section 3's chain, via a BREXX `STORAGE()` job on an M38
-  stand; there is no `svcdm.py`, it was never written), cross-checked
-  against OFTPD's own `OFTP031I`/`OFTP032I`.
+  **Measured on m38x 2026-10-18** (`internals/xmem.md` section 10): the
+  SVC entry taken and given back, twice -- once through the abend path
+  and once through the clean stop -- every reading taken by a second
+  party with a BREXX `STORAGE()` job and agreeing byte for byte with
+  OFTPD's own `OFTP031I`/`OFTP032I`. OFTPSVC is 1144 bytes, the anchor
+  and pool 9536. The first stop abended S0C4 on a key-8 store into the
+  key-0 anchor; the ESTAE gave the entry back regardless, because the
+  restore is its first act. Fixed, and the fix's prediction held on the
+  next run.
+  Open from that run: **whether a key-8 read of subpool 241 is legal**
+  is assumed, not measured, and piece two depends on it (the slot
+  thread reads slots from key 8 continuously); and **why no SYSUDUMP
+  appeared** although the PROC allocates one -- the fix was reasoned
+  from the source, which will not always be enough.
   A program check inside the routine gets no recovery of its own: it is
   prevented where it can be -- `TPROT` on both ends of every caller
   range before the claim, so a forged pointer is refused instead of
