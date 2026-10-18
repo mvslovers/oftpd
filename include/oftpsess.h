@@ -41,7 +41,8 @@ typedef struct oftp_peer {
 } OFTP_PEER;
 
 /* Partners: the responder looks the caller up by its Odette ID.
-** 0 found, -1 unknown.
+** 0 found, -1 unknown (ESID 03), or an ESID reason code to end the
+** session with, such as 8 when the partner is already in a session.
 */
 typedef struct oftp_peers {
     void       *ctx;

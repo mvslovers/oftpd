@@ -206,7 +206,8 @@ QUEUED --> ACTIVE --> SENT ------> DELIVERED     (EERP received)
   the partner -- unlike rvs, whose dial retries are counted apart, so that
   a dead next hop ends in a NERP too. A partner not reached, or a call that
   ended in an error before any file (a wrong password, say: not counted),
-  is not called again for `RETRY` seconds (CALL overrides). A file for a partner we do
+  is not called again for `RETRY` seconds (CALL overrides); a partner
+  that answered ESID 08 after a short pause instead (section 6.1). A file for a partner we do
   not call (no `HOST`) waits for the partner's call and is never counted.
   A stop of the monitor during a transfer does not count. Later, from
   rvs: per-send `MAXRETRY`, a deadline (`ENDDATE`/`ENDTIME`) and a job
@@ -362,6 +363,50 @@ is processed as it arrives.
 
 Timers are not in the RFC for TCP; proposed: response timeout 60 s,
 connection idle 300 s, both configurable.
+
+### 6.1 Sessions per partner, and two partners calling each other
+
+*Decided* 2026-10-18 (#18). RFC 5024 limits neither the sessions to one
+partner nor says what happens when two stations call each other at the
+same moment. rvsMVS has a limit per station (`TCPSESS`, 1 to 99, default
+1) under a global one (`TCPMAX`), and a call beyond the station's limit
+ends with ESID 08 (DF9429E). OFTPD follows that:
+
+- **`SESSIONS=n` per partner, default 1**, under `MAXSESS`. A call from a
+  partner at its limit ends with **ESID 08**, "resources not available,
+  retry later", not ESID 03: the caller is known, it is only busy.
+  `MAXSESS` reached keeps the silent close (`OFTP204W`): an ESID needs
+  the SSRM/SSID exchange, and that costs a session subtask exactly when
+  the server has none to spare.
+- **Work is distributed.** While work for a partner waits that no
+  running session holds, the scheduler opens another session to it, up
+  to `SESSIONS`. Each session claims its next file and its next
+  EERP/NERP in the spool atomically, and gives the claim back when it
+  ends before the transfer is done.
+- **Two partners calling each other.** Both mark the other busy before
+  the call, so each refuses the other's call. Measured between dev1 and
+  m38b on 2026-10-18 with ESID 03 and `RETRY` for both: the two waited
+  the same time from the same second and collided again until timing
+  jitter let one call through, which is how an EERP stayed held at m38b
+  on 2026-10-13 (`internals/testnet.md`, Results). Now a call answered
+  with ESID 08 before any file is made again after a pause of 5 to 60
+  seconds taken from the low bits of the TOD clock (`OFTP218I`), and the
+  scheduler wakes at the second it is due instead of the next 10-second
+  tick, so the two sides drift apart. With `SESSIONS=1` that is what
+  resolves a collision; with more, both calls simply go through. An
+  ESID 03 keeps `RETRY`: it can be a real configuration error, and a
+  partner on an older level answering 03 for busy is resolved by jitter,
+  as before.
+- **`MODE=S|R|B`** is the RFC's SSIDSR and rvs `DIRECTN`; EERPs and
+  NERPs go both ways whatever the mode, as in rvs. rvs `DIRECTN=P` ("pay
+  only for send data": send only when calling, both when called) exists
+  because the caller paid for the line, which TCP/IP does not do: not
+  adopted. Neither are a `RETRY` per partner, call windows (`DIALOPTS`)
+  or a switch against calling for an EERP alone (`EERPAD`; rvs itself
+  recommends calling).
+
+The first step (ESID 08, the pause) is in; `SESSIONS` and the claims
+follow.
 
 ## 7. The control port
 
