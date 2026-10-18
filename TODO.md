@@ -44,15 +44,17 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   mbt assembles and links the routine and `module-data` reports no
   writable data (read the output, not the exit code -- `module-data`
   warns and still exits 0, `internals/xmem.md` section 8).
-  **Piece one of the install is in**: `src/mvs/oftp#svc.c` with the
+  **Piece one of the install is on `main`** (PR #11, merged 2026-10-18):
+  `src/mvs/oftp#svc.c` with the
   anchor GETMAIN, `__loadhi` and the anchor patch, the SVC
   reserve/restore and the read-back, the new `OFTP_MON` fields, the
   `oftpd.c` wiring and the restore as the first act of
   `oftp_mon_abend()`. It installs and does **not** activate:
   `OFTP_ANC_ACTIVE` stays clear, so a caller gets `OFTP_SVC_DOWN`
   before claiming a slot and there is nothing to leak.
-  Next: the slot thread, the wake ECB, the SSCT, the liveness check and
-  the sweep, then the probe round-tripping `STATUS`.
+  Next is **#16**: the slot thread, the wake ECB, the SSCT, the liveness
+  check and the sweep, then the probe round-tripping `STATUS`. It is
+  blocked by **#15**, the key-8 measurement below.
   **Measured on m38x 2026-10-18** (`internals/xmem.md` section 10): the
   SVC entry taken and given back, twice -- once through the abend path
   and once through the clean stop -- every reading taken by a second
@@ -64,9 +66,11 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   next run.
   Open from that run: **whether a key-8 read of subpool 241 is legal**
   is assumed, not measured, and piece two depends on it (the slot
-  thread reads slots from key 8 continuously); and **why no SYSUDUMP
-  appeared** although the PROC allocates one -- the fix was reasoned
-  from the source, which will not always be enough.
+  thread reads slots from key 8 continuously) -- **#15**, with `TPROT`
+  as the instrument. The second open point has been withdrawn: "no
+  SYSUDUMP appeared" was never observed, only the console log was read
+  and a dump goes to SYSOUT (#12 covers the dumps OFTPD leaves on dev1;
+  `internals/xmem.md` section 10 says what is and is not known).
   A program check inside the routine gets no recovery of its own: it is
   prevented where it can be -- `TPROT` on both ends of every caller
   range before the claim, so a forged pointer is refused instead of

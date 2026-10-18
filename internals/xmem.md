@@ -595,28 +595,41 @@ absence costs an IPL survived its own stop path abending**, because it
 is the first act of `oftp_mon_abend()` and not something the stop path
 reaches on its way through.
 
-Fixed in `c138465`, and the drain's read of `inflight` now takes the
-bracket too: subpool 241 is *meant* to be non-fetch-protected, which
-would make a key-8 read legal, but nothing has measured that here and
-the cost of being wrong is another abend and another stand slot. **That
-question is still open and piece two needs it answered**, because the
-slot thread reads slots from key 8 continuously.
+Fixed in `c138465` (`0720819` after the rebase onto `main`), and the
+drain's read of `inflight` now takes the bracket too: subpool 241 is
+*meant* to be non-fetch-protected, which would make a key-8 read legal,
+but nothing has measured that here and the cost of being wrong is
+another abend and another stand slot. **That question is still open and
+piece two needs it answered**, because the slot thread reads slots from
+key 8 continuously. It is now oftpd#15, with `TPROT` as the instrument
+and the three ranges to probe.
+
+The build ids in the two run tables below are what the running program
+printed, i.e. the commits as they were on the branch. The branch was
+rebase-merged, so those ids are not in `main`'s history -- do not
+"correct" them, they are observations.
 
 What the abend left on the stand is the documented behaviour of section
 6 and not extra damage: the anchor and the module, about 10.4 KB of
 CSA, stay until the next IPL. It is also the reason the first run
 belonged on the experiment stand.
 
-**No dump was read, and the reason is not the one first written here.**
-This paragraph claimed the procedure allocates none. It does:
-`//SYSUDUMP DD SYSOUT=*` is the last line of `SYS2.PROCLIB(OFTPD)` on
-m38x, in the original and in the test version alike (MBT, 2026-10-18).
-So the missing dump is somewhere in the recovery path -- the dump
-options the ESTAE leaves in the SDWA are the obvious suspect, since
-libc370's stub sets `SDWARCDE` and this code sets nothing else -- and
-that is **unmeasured**. It needs settling before the next abend is
-investigated, because the fix below was reasoned out of the source
-rather than read out of a dump, and that will not always be enough.
+**No dump was read, and this paragraph has been wrong twice.** First it
+claimed the procedure allocates none. It does: `//SYSUDUMP DD SYSOUT=*`
+is the last line of `SYS2.PROCLIB(OFTPD)` on m38x, in the original and
+in the test version alike (MBT, 2026-10-18). It then said the dump must
+be missing somewhere in the recovery path and named the SDWA dump
+options as the suspect. **That rests on nothing either**: the only thing
+read on that stand was the Hercules console log, and a `SYSUDUMP` goes
+to SYSOUT, not to the console -- the spool was never looked at. Since
+the reset of 2026-10-18 the evidence is gone.
+
+What is known is only that no dump was *read*. Whether one was written
+is open, and oftpd#12 makes "it was written and nobody looked" the
+likelier reading: on dev1 OFTPD leaves a `SYSUDUMP` at **every** end
+(`S30A`, twelve STCs). The lesson that survives is the one that cost the
+time: the fix below was reasoned out of the source rather than read out
+of a dump, and the next abend gets its spool read first.
 
 What the fix rested on instead: the absent `OFTP032I` placing the
 fault before the read-back, the S0C4 being a protection exception, and
