@@ -130,9 +130,11 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   measured.
 - The spool thread runs without recovery: an abend in `serve()` ends it,
   and every spool request after that waits for good, `P OFTPD` included.
-- Every OFTPD end on dev1 writes a SYSUDUMP (#12), `S30A` in a subtask
-  of the job step, after `OFTP003I` and with `COND CODE 0000`
-  (`internals/dev1-changes.md`, 2026-10-18). Not looked at yet.
+- ~~Every OFTPD end writes a SYSUDUMP~~ (#12): `S30A` in VSAM's CLOSE
+  (SVC 20 issuing SVC 10), because the spool thread closed a cluster the
+  main task had opened. The main task closes it now. In an MVS/CE
+  container: before, a 13 971-line dump at the stop; after, none in four
+  ends, and transfers kept across a restart with no `OFTP021W`.
 - ~~Session subtasks are never detached~~ (#3) -- each kept about 69 KB
   until a restart (50 sessions on dev1, 7536 KB to 4096 KB largest free
   block). The listener and the scheduler now free each subtask once it

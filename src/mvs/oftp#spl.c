@@ -2,8 +2,10 @@
 **
 ** Requests are queued under a lock and the spool thread is posted; the
 ** caller waits on its own ECB. Only the spool thread issues VSAM
-** requests, so whether an ACB may be used from another TCB never comes
-** up, and every change to the spool happens in one sequence.
+** requests, so every change to the spool happens in one sequence. OPEN
+** and CLOSE are the exception: both run in the task that calls
+** oftp_spl_open() and oftp_spl_close(), because CLOSE frees what OPEN's
+** TCB owns -- closed from the spool thread, it ended in S30A (#12).
 **
 ** Inserts need libc370 2.10.1 or later: before it, vswrite() on a
 ** dynamic handle was a sequential PUT and could not insert below its
@@ -200,8 +202,11 @@ spool_thread(void *arg1, void *arg2)
             ecb_post(&r->done, 0);
         }
     }
-    vsclose(sp->vs);
-    sp->vs = NULL;
+    /* No vsclose() here: the cluster is closed by the task that opened
+    ** it, in oftp_spl_close(). VSAM's CLOSE frees control blocks the
+    ** opening TCB owns, and from this subtask that FREEMAIN failed: an
+    ** S30A at every end of OFTPD, in CLOSE (SVC 20) issuing SVC 10 (#12).
+    */
     return 0;
 }
 
@@ -335,6 +340,9 @@ oftp_spl_close(OFTP_SPOOL *sp)
     request(sp, OP_STOP, NULL, NULL);
     ecb_wait(&sp->task->termecb);
     cthread_delete(&sp->task);
+    /* here, in the task oftp_spl_open() ran in, not in the spool thread */
+    vsclose(sp->vs);
+    sp->vs = NULL;
     free(sp);
 }
 
