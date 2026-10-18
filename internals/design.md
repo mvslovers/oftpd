@@ -406,7 +406,20 @@ ends with ESID 08 (DF9429E). OFTPD follows that:
   recommends calling).
 
 The first step (ESID 08, the pause) is in; `SESSIONS` and the claims
-follow.
+follow. Measured 2026-10-18 in two MVS/CE containers (`mvsce-target`,
+image `mvsce-builder@sha256:8b8269051cea`), each running OFTPD
+`bb952b3` with the other as its only partner, calling each other over
+the Docker bridge. Seven trials, each a held file on both sides, both
+`CALL`ed at the same moment, the files released 3 s later:
+
+| Trials | What happened | Both files delivered, EERP back |
+|---|---|---|
+| 1, 2 | half collision: one side refused the other with ESID 08 and paused (21, 19 s); its own call went through | after 6 s |
+| 3-7 | full collision: both refused with ESID 08, pauses 56/34, 30/46, 50/42, 40/14, 26/48 s | after 17-46 s |
+
+In every full collision the side with the shorter pause called at the
+second it was due, and that one session carried both files and both
+EERPs (`FILES 1 OUT 1 IN`); the other side never had to call.
 
 ## 7. The control port
 
