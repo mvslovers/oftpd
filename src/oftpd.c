@@ -137,10 +137,15 @@ main(int argc, char **argv)
         goto out;
     }
     /* The transport last, after the monitor is up: it reports its own
-    ** outcome and OFTPD runs on with TCP when it does not install, so
-    ** the return code is deliberately not tested here.
+    ** outcome and OFTPD runs on with TCP when it does not install.
+    **
+    ** The install's return code IS tested now, because what follows
+    ** turns the thing on -- the slot thread first, then the SSCT and
+    ** ACTIVE (oftp_mon_svc_start). Without an install there is no
+    ** anchor and the thread would wait on an ECB nobody can reach.
     */
-    oftp_svc_start(m);
+    if (oftp_svc_start(m) == 0)
+        oftp_mon_svc_start(m);
     oftp_mon_msg("OFTP001I OFTPD READY");
 
     while (running) {
@@ -169,7 +174,13 @@ main(int argc, char **argv)
     /* The transport first on the way down, so a caller of the SVC gets
     ** "stopped" at once and the entry is back in the table before the
     ** sessions are waited for.
+    **
+    ** Two steps, and the order is load-bearing: oftp_mon_svc_stop()
+    ** turns the transport off and joins the slot thread, and only
+    ** then may oftp_svc_stop() drain and free the anchor -- a thread
+    ** still looking at it would be reading freed CSA.
     */
+    oftp_mon_svc_stop(m);
     oftp_svc_stop(m);
     oftp_mon_stop(m);
     oftp_spl_close(m->spool);

@@ -52,11 +52,18 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   `oftp_mon_abend()`. It installs and does **not** activate:
   `OFTP_ANC_ACTIVE` stays clear, so a caller gets `OFTP_SVC_DOWN`
   before claiming a slot and there is nothing to leak.
-  Next is **#16**: the slot thread, the wake ECB, the SSCT, the liveness
-  check and the sweep, then the probe round-tripping `STATUS`. It can be
-  written with every CSA read bracketed; **#15**, the key-8 measurement
-  below, decides whether the bracket comes off the read path and settles
-  the storage-key granularity the two-ended `TPROT` check depends on.
+  **Piece two is written** (#16, branch `issue-16-xmem-piece-two`,
+  `internals/xmem.md` section 11): the slot thread, the wake ECB, the
+  SSCT, the liveness check, the sweep, the client side and
+  `test/mvs/tstsvc.c`. Host build and 220/220 host tests clean,
+  **nothing run on MVS**. Every CSA access is bracketed and lives in
+  `oftp#svc.c`; the handlers work on a key-8 copy, so **#15 can only
+  let a bracket come off, it can never force one on** -- which is why
+  it did not block this. The one place a key-8 read of subpool 241 is
+  unavoidable is the client (`oftp#svcc.c`), where nothing can be
+  authorized; libc370's `ssct_find()` walks the same CSA chain in the
+  caller's key with no MODESET, so the whole system relies on that
+  fetch already.
   **Measured on m38x 2026-10-18** (`internals/xmem.md` section 10): the
   SVC entry taken and given back, twice -- once through the abend path
   and once through the clean stop -- every reading taken by a second
@@ -67,9 +74,10 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   restore is its first act. Fixed, and the fix's prediction held on the
   next run.
   Open from that run: **whether a key-8 read of subpool 241 is legal**
-  is assumed, not measured, and piece two depends on it (the slot
-  thread reads CSA when posted) -- **#15**, with `TPROT` as the
-  instrument. The second open point has been withdrawn: "no
+  is assumed, not measured -- **#15**, with `TPROT` as the instrument.
+  Piece two does *not* depend on it (every read is bracketed), but the
+  client side does, and #15 and the `tstsvc` run need the same stand:
+  **one slot request, not two.** The second open point has been withdrawn: "no
   SYSUDUMP appeared" was never observed, only the console log was read
   and a dump goes to SYSOUT (#12 covers the dumps OFTPD leaves on dev1;
   `internals/xmem.md` section 10 says what is and is not known).

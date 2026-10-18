@@ -7,6 +7,7 @@
 
 #include <ibm/mvs/ihascvt.h>
 #include <mvs/ecb.h>
+#include <mvs/subsys.h>
 #include <mvs/thread.h>
 
 #include "oftpcfg.h"
@@ -51,6 +52,28 @@ typedef struct oftp_mon {
     SVCENTRY    *svc_slot;              /* the table entry reserved      */
     unsigned char svc_saved[8];         /* the 8 bytes it held before    */
     volatile int svc_taken;             /* 1: the entry is ours          */
+    /* Piece two. The wake ECB is OFTPD's own private key-8 storage and
+    ** its address is published in the anchor, because the SVC routine
+    ** branch-POSTs it from the caller's address space (__xmpost,
+    ** ECO-0004). It has to outlive every call, which is why it is a
+    ** member here and not a local of the slot thread.
+    */
+    ECB          svcwake;               /* the slot thread's wake ECB    */
+    CTHDTASK    *t_svc;                 /* the slot thread               */
+    /* The slot thread has a stop flag of its own, separate from
+    ** m->stop: it has to be joined BEFORE oftp_svc_stop() frees the
+    ** anchor, and m->stop is what ends the sessions, which run on
+    ** through the drain.
+    */
+    volatile int svcstop;
+    SSCT        *ssct;                  /* OFT1, ours to unchain at stop */
+    /* The sweep's pass counters, one per slot. OFTPD-private on
+    ** purpose: they are not part of the protocol the routine knows,
+    ** and a counter in CSA would be one more key-0 write per pass for
+    ** nothing.
+    */
+    unsigned     sw_claimed[OFTP_SVC_NSLOT];
+    unsigned     sw_copyout[OFTP_SVC_NSLOT];
 } OFTP_MON;
 
 /* Console and log: one line, already carrying its message id */
@@ -88,6 +111,52 @@ extern void oftp_mon_recover(OFTP_MON *m)               asm("OFTPMREC");
 extern int  oftp_svc_start(OFTP_MON *m)                 asm("OFTPSSTR");
 extern void oftp_svc_stop(OFTP_MON *m)                  asm("OFTPSSTP");
 extern int  oftp_svc_restore(OFTP_MON *m)               asm("OFTPSRST");
+
+/* Piece two (internals/xmem.md section 6). The division is by storage
+** key, not by subject: everything below touches the key-0 anchor and
+** therefore lives in oftp#svc.c, while the slot thread in oftp#mon.c
+** runs the ordinary request handlers over the key-8 copy these hand
+** it. No handler ever sees a CSA address.
+**
+** oftp_svc_activate() turns the transport on. It is the LAST step of
+** the start: the SSCT has to be findable and the slot thread has to
+** be waiting before a caller can claim a slot, or the first request
+** parks with nobody to answer it.
+**
+** oftp_svc_take() copies slot i out when it is PENDING; 1 when there
+** was one, 0 otherwise.
+**
+** oftp_svc_answer() writes the answer back, checks that the owner
+** address space is still the one that claimed the slot, and posts it.
+** When the owner is gone it frees the slot instead and posts nothing:
+** a POST into a reused ASID would wake a stranger. Returns 1 when the
+** caller was posted, 0 when the slot was dropped.
+**
+** oftp_svc_sweep() is one pass of the state table. Call it at most
+** once a second -- OFTP_SW_* are counted in passes.
+*/
+extern void oftp_svc_activate(OFTP_MON *m)              asm("OFTPSACT");
+extern void oftp_svc_deactivate(OFTP_MON *m)            asm("OFTPSDAC");
+extern int  oftp_svc_take(OFTP_MON *m, unsigned i, OFTP_SVCJOB *j)
+                                                        asm("OFTPSTAK");
+extern int  oftp_svc_answer(OFTP_MON *m, unsigned i, const char *reply,
+                            unsigned len, unsigned next, unsigned rc)
+                                                        asm("OFTPSANS");
+extern void oftp_svc_sweep(OFTP_MON *m)                 asm("OFTPSSWP");
+
+/* The slot thread itself lives with the request handlers, because
+** that is all it does: take a request out of a slot, run the same
+** ctl_* handlers the TCP control port runs, write the answer back.
+**
+** oftp_mon_svc_start() starts it and then turns the transport on, in
+** that order. Call it only after oftp_svc_start() returned 0.
+**
+** oftp_mon_svc_stop() turns the transport off and joins the thread,
+** and it must run BEFORE oftp_svc_stop(): that one frees the anchor,
+** and a slot thread still looking at it would read freed CSA.
+*/
+extern int  oftp_mon_svc_start(OFTP_MON *m)             asm("OFTPMSVS");
+extern void oftp_mon_svc_stop(OFTP_MON *m)              asm("OFTPMSVP");
 
 /* Reads a configuration member through DD dd into c (partner 0: the
 ** monitor member, 1: the partner member); -1 when the DD cannot be opened
