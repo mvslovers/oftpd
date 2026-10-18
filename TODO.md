@@ -131,9 +131,15 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   block). The listener and the scheduler now free each subtask once it
   has ended and wait for the rest at stop; flat over 50 sessions, and
   `D M` shows the largest free block and the subtask handles.
-- An EERP held at a relay after a call collision (testnet.md, Results):
-  seen once at m38b, not reproduced. Find out whether a refused call
-  (ESID 03, `OFTP202W`) can leave owed EERPs uncalled beyond RETRY.
+- An EERP held at a relay after a call collision (testnet.md, Results),
+  **#18**: reproduced between dev1 and m38b on 2026-10-18. Both sides
+  mark the partner busy before the call, refuse each other (ESID 03,
+  `OFTP202W`), wait RETRY from the same second and collide again until
+  timing jitter lets one call through. Agreed: ESID 08 and a random
+  5-60 s pause after a refused call (first PR), then `SESSIONS=n` per
+  partner, default 1, with the work distributed over the sessions (second
+  PR; files and EERPs need an atomic claim first). `MAXSESS` reached
+  keeps the silent close.
 - `F OFTPD,D P`: name the `VIA` partner instead of `-:3305`.
 - ~~mendelson: the M38 nodes as partners there~~ — 2026-10-14, with
   the rename DEV1 -> `O0000000000DEV1`, MENDEL -> MAC1
