@@ -197,6 +197,12 @@ may change. `OFTP` needs no authorization of its own:
 it reaches OFTPD through OFTPD's SVC, and OFTPD reads the userid of the
 job or TSO session itself.
 
+`SEND` can wait: `STRTTIME(hh:mm)` and `STRTDATE(*|*+n|ddd)` (today, n
+days on, or that day of the year) give the earliest start, local time;
+`SENDWIN(hh:mm-hh:mm)` lets the send start only inside that window, every
+day, also across midnight (`22:00-06:00`). A send already running is not
+stopped by the end of its window. `SHOW` prints both.
+
 `SEND ... DISP(DELETE)` deletes the data set once the partner has
 confirmed it with its EERP, never earlier; a refusal (NERP) keeps it.
 It needs the authority to delete the data set (ALTER), takes a whole

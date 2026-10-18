@@ -2,6 +2,7 @@
 **
 **   OFTP SEND PARTNER(name) DSN(data.set[(member)]) [VFN(name)]
 **             [FORMAT(T)] [XLATE] [HOLD] [USER(text)] [DISP(DELETE)]
+**             [STRTDATE(*|*+n|ddd)] [STRTTIME(hh:mm)] [SENDWIN(hh:mm-hh:mm)]
 **   OFTP LIST [PARTNER(name)] [STATUS(state)] [MINE]
 **   OFTP SHOW key           OFTP DELETE key
 **   OFTP HOLD key           OFTP RELEASE key        OFTP RETRY key

@@ -68,6 +68,10 @@ typedef struct oftp_sprec {
     char        from[9];                /* relay send: the partner it came
                                            from, where its EERP goes back */
     char        crea[OFTP_IDLEN + 1];   /* relayed NERP: its creator      */
+    /* when a send may start (oftpsch.h): not before tstart (0 = now),
+    ** and only inside winfrom-winto each day (both 0 = any time) */
+    long        tstart;
+    unsigned short winfrom, winto;      /* minutes of the day, local      */
 } OFTP_SPREC;
 
 typedef struct oftp_spool OFTP_SPOOL;
