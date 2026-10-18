@@ -77,6 +77,12 @@ typedef struct oftp_spool OFTP_SPOOL;
 extern OFTP_SPOOL *oftp_spl_open(const char *ddname, char *why, int whylen)
                                                         asm("OFTPSPOP");
 extern void oftp_spl_close(OFTP_SPOOL *sp)              asm("OFTPSPCL");
+/* After an abend in the calling task: gives back the spool's lock if the
+** abend came while this task held it (queueing a request). Without that
+** the spool thread waits for it for good. A lock this task does not hold
+** is left alone.
+*/
+extern void oftp_spl_release(OFTP_SPOOL *sp)            asm("OFTPSPRL");
 /* Not 0 when the open had to VERIFY the cluster first (left open by an
 ** abend): the return code of the open that failed.
 */

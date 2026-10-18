@@ -360,6 +360,16 @@ start_responder(OFTP_SESS *s)
     return put_cmd(s, (unsigned)rc);
 }
 
+/* The record buffer of a file goes through s->xbuf, so that a session
+** left by an abend can still be freed (oftp_sess_free)
+*/
+static void
+drop_buf(OFTP_SESS *s)
+{
+    free(s->xbuf);
+    s->xbuf = NULL;
+}
+
 /* ---- sending ----------------------------------------------------- */
 
 /* Sends the DATA buffer in e, waiting for credit first if none is left */
@@ -446,7 +456,7 @@ send_file(OFTP_SESS *s, OFTP_SFIDCMD *f, OFTP_FH *fh, int *turn)
     cap = (f->fmt == 'F' || f->fmt == 'V') ? f->lrecl : CHUNK;
     if (cap == 0)
         cap = CHUNK;
-    if ((buf = malloc(cap)) == NULL)
+    if ((buf = s->xbuf = malloc(cap)) == NULL)
         return end_local(s, ESID_RESOURCE);
 
     credit = s->cred;
@@ -455,7 +465,7 @@ send_file(OFTP_SESS *s, OFTP_SFIDCMD *f, OFTP_FH *fh, int *turn)
     while (!last) {
         rc = s->f.read(s->f.ctx, fh, buf, cap, &n, &last);
         if (rc < 0) {
-            free(buf);
+            drop_buf(s);
             slog(s, "%s: read error, session ends", f->dsn);
             s->f.out_done(s->f.ctx, fh, 12, 'Y');
             return end_local(s, ESID_OTHER);
@@ -470,11 +480,11 @@ send_file(OFTP_SESS *s, OFTP_SFIDCMD *f, OFTP_FH *fh, int *turn)
             rc = send_piece(s, &e, &credit, buf, n, last);
         efid.ucnt += n;
         if (rc != OK) {
-            free(buf);
+            drop_buf(s);
             return END;
         }
     }
-    free(buf);
+    drop_buf(s);
     if (e.len > 1 && send_data(s, &e, &credit) != OK)
         return END;
     /* no EFID while waiting for credit */
@@ -611,16 +621,16 @@ recv_file(OFTP_SESS *s, unsigned n)
         return put_reas(s, OFTP_SFNA, reas, 'N');
     }
     recfmt = f.fmt == 'F' || f.fmt == 'V';
-    if (recfmt && (rec = malloc(f.lrecl)) == NULL)
+    if (recfmt && (rec = s->xbuf = malloc(f.lrecl)) == NULL)
         return put_reas(s, OFTP_SFNA, 99, 'Y');
     if ((reas = s->f.open_in(s->f.ctx, &s->peer, &f, &fh, &retry)) != 0) {
-        free(rec);
+        drop_buf(s);
         slog(s, "%s refused, SFNA %02d retry %c", f.dsn, reas, retry);
         return put_reas(s, OFTP_SFNA, reas, retry);
     }
     rc = oftp_enc_sfpa(s->level, 0, s->ob + 4, s->sdeb);
     if (put_cmd(s, (unsigned)rc) != OK) {
-        free(rec);
+        drop_buf(s);
         s->f.close_in(s->f.ctx, fh, 0);
         return END;
     }
@@ -680,7 +690,7 @@ recv_file(OFTP_SESS *s, unsigned n)
             credit = s->cred;
         }
     }
-    free(rec);
+    drop_buf(s);
     rec = NULL;
 
     if (oftp_dec_efid(s->level, s->ib + 4, n, &efid) != 0) {
@@ -704,7 +714,7 @@ recv_file(OFTP_SESS *s, unsigned n)
     return put_cmd(s, (unsigned)rc);
 
 lost:
-    free(rec);
+    drop_buf(s);
     s->f.close_in(s->f.ctx, fh, 0);
     return END;
 }
@@ -795,4 +805,10 @@ oftp_sess_run(OFTP_SESS *s)
             unsolicited = 1;            /* we never ask for the turn */
         }
     }
+}
+
+void
+oftp_sess_free(OFTP_SESS *s)
+{
+    drop_buf(s);
 }
