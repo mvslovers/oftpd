@@ -378,11 +378,24 @@ ends with ESID 08 (DF9429E). OFTPD follows that:
   `MAXSESS` reached keeps the silent close (`OFTP204W`): an ESID needs
   the SSRM/SSID exchange, and that costs a session subtask exactly when
   the server has none to spare.
-- **Work is distributed.** While work for a partner waits that no
-  running session holds, the scheduler opens another session to it, up
-  to `SESSIONS`. Each session claims its next file and its next
-  EERP/NERP in the spool atomically, and gives the claim back when it
-  ends before the transfer is done.
+- **Work is distributed.** While more files for a partner wait than
+  our calls still starting up will take, the scheduler opens another
+  session to it, up to `SESSIONS`. EERPs and NERPs alone open one only
+  when no session with the partner runs, since a running one sends
+  them at its next turn. Each session claims what it sends:
+  - **a file** by reading its record again under the monitor lock and
+    writing it back `ACTIVE` while it is still due; the data set is
+    opened after the lock. A session that ends before the file is done
+    gives it back as before (`WAITING`, or an attempt that failed).
+  - **an EERP or NERP** in memory, in its session slot, after reading
+    the record again under the lock; the record stays `RECEIVED` until
+    the EERP is sent. The claim goes with the session's slot, so an
+    end or an abend gives it back, and it does not outlive the run. A
+    spool state would: `ACTIVE` on a receive record means a partial
+    receive, which the next start discards.
+  - A partner not reached while another session with it runs leaves
+    the files alone (that session takes them) and only waits `RETRY`
+    before the next call.
 - **Two partners calling each other.** Both mark the other busy before
   the call, so each refuses the other's call. Measured between dev1 and
   m38b on 2026-10-18 with ESID 03 and `RETRY` for both: the two waited
@@ -405,8 +418,8 @@ ends with ESID 08 (DF9429E). OFTPD follows that:
   or a switch against calling for an EERP alone (`EERPAD`; rvs itself
   recommends calling).
 
-The first step (ESID 08, the pause) is in; `SESSIONS` and the claims
-follow. Measured 2026-10-18 in two MVS/CE containers (`mvsce-target`,
+Measured for the first step (ESID 08 and the pause, `SESSIONS=1` only)
+on 2026-10-18 in two MVS/CE containers (`mvsce-target`,
 image `mvsce-builder@sha256:8b8269051cea`), each running OFTPD
 `bb952b3` with the other as its only partner, calling each other over
 the Docker bridge. Seven trials, each a held file on both sides, both
@@ -420,6 +433,34 @@ the Docker bridge. Seven trials, each a held file on both sides, both
 In every full collision the side with the shorter pause called at the
 second it was due, and that one session carried both files and both
 EERPs (`FILES 1 OUT 1 IN`); the other side never had to call.
+
+`SESSIONS` and the claims, measured the same day in two fresh
+containers (image `mvsce-builder@sha256:caf9a92f1210`), OFTPD
+`1367fca` (built from its tree before the commit, so the banner says
+`54c6538-dirty`), `SESSIONS=2` on both
+sides. Each file was queued held and released through the control
+port, one release after another:
+
+| Trial | Work | Sessions | Each file sent / received / EERP |
+|---|---|---|---|
+| 3 | 20 files A to B | A called B twice, 12 and 8 files, the two running together from 16:20:25 to 16:20:29 | once each (20 `OFTP211I`, 20 `OFTP222I`, 20 `OFTP213I`, 20 different keys) |
+| 4 | 12 files each way at the same moment | B called A twice; A's call was the third and got ESID 08 (`OFTP202W ... 2 SESSIONS RUNNING`); B's two sessions carried all 24 (`FILES 8 OUT 6 IN`, `4 OUT 6 IN`) | once each |
+
+No `OFTP214W` (an EERP for a file not known) and no file refused as
+one already received. Then `SESSIONS` taken out on both sides (default 1),
+`F OFTPD,REFRESH`, and the collision trial again: two half collisions,
+delivered after 6 and 5 s, and one full collision with pauses 39 and
+15 s, delivered after 20 s by one session (`FILES 1 OUT 1 IN`), as
+before.
+
+Two things the first runs showed, fixed before the trials above: the
+scheduler cleared its wake ECB before waiting, so a `RELEASE` that came
+while it was connecting waited for the next 10-second tick (five
+files released in the second of the call all went in that one session);
+and a side that had received files opened a second session for the
+EERPs while the first still ran, which ended with nothing to send. Not covered by
+a trial: a session that ends, or abends, while it holds a claim. That
+path is the session's cleanup, read, not measured.
 
 ## 7. The control port
 
