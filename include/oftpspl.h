@@ -76,6 +76,10 @@ typedef struct oftp_spool OFTP_SPOOL;
 */
 extern OFTP_SPOOL *oftp_spl_open(const char *ddname, char *why, int whylen)
                                                         asm("OFTPSPOP");
+/* Stops the spool thread and closes the cluster. Call it from the task
+** that called oftp_spl_open(): the CLOSE has to run in the TCB that
+** opened (#12).
+*/
 extern void oftp_spl_close(OFTP_SPOOL *sp)              asm("OFTPSPCL");
 /* After an abend in the calling task: gives back the spool's lock if the
 ** abend came while this task held it (queueing a request). Without that
