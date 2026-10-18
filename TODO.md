@@ -52,18 +52,22 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   `oftp_mon_abend()`. It installs and does **not** activate:
   `OFTP_ANC_ACTIVE` stays clear, so a caller gets `OFTP_SVC_DOWN`
   before claiming a slot and there is nothing to leak.
-  **Piece two is written** (#16, branch `issue-16-xmem-piece-two`,
+  **Piece two is on `main`** (#16, PR #17, merged 2026-10-18,
   `internals/xmem.md` section 11): the slot thread, the wake ECB, the
   SSCT, the liveness check, the sweep, the client side and
-  `test/mvs/tstsvc.c`. Host build and 220/220 host tests clean,
-  **nothing run on MVS**. Every CSA access is bracketed and lives in
+  `test/mvs/tstsvc.c`. Host build and 220/220 host tests clean on
+  `main` after the merge, and **nothing has run on MVS** -- which is
+  why #16 stays open. Every CSA access is bracketed and lives in
   `oftp#svc.c`; the handlers work on a key-8 copy, so **#15 can only
   let a bracket come off, it can never force one on** -- which is why
   it did not block this. The one place a key-8 read of subpool 241 is
   unavoidable is the client (`oftp#svcc.c`), where nothing can be
-  authorized; libc370's `ssct_find()` walks the same CSA chain in the
-  caller's key with no MODESET, so the whole system relies on that
-  fetch already.
+  authorized; libc370's `ssct_find()` reads the same CSA chain in its
+  caller's key with no MODESET, which is the evidence -- one library's
+  source, not a measurement.
+  **What is left of #16 is one run**: `test/mvs/tstsvc.jcl` against a
+  stand with OFTPD up and `SVC=` set. It wants the same stand as #15,
+  so the two go in as **one slot request**.
   **Measured on m38x 2026-10-18** (`internals/xmem.md` section 10): the
   SVC entry taken and given back, twice -- once through the abend path
   and once through the clean stop -- every reading taken by a second
