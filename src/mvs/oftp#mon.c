@@ -25,6 +25,7 @@
 #include "oftpdsf.h"
 #include "oftpdsn.h"
 #include "oftpmon.h"
+#include "oftpsec.h"
 #include "oftpnet.h"
 #include "oftpsess.h"
 
@@ -1283,7 +1284,26 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
             *e = '\0';
         snprintf(r.member, sizeof(r.member), "%s", lp + 1);
     }
-    if (!oftp_dsn_valid(dsn) || !exists(dsn)) {
+    if (!oftp_dsn_valid(dsn)) {
+        ctl_put(o, "502 data set not found");
+        return;
+    }
+    /* Over the SVC the caller is known, so the caller's authority
+    ** decides, not OFTPD's, which reads the file later (oftpsec.h).
+    ** Before the existence check: a data set the caller may not read
+    ** answers the same whether it exists or not.
+    */
+    if (o->svc) {
+        char why[90];
+
+        if (oftp_sec_may_read(o->user, dsn, why, sizeof(why)) != 0) {
+            snprintf(reply, sizeof(reply), "509 not authorized: %s", why);
+            ctl_put(o, reply);
+            oftp_mon_msg("OFTP238W SEND OF %s REFUSED: %s", dsn, why);
+            return;
+        }
+    }
+    if (!exists(dsn)) {
         ctl_put(o, "502 data set not found");
         return;
     }
