@@ -362,16 +362,36 @@ oftp_svc_stop(OFTP_MON *m)
     was_ours = m->svc_taken;
 
     if (m->anchor != NULL) {
-        m->anchor->flags &= ~OFTP_ANC_ACTIVE;
+        /* The anchor is key-0 CSA and OFTPD runs key 8, so touching it
+        ** needs the bracket. This line is where that was learnt: it
+        ** stood here without one and took an S0C4 on the first stop on
+        ** m38x (2026-10-18), while the same store inside
+        ** oftp_svc_restore() -- which has the bracket -- ran fine from
+        ** the ESTAE and gave the SVC entry back.
+        */
+        if (__super(PSWKEY0, &savekey) == 0) {
+            m->anchor->flags &= ~OFTP_ANC_ACTIVE;
+            __prob(savekey, NULL);
+        }
         /* Bounded drain, 10 s in steps of 0.1 (STIMER BINTVL units).
         ** In piece one the flag was never on, so the only caller that
         ** can be counted here is one inside the few instructions
         ** between the count and the ACTIVE test.
+        **
+        ** The read takes the bracket too. Subpool 241 is meant to be
+        ** non-fetch-protected, which would make a key-8 read legal --
+        ** but that is an assumption nothing here has measured, and the
+        ** cost of it being wrong is another abend and another slot.
+        ** Key 0 is never held across the wait.
         */
         for (i = 0; i < 100; i++) {
             ECB e = 0;
 
-            if ((left = m->anchor->inflight) == 0)
+            if (__super(PSWKEY0, &savekey) != 0)
+                break;
+            left = m->anchor->inflight;
+            __prob(savekey, NULL);
+            if (left == 0)
                 break;
             ecb_timed_wait(&e, 10, 0);
         }
