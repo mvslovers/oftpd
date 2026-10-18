@@ -166,3 +166,40 @@ registers as the owner when a task without a handle attaches its first
 thread; the other four are the spool, listener, scheduler and
 control-port threads. Then `P OFTPD`, deploy of the clean build, `S
 OFTPD` -> **STC00772**, banner `15335f5`. STC00771 left on the spool.
+
+2026-10-18, a slot from the MBT session, about 02:36-02:44 MVS time: the
+engine's record buffer after a session abend (the open points of the #4
+entry in `TODO.md`). Three builds, all from libc370 2.17.0 / cc370 1.6.3,
+each `mbt deploy --module OFTPD` (IEBCOPY merge into `OFTPD.DEV.LINKLIB`)
+after `P OFTPD`. The sender was `host/oftph` on the Mac as partner MACA,
+one file per call, `OFTPD.TEST.ABEND`, F, LRECL 32760, so the debug
+trigger in `f_write` ends each session in an S0C4 with the receive
+buffer allocated.
+
+- Debug build of main, banner `e20dfc3-dirty`, STC00781: 50 sessions,
+  50 x `OFTP209E` and 50 x `OFTP203I ... ENDED BY ABEND S0C4`, no
+  `OFTP216E`, no `OFTP096W`. `D M` largest free block: 7532 KB at the
+  start, 7412 after the first, 6728 / 6372 / 5980 / 5624 after the 20th
+  / 30th / 40th / 50th (the read after the 10th is missing): about 38 KB
+  per abend, against a 32760-byte buffer. The 6 KB above the buffer are
+  not explained. 5 handles throughout.
+- Debug build with the fix, banner `2253a7a-dirty`, STC00782: the same
+  50 sessions and messages. 7532 KB at the start, 7524 / 7520 / 7512 /
+  7508 / 7504 after the 10th to the 50th: 28 KB over 50 abends, about
+  0.6 KB each at the probe's 4 KB steps. Not explained; normal sessions
+  stayed flat over 50 in the #3 slot, so it is particular to an abend.
+- Clean build, banner **`2253a7a`**, **STC00783**, 7532 KB.
+
+No `IBMUSER.OFTPTMP.*` data set and no spool record was left by the
+100 abends. `OFTPD.DEV.LINKLIB` is at 76% of 180 tracks. STC00781 and
+STC00782 left on the spool.
+
+Found on the way, not caused by this slot: every OFTPD end on dev1 writes
+a SYSUDUMP after `OFTP003I OFTPD ENDED`, with `COND CODE 0000` on the
+step. Where session subtasks were still attached (before #3) it is
+`SA03`, PSW `070C1000 00E0D054` (STC00661, 00675, 00715, 00765);
+otherwise `S30A`, PSW `075C2000 00F18ACE` (STC00676, 00690, 00693,
+00694, 00766-00769, 00771, 00772, 00781, 00782). In the dumps of
+STC00772, 00781 and 00782 the abending TCB is a subtask of the job step
+TCB (`JST` and `OTC` both point to it). Which thread it is has not been
+looked at.
