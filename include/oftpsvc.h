@@ -136,7 +136,9 @@ typedef struct oftp_svcjob {
 
 /* The client side (src/mvs/oftp#svcc.c): find the SSCT, build the
 ** request block, issue the SVC. Returns the routine's R15
-** (OFTP_SVC_*), or OFTP_SVC_DOWN when there is no SSCT to find.
+** (OFTP_SVC_*), or OFTP_SVC_DOWN when there is no SSCT to find and
+** OFTP_SVC_BADREQ, without issuing the SVC, for a request that is empty
+** or longer than OFTP_SVC_REQMAX.
 ** *outlen gets R0 (bytes placed in reply) and *outnext R1 (the resume
 ** index to pass back when the answer was OFTP_SVC_MORE).
 */

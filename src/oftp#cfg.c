@@ -70,6 +70,23 @@ put(char *dst, size_t cap, const char *v)
     return 0;
 }
 
+/* ADMIN=id adds one userid to the list, so ADMIN= is repeated for each:
+** a comma separates keywords in these members, not values. An id is 1-8
+** characters; one named twice is kept once.
+*/
+static int
+admin_kw(OFTP_CONFIG *c, const char *v)
+{
+    if (v[0] == '\0' || strlen(v) > 8)
+        return -1;
+    if (oftp_cfg_admin(c, v))
+        return 0;
+    if (c->nadmin >= OFTP_MAXADM)
+        return -1;
+    strcpy(c->admin[c->nadmin++], v);
+    return 0;
+}
+
 static int
 monitor_kw(OFTP_CONFIG *c, const char *k, const char *v)
 {
@@ -113,6 +130,8 @@ monitor_kw(OFTP_CONFIG *c, const char *k, const char *v)
         return (n = num(v, 0, 255)) < 0 ? -1 : (c->maxretry = (int)n, 0);
     if (strcmp(k, "RELAY") == 0)
         return (n = yesno(v)) < 0 ? -1 : (c->relay = (int)n, 0);
+    if (strcmp(k, "ADMIN") == 0)
+        return admin_kw(c, v);
     return -2;
 }
 
@@ -354,5 +373,18 @@ oftp_cfg_retry(const OFTP_CONFIG *c, unsigned attempts, long now, long *tnext)
         attempts = 1;
     wait = (long)attempts > 86400L / c->retry ? 86400L : c->retry * (long)attempts;
     *tnext = now + wait;
+    return 0;
+}
+
+int
+oftp_cfg_admin(const OFTP_CONFIG *c, const char *user)
+{
+    int i;
+
+    if (user == NULL || user[0] == '\0')
+        return 0;
+    for (i = 0; i < c->nadmin; i++)
+        if (strcmp(c->admin[i], user) == 0)
+            return 1;
     return 0;
 }

@@ -6,9 +6,10 @@
 ** module in the ISPLLIB one: ISPLINK is loaded from there
 ** (src/mvs/oftp#isp.c).
 **
-** Everything the dialog does goes through OFTPD's control port, as the
-** OFTP utility does. Host, port and the partner member's name are kept in
-** the user's ISPF profile.
+** Everything the dialog does is a request to OFTPD, as the OFTP utility's
+** is: through the cross-memory SVC, or through the TCP control port when
+** a host is set (option 5; development only, no security). Host, port
+** and the partner member's name are kept in the user's ISPF profile.
 */
 #include <stddef.h>
 #include <stdio.h>
@@ -29,6 +30,7 @@ typedef struct vars {
     char l[6][128];
     char oftcdsn[54];
     char oftscrw[4];
+    char oftvia[60];
 } VARS;
 
 typedef struct dlg {
@@ -57,6 +59,7 @@ define(DLG *d)
         V("PL", pl), V("PH", ph), V("OFTL1", l[0]), V("OFTL2", l[1]),
         V("OFTL3", l[2]), V("OFTL4", l[3]), V("OFTL5", l[4]),
         V("OFTL6", l[5]), V("OFTCDSN", oftcdsn), V("OFTSCRW", oftscrw),
+        V("OFTVIA", oftvia),
 #undef V
     };
     unsigned i;
@@ -67,6 +70,19 @@ define(DLG *d)
                           (int)tab[i].len) != 0)
             return -1;
     return 0;
+}
+
+/* How OFTPD is reached, for the panels: no host is the SVC */
+static void
+via(DLG *d)
+{
+    char t[80];
+
+    if (d->host[0])
+        snprintf(t, sizeof(t), "control port %s port %d", d->host, d->port);
+    else
+        snprintf(t, sizeof(t), "cross memory (SVC)");
+    PUT(d, oftvia, t);
 }
 
 /* A request to OFTPD; the final answer goes into OFTMSG */
@@ -223,8 +239,9 @@ transfers(DLG *d)
             n += (size_t)snprintf(req + n, sizeof(req) - n, " PARTNER=%s", fp);
         if (fs[0])
             n += (size_t)snprintf(req + n, sizeof(req) - n, " STATUS=%s", fs);
+        /* MINE=Y for the SVC, OWNER= for the control port */
         if (fm[0] == 'Y' && d->me[0])
-            snprintf(req + n, sizeof(req) - n, " OWNER=%s", d->me);
+            snprintf(req + n, sizeof(req) - n, " MINE=Y OWNER=%s", d->me);
 
         oftp_isp_exec("TBCREATE OFTPTRN NAMES(OS OK OD OT OP OV ON) "
                       "NOWRITE REPLACE");
@@ -373,7 +390,8 @@ monitor(DLG *d)
         GET(d, ofthost, host);
         GET(d, oftport, port);
         snprintf(d->host, sizeof(d->host), "%s", host);
-        d->port = atoi(port);
+        d->port = port[0] ? atoi(port) : 3306;
+        via(d);
         oftp_isp_exec("VPUT (OFTHOST OFTPORT) PROFILE");
     }
 }
@@ -401,14 +419,16 @@ main(void)
     GET(d, ofthost, host);
     GET(d, oftport, port);
     GET(d, oftcdsn, dsn);
-    if (host[0] == '\0')
-        PUT(d, ofthost, strcpy(host, "127.0.0.1"));
+    /* no host is the SVC; a profile from before it keeps its host, and
+    ** option 5 clears it
+    */
     if (port[0] == '\0')
         PUT(d, oftport, strcpy(port, "3306"));
     if (dsn[0] == '\0')
         PUT(d, oftcdsn, "SYS2.PARMLIB(OFTPPTN0)");
     snprintf(d->host, sizeof(d->host), "%s", host);
     d->port = atoi(port);
+    via(d);
 
     for (;;) {
         PUT(d, oftopt, "");

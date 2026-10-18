@@ -90,11 +90,12 @@ oftp_svc_call(const char *req, char *reply, unsigned cap, unsigned resume,
     if (req == NULL || reply == NULL || cap < OFTP_SVC_REPMIN)
         return OFTP_SVC_BADREQ;
 
+    /* A request over REQMAX is refused, never cut: the bytes left would
+    ** be another request, and OFTPD would answer that one.
+    */
     n = (unsigned)strlen(req);
-    if (n == 0)
+    if (n == 0 || n > OFTP_SVC_REQMAX)
         return OFTP_SVC_BADREQ;
-    if (n > OFTP_SVC_REQMAX)
-        n = OFTP_SVC_REQMAX;
 
     /* Discovery. Every one of these answers "OFTPD is not running",
     ** which is the same answer the TCP control port gives when it

@@ -7,8 +7,10 @@
 **   OFTP HOLD key           OFTP RELEASE key        OFTP RETRY key
 **   OFTP CALL partner       OFTP PARTNERS
 **
-** Common operands: HOST(address) PORT(n), default 127.0.0.1 and 3306 --
-** OFTPD's control port. KEYWORD=VALUE works as well as KEYWORD(VALUE).
+** OFTPD is reached through its cross-memory SVC (SVC= in OFTPPRM).
+** HOST(address) PORT(n) go to its TCP control port instead -- 127.0.0.1
+** and 3306 for whichever is left out -- which is for development and has
+** no security. KEYWORD=VALUE works as well as KEYWORD(VALUE).
 ** Without a command (EXEC PGM=OFTP and no PARM) the commands are read
 ** from SYSIN, one per line, '*' in column 1 a comment, a '-' at the end
 ** of a line continuing it on the next (columns 73-80 are ignored).
@@ -19,9 +21,10 @@
 ** command or its data set; 12 severe: an unknown partner, OFTPD not
 ** reached or not answering. For SYSIN the highest of them.
 **
-** The requester's userid (from its ACEE) goes with every SEND as the
-** transfer's owner. During development the control port has no security
-** and believes it (CLAUDE.md).
+** The owner of a transfer is the userid of the job or TSO session that
+** queued it, and anyone but an administrator (ADMIN= in OFTPPRM) sees
+** and changes only their own. Over the SVC, OFTPD reads the userid
+** itself; the control port believes the OWNER= this program sends.
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -89,9 +92,9 @@ static const char *const verbs[][2] = {
 static int
 command(int argc, char **argv, FILE *out)
 {
-    char req[300], host[64] = "127.0.0.1", final[256], verb[12], me[9];
+    char req[300], host[64] = "", final[256], verb[12], me[9];
     const char *pos = NULL;
-    int port = 3306, i, rc, mine = 0;
+    int port = 3306, tcp = 0, i, rc, mine = 0;
     size_t n;
 
     snprintf(verb, sizeof(verb), "%s", argv[0]);
@@ -117,10 +120,12 @@ command(int argc, char **argv, FILE *out)
         upcase(key);
         if (strcmp(key, "HOST") == 0) {
             snprintf(host, sizeof(host), "%s", val);
+            tcp = 1;
             continue;
         }
         if (strcmp(key, "PORT") == 0) {
             port = atoi(val);
+            tcp = 1;
             continue;
         }
         if (strcmp(key, "MINE") == 0 && val[0] == '\0') {
@@ -145,10 +150,22 @@ command(int argc, char **argv, FILE *out)
             return 8;
         }
     }
-    if ((strcmp(verb, "SEND") == 0 || mine) && me[0])
+    /* MINE=Y for the SVC, where OFTPD knows who asks; OWNER= for the
+    ** control port, which does not (and the SVC drops it)
+    */
+    if (mine && n < sizeof(req))
+        n += (size_t)snprintf(req + n, sizeof(req) - n, " MINE=Y");
+    if ((strcmp(verb, "SEND") == 0 || mine) && me[0] && tcp && n < sizeof(req))
         n += (size_t)snprintf(req + n, sizeof(req) - n, " OWNER=%s", me);
+    if (n >= sizeof(req)) {
+        fprintf(out, "OFTP003E COMMAND TOO LONG\n");
+        return 8;
+    }
+    if (tcp && host[0] == '\0')
+        strcpy(host, "127.0.0.1");
 
-    rc = oftp_cli_request(host, port, req, show, out, final, sizeof(final));
+    rc = oftp_cli_request(tcp ? host : NULL, port, req, show, out, final,
+                          sizeof(final));
     if (rc == 12)
         fprintf(out, "OFTP010E %s\n", final);
     else

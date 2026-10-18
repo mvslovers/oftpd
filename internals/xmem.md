@@ -10,7 +10,8 @@ callers and system storage safe.
 Status: proposed 2026-10-14, the transport decided by the maintainer the
 same day (a dynamically installed SVC, not the subsystem interface);
 mvslovers/oftpd#1.
-Nothing here is built or measured yet; every "measure" below is open.
+Built and measured since, in pieces: sections 10 to 13 say what ran
+where. The utilities use it since mvslovers/oftpd#22 (section 13).
 
 This replaces the TCP control port (`design.md` section 7) as the way the
 utilities (`OFTP` in TSO and batch, the dialog `OFTPI`) reach OFTPD. The
@@ -133,9 +134,10 @@ Client (problem state, its own key):
 5. **Read the caller's userid itself**: `PSAAOLD` X'224' -> ASCB ->
    `ASCBASXB` X'6C' -> `ASXBSENV` X'C8' -> ACEE -> `ACEEUSER` (the path
    of libc370 `racf_get_acee()`, in the caller's address space). The block
-   carries no userid; OFTPD never reads one from the client. Today the
+   carries no userid; OFTPD never reads one from the client. Over TCP the
    request line carries it as `OWNER=` (`SEND`, `LIST MINE`); under the
-   SVC, OFTPD ignores that keyword and uses the slot's userid.
+   SVC, OFTPD drops that keyword and hands the slot's userid to the
+   handlers beside the line (section 13).
 6. Claim a slot (interlocked, as nsf370's pool). None free: answer
    `421 busy, try again` without waiting.
 7. Fill the slot (owner ASCB/ASID, userid, request), count in-flight,
@@ -362,13 +364,21 @@ OFTPD delays one `OFTP LIST` -- so the MVP does without, and adds it
 
 ## 7. Transition
 
-- Client: SSCT `OFT1` found -> SVC. `HOST(...)`/`PORT(...)` given -> TCP,
-  as today. Neither -> rc 12, "OFTPD is not running".
-- OFTPD: `CONTROLPORT=0` turns the TCP port off. With the SVC working on
-  every stand, 0.2.0 ships with `CONTROLPORT` off by default; the TCP code
-  stays for the PC side (the host driver, tests from the PC) until
-  nothing uses it.
-- The dialog and `OFTP` need no change above `oftp_cli_request()`.
+- Client: `oftp_cli_request()` with no host goes through the SVC, with a
+  host through TCP, and never falls back from one to the other: a caller
+  relying on its identity being real must not land on the port unnoticed.
+  `OFTP` takes TCP when `HOST(...)` or `PORT(...)` is given, the dialog
+  when its profile holds a host. No SSCT, no anchor or the transport not
+  active: rc 12, "OFTPD not reached: not running, or without SVC=".
+  Done in mvslovers/oftpd#22 (section 13).
+- OFTPD: `CONTROLPORT=0` turns the TCP port off. 0.2.0 ships with
+  `CONTROLPORT` off by default once the SVC has run on TK5 as well; the
+  TCP code stays for tests from the PC until nothing uses it.
+- The dialog and `OFTP` needed no change above `oftp_cli_request()`
+  except their defaults: `OFTP` defaulted the host to `127.0.0.1`, and the
+  dialog wrote `127.0.0.1` into the ISPF profile when the field was
+  empty, so every profile would have stayed on TCP. A profile written
+  before keeps its host until it is cleared under option 5.
 
 ## 8. What the toolchain has to be checked for
 
@@ -1076,6 +1086,9 @@ without waking it leaves a task that cannot even be cancelled.
   What no test shows yet is a *second* userid seeing only its own
   transfers, because the reply of `STATUS` carries no userid to read
   it off. `LIST OWNER=` from two ids on a stand is the measurement.
+  *Since #22 the substitution is gone (section 13): the userid travels
+  beside the line, and two owners are measured there -- two RAKF
+  userids still are not.*
 - **A caller whose userid is blank gets no `OWNER=` at all**, which is
   the pre-SVC behaviour and no worse than the TCP port. It arises only
   where the caller's address space has no ACEE.
@@ -1230,7 +1243,127 @@ now asserted by the job itself rather than assumed:
 - **Two userids.** `OWNER=` substitution was exercised but nothing
   reads the resulting userid back, so "a second user sees only its
   own transfers" is still untested (`LIST OWNER=` from two ids).
+  Section 13 measures two owners with one caller.
 - The deploy put OFTPD and OFTPSVC in `SYS2.LINKLIB`, which is in the
   linklist, so the modules had linklist reach. Harmless in a throwaway
   and **not a recipe for a stand**, where they belong in the product's
   own library.
+
+## 13. The utilities over the SVC, and who may do what (2026-10-18)
+
+mvslovers/oftpd#22. `OFTP` and the dialog use the transport; OFTPD
+decides what the caller may do. Measured in two throwaway MVS/CE
+containers on mvsdev, one after the other, and not on a stand.
+
+### What changed
+
+- **The client** (`oftp#cli.c`): no host means the SVC. A long answer
+  is asked for again with the resume index until a piece ends `OK`; a
+  piece ending `MORE` carries rows only, because `put_slot()` drops the
+  final line once the buffer is full. `BUSY` is RC 4, `DOWN` RC 12. What
+  a piece of lines means is decided once, for both transports, in the
+  portable `oftp#rep.c` (`oftp_cli_rc()`, `oftp_cli_piece()`), which is
+  what the host test `TSTREP` checks.
+- **A request over 255 bytes is refused, not cut** (`oftp#svcc.c`). The
+  client used to shorten it to `OFTP_SVC_REQMAX` while `OFTP` builds
+  requests of up to 300: what was left would have been another request,
+  and OFTPD would have answered that one. `TSTSVC` step 2b checks it;
+  **written, not run** -- both containers ran `OFTP`, not `TSTSVC`, and
+  no command there was long enough to reach the limit.
+- **The userid goes beside the line, not in it.** Piece two appended
+  `OWNER=<slot userid>` to every request. That had two consequences
+  nobody had chosen:
+  - `LIST` was always filtered, so `MINE` changed nothing, and nobody --
+    an operator included -- saw anyone else's transfers;
+  - `SHOW`, `DELETE`, `HOLD`, `RELEASE` and `RETRY` checked no owner at
+    all.
+
+  Now `svc_line()` only drops `OWNER=`, and the slot's userid, `svc` and
+  `admin` travel in the `CTLOUT` the handlers already get.
+- **The rule** (`ctl_may()`): an administrator -- a userid in `ADMIN=`
+  -- sees and changes every transfer, and has `CALL` and `REFRESH`;
+  anyone else only the transfers they queued (`506 not your transfer`,
+  `507 needs ADMIN= in OFTPPRM`, both RC 8). `STATUS` and `PARTNERS` are
+  open. An empty userid owns nothing, so a received file, which has no
+  owner, is an administrator's. `LIST MINE` sends `MINE=Y`, which the SVC
+  needs, and `OWNER=` as well, which only the control port reads.
+- **The TCP port is unchanged**: it believes `OWNER=`, treats it as
+  `MINE` in `LIST` as a 0.1.0 client expects, and may do everything. It
+  is the development port without security, and it goes off by default
+  in 0.2.0.
+- The console names who changed a transfer: `OFTP231I … DELETED BY
+  IBMUSER`, `OFTP232I … HOLD BY …`; over TCP still `BY CONTROL PORT`.
+
+### Measured
+
+OFTPD from `SYS2.LINKLIB` (APF, `OFTP004I AUTHORIZED BY LIBRARY`),
+`SVC=237`, `OFTP039I CROSS MEMORY ACTIVE ON SVC 237`. `OFTP` from
+`IBMUSER.OFTP.LOAD`, which is not in `IEAAPF00` (read: `SYS1.VTAMLIB`,
+`SYS1.INDMAC`, `SYS2.LINKLIB`, `SYSGEN.NJE38.AUTHLIB`, `SYSC.LINKLIB`).
+One batch step per command, so each has its own condition code. The
+second identity is a transfer queued over TCP with `OWNER=OTHER`; no
+second RAKF userid was used, so "another userid" here is another
+*owner*, and the caller on the SVC is always IBMUSER.
+
+`ADMIN=NOBODY1`, IBMUSER an ordinary user (JOB00024):
+
+| Command | CC | Answer |
+|---|---|---|
+| `SEND … VFN(MINE.FILE) HOLD` | 0 | `T0000002 queued and held` |
+| `SEND … HOLD OWNER(O…` (cut at column 72) | 0 | `T0000003`, owner IBMUSER |
+| `LIST` | 0 | T0000002, T0000003; not OTHER's T0000001 |
+| `LIST MINE` | 0 | the same two |
+| `SHOW T0000001` | 8 | `not your transfer` |
+| `DELETE T0000001` | 8 | `not your transfer` |
+| `CALL PEER` | 8 | `needs ADMIN= in OFTPPRM` |
+| `PARTNERS` | 0 | 1 partner |
+| `DELETE T0000002` | 0 | deleted; console `OFTP231I T0000002 DELETED BY IBMUSER` |
+| `LIST PORT(3306)` | 0 | over TCP: T0000001 and T0000003, everything |
+
+Restarted with `ADMIN=IBMUSER` (JOB00025):
+
+| Command | CC | Answer |
+|---|---|---|
+| `LIST` | 0 | T0000001 (OTHER's) and T0000003 |
+| `LIST MINE` | 0 | T0000003 only |
+| `SHOW T0000001` | 0 | `owner OTHER` |
+| `SEND … HOLD -` / `OWNER(OTHER)` (continued, whole) | 0 | `T0000004`, `SHOW`: owner IBMUSER |
+| `DELETE T0000001` | 0 | deleted; console `OFTP231I T0000001 DELETED BY IBMUSER` |
+| `CALL PEER` | 0 | `call of PEER requested`, `OFTP206I CALLING PEER` |
+
+**Paging through the client** (JOB00026): 42 transfers, `LIST` and `LIST
+MINE` each 42 rows and about 3.4 KB through a 2048-byte reply buffer --
+so at least two pieces -- with no row twice. The number of pieces is not
+visible from outside; that each crosses exactly once is `TSTSVC` step 5b.
+
+**Negative control** after `P OFTPD` (JOB00030): `LIST` CC 12,
+`OFTP010E OFTPD not reached: not running, or without SVC=`.
+
+**The dialog**, second container: started from the More menu as
+`CMD(OFTPI) NEWAPPL(OFTP)`, panels in `SYSGEN.ISPF.PLIB`, the module in
+`SYSGEN.REVIEW.LOAD` (`SYSGEN.ISPF.LLIB` was full, D37). From a fresh
+profile, so with no host: the menu says `OFTPD reached by cross memory
+(SVC)`, the monitor shows `STATUS`, a held send is queued
+(`T0000002 queued and held`, owner IBMUSER read back over TCP), the
+transfer list shows OTHER's transfer and the new one (`2 transfers`), and
+`Mine only Y` shows the new one alone (`1 transfers`).
+
+It needs a screen of 43 rows, as `docs/installation.md` says: on 24 the
+main menu's `DISPLAY` ends RC 20 with no message, `main`'s panel as much
+as this one. `mbt test --tso` sizes the screen from `[tso.ispf]`, so a
+script under another name gets 24 rows; `MBT_TARGET_TN3270_SIZE=80x43`
+gives it 43.
+
+### What this does not show
+
+- **TK5**, again: MVS/CE only.
+- **A second RAKF userid** on the SVC. The rule is the same code for any
+  userid, but the ACEE read was exercised for IBMUSER only.
+- **A caller without an ACEE**, which owns nothing by this rule.
+- **`SEND` reads the data set with OFTPD's authority, not the
+  caller's.** With a real caller identity this is now visible: an
+  ordinary user can send a data set they could not read themselves. It
+  was the same over TCP, so nothing got worse, but the SVC was meant to
+  make the identity count. A `RACHECK` on the caller's behalf needs an
+  ACEE for that userid (`RACINIT` without a password, which OFTPD as an
+  authorized task could issue). Open, not decided.

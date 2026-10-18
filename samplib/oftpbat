@@ -22,3 +22,4 @@ OFTP LIST STATUS(DELIVERED)
 OFTP SHOW T0000001
 OFTP CALL MAC1
 /*
+//* CALL is for an ADMIN= userid (OFTPPRM0); anyone else gets RC 8.

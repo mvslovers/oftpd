@@ -5,9 +5,9 @@
 *
 * ODETTEID     this installation's Odette ID (required)
 * PORT         OFTP port for calls from partners          (3305)
-* CONTROLPORT  port of the OFTP utility, 0 = none          (3306)
-*              NO SECURITY during development: anyone who can
-*              reach this port can queue and list transfers
+* CONTROLPORT  TCP port for OFTP HOST(...) PORT(...), 0 = none (3306)
+*              for development: NO SECURITY, anyone who can reach
+*              this port can queue, list and change any transfer
 * INPREFIX     received files are INPREFIX.<virtual name>  (OFTP.IN)
 * TMPPREFIX    files while being received                  (OFTP.TMP)
 * MAXSESS      sessions at a time                          (4)
@@ -35,11 +35,16 @@
 *              otherwise; it gives the entry back at stop and in its
 *              recovery exit.
 *
-*              Leave it off until the transport is released. To turn
-*              it on, uncomment the line below.
+*              The OFTP utility and the ISPF dialog reach OFTPD
+*              through it; without it they find no OFTPD.
+* ADMIN        a userid that may see and change every transfer and
+*              CALL partners; one ADMIN= per userid, at most 8.
+*              Anyone else sees and changes only the transfers they
+*              queued. Received files belong to nobody, so only an
+*              ADMIN= userid sees them.                        (none)
 *
-* SVC=237
+* ADMIN=IBMUSER
 *
 ODETTEID=O0000000000MYMVS
-PORT=3305 CONTROLPORT=3306
+PORT=3305 CONTROLPORT=3306 SVC=237
 INPREFIX=OFTP.IN TMPPREFIX=OFTP.TMP

@@ -10,7 +10,7 @@
 **
 **   OFTPPRM:  ODETTEID= PORT= CONTROLPORT= SVC= INPREFIX= TMPPREFIX=
 **             MAXSESS= SDEB= CREDIT= TIMEOUT= TLRECL= UBLKSIZE= UNIT=
-**             VOLSER= RETRY= MAXRETRY= RELAY=
+**             VOLSER= RETRY= MAXRETRY= RELAY= ADMIN=
 **   OFTPPTN:  PARTNER= ODETTEID= PASSWORD= OURPASSWORD= OURID= HOST=
 **             PORT= LEVEL= SDEB= CREDIT= MODE= COMPRESS= ENABLED= CALL=
 **             ADDRESS= XLATE= VIA= SESSIONS=
@@ -19,6 +19,12 @@
 ** run at once, under MAXSESS. A call from a partner at its limit ends
 ** with ESID 08; while work no session holds is waiting, the monitor
 ** opens another session to it, up to the limit (internals/design.md 6.1).
+**
+** ADMIN=id names a userid that may see and change every transfer, and
+** CALL and REFRESH, over the cross-memory transport; one ADMIN= per id,
+** up to OFTP_MAXADM. Anyone else sees and changes only the transfers
+** they queued. The TCP control port knows no caller and is not affected
+** (internals/xmem.md section 7).
 **
 ** VIA=name makes a partner one that is reached through another: files for
 ** it go in sessions with name, addressed to its Odette ID (SFIDDEST). It
@@ -35,6 +41,7 @@
 
 #define OFTP_MAXPTN     32              /* partners in the table         */
 #define OFTP_MAXSESS    16              /* sessions at once (MAXSESS)    */
+#define OFTP_MAXADM     8               /* userids in ADMIN=             */
 
 typedef struct oftp_partner {
     OFTP_PEER   peer;                   /* what the session engine needs */
@@ -74,6 +81,8 @@ typedef struct oftp_config {
     int         retry;                  /* seconds before a retry        */
     int         maxretry;               /* attempts per send, 0 no limit */
     int         relay;                  /* RELAY=Y: act as a node        */
+    char        admin[OFTP_MAXADM][9];  /* ADMIN=: may do everything     */
+    int         nadmin;
 
     OFTP_PARTNER ptn[OFTP_MAXPTN];
     int         nptn;
@@ -121,5 +130,9 @@ extern OFTP_PARTNER *oftp_cfg_route(OFTP_CONFIG *c, const char *odetteid,
 */
 extern int  oftp_cfg_retry(const OFTP_CONFIG *c, unsigned attempts, long now,
                            long *tnext)                 asm("OFTPCFGT");
+
+/* 1 when user is named in ADMIN=, 0 otherwise and for "" */
+extern int  oftp_cfg_admin(const OFTP_CONFIG *c, const char *user)
+                                                        asm("OFTPCFGA");
 
 #endif /* OFTPCFG_H */
