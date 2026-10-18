@@ -470,14 +470,15 @@ OFTPD delays one `OFTP LIST` -- so the MVP does without, and adds it
 2. The output function under `ctl_*` (socket or slot); host tests stay
    green.
 3. `OFTPSVC` and the anchor; a probe client that round-trips `STATUS`.
-   In pieces (section 10). **The routine, the anchor and the
-   install/restore are written** (2026-10-18) and the transport is
-   installed but not activated; the slot thread, the SSCT, the liveness
-   check, the sweep and the probe are open. The first stand is **m38x**
-   (MVSCE-EXP), not dev1: this writes into the SVC table of a running
-   system, and a restore that does not take costs the number until the
-   next IPL, so it belongs on the experiment stand rather than under the
-   day's work (maintainer, 2026-10-18).
+   In pieces (section 10). **Piece one -- install and restore, not
+   activated -- ran on m38x on 2026-10-18 and is measured**: the SVC
+   entry taken and given back, through the abend path and through the
+   clean stop, read by a second party each time. The slot thread, the
+   wake ECB, the SSCT, the liveness check, the sweep and the probe are
+   open. The stand is **m38x** (MVSCE-EXP), not dev1: this writes into
+   the SVC table of a running system, and a restore that does not take
+   costs the number until the next IPL, so it belongs on the experiment
+   stand rather than under the day's work (maintainer, 2026-10-18).
 4. `OFTP`/`OFTPI` switch over; OFTPD takes the owner from the slot.
 5. Tests on MVS, dev1 first, then the M38 stands:
    - `TESTAUTH FCTN=1` proves the client unauthorized;
@@ -601,16 +602,58 @@ the cost of being wrong is another abend and another stand slot. **That
 question is still open and piece two needs it answered**, because the
 slot thread reads slots from key 8 continuously.
 
-No dump was read: the procedure allocates none and the ESTAE
-percolates with `SDWACWT`, so no symptom dump reached the console. The
-evidence is the absent `OFTP032I`, the S0C4, and that this was the only
-unbracketed store into CSA in the program. The proof is the next stop,
-which has to print `OFTP032I` and end `OFTP003I`.
-
 What the abend left on the stand is the documented behaviour of section
 6 and not extra damage: the anchor and the module, about 10.4 KB of
 CSA, stay until the next IPL. It is also the reason the first run
 belonged on the experiment stand.
+
+**No dump was read, and the reason is not the one first written here.**
+This paragraph claimed the procedure allocates none. It does:
+`//SYSUDUMP DD SYSOUT=*` is the last line of `SYS2.PROCLIB(OFTPD)` on
+m38x, in the original and in the test version alike (MBT, 2026-10-18).
+So the missing dump is somewhere in the recovery path -- the dump
+options the ESTAE leaves in the SDWA are the obvious suspect, since
+libc370's stub sets `SDWARCDE` and this code sets nothing else -- and
+that is **unmeasured**. It needs settling before the next abend is
+investigated, because the fix below was reasoned out of the source
+rather than read out of a dump, and that will not always be enough.
+
+What the fix rested on instead: the absent `OFTP032I` placing the
+fault before the read-back, the S0C4 being a protection exception, and
+this being the only unbracketed store into CSA in the program. It made
+a prediction -- the next stop prints `OFTP032I` and ends `OFTP003I`,
+with no `OFTP098E` and no `IEF450I` -- and the run below is that
+prediction tested, not a repetition hoping for a better outcome.
+
+### The second run, same stand, after the one-line fix
+
+| | |
+|---|---|
+| Read 1 (`JOB00640`) | `0000CCC8 80000000`, modal EP in **40** slots |
+| `S OFTPD` | `OFTP000I … (bb17f61)`, `OFTP031I … 0000CCC8 80000000`, `OFTP030I … ANCHOR=00A93A88 MODULE=00A90188 (1144 BYTES), NOT ACTIVE` |
+| Read 2 (`JOB00641`) | `00A90188 C0000000`, modal EP in **39** |
+| `P OFTPD` | `OFTP002I`, `OFTP032I SVC 237 RESTORED, ENTRY READS 0000CCC8 80000000`, `OFTP003I OFTPD ENDED` -- **no `OFTP098E`, no `IEF450I`** |
+| Read 3 (`JOB00642`) | `0000CCC8 80000000`, modal EP in **40** again, byte-identical to read 1 |
+
+So **piece one is measured on MVS from both sides and in both
+directions**: install and restore through the abend path in run 1
+(`JOB00637`/`JOB00638`), install and restore through the clean stop in
+run 2 (`JOB00641`/`JOB00642`). Every reading was taken by a party that
+did not write the code, and `OFTP031I`/`OFTP032I` agree with it byte
+for byte each time.
+
+Two details worth keeping:
+
+- **The addresses moved between runs** -- module `00A90608` → `00A90188`,
+  anchor `00A90A88` → `00A93A88`, and in run 2 they are no longer
+  adjacent. That is the 10.4 KB run 1 retained, sitting in the middle
+  of subpool 241. A visible consequence of an abend path that frees
+  nothing, and a reminder that these addresses are per-load.
+- **Run 2 left nothing behind.** The clean stop reached the FREEMAINs,
+  because it only frees once the drain and the read-back agree.
+  `OFTP021W SPOOL WAS NOT CLOSED (OPEN RC 4), VERIFIED` at the start of
+  run 2 is run 1's abend showing up in the spool -- oftpd#2 getting an
+  unplanned live test, and passing it.
 
 Still to come: the slot thread, the wake ECB, the SSCT, the liveness
 check and the sweep, then the probe `test/mvs/tstsvc.c`. None of it can
