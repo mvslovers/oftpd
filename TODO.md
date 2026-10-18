@@ -93,17 +93,17 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   and is cleaned up like one that ends (`OFTP209E`, `OFTP203I`); measured
   on dev1 with a debug-only trigger (`-DOFTP_DEBUG_ABEND`). The engine's
   record buffer is freed after an abend too (it kept about 38 KB per
-  abend, measured on dev1 2026-10-18; about 0.6 KB per abend is left and
-  not explained), and the spool's lock is given back (hardening: the
-  session holds it for a few pointer stores, an abend there needs a
-  damaged spool block). Left open: a session abended while its spool
+  abend, measured on dev1 2026-10-18; 6 KB of it and the 0.6 KB per
+  abend left are not explained, #13), and the spool's lock is given back
+  (hardening: the session holds it for a few pointer stores, an abend
+  there needs a damaged spool block). Left open: a session abended while its spool
   request is queued is possible only when its attaching thread gives up
   at stop after 60 s; whether `try()` still recovers there is not
   measured.
 - The spool thread runs without recovery: an abend in `serve()` ends it,
   and every spool request after that waits for good, `P OFTPD` included.
-- Every OFTPD end on dev1 writes a SYSUDUMP, `S30A` in a subtask of the
-  job step, after `OFTP003I` and with `COND CODE 0000`
+- Every OFTPD end on dev1 writes a SYSUDUMP (#12), `S30A` in a subtask
+  of the job step, after `OFTP003I` and with `COND CODE 0000`
   (`internals/dev1-changes.md`, 2026-10-18). Not looked at yet.
 - ~~Session subtasks are never detached~~ (#3) -- each kept about 69 KB
   until a restart (50 sessions on dev1, 7536 KB to 4096 KB largest free
