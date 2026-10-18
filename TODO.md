@@ -146,9 +146,16 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   pause after a refused call~~ -- PR #19: in two MVS/CE containers five
   full collisions out of seven trials, each resolved by one call after
   the shorter pause, both files and EERPs delivered after 17-46 s
-  (`internals/design.md` 6.1). Next: `SESSIONS=n` per partner, default
-  1, with the work distributed over the sessions (files and EERPs need
-  an atomic claim first). `MAXSESS` reached keeps the silent close.
+  (`internals/design.md` 6.1). ~~`SESSIONS=n` per partner, default 1,
+  files and EERPs claimed by one session~~ -- PR #20: 20 files over two
+  parallel sessions and 12 each way at once, each sent, received and
+  confirmed once; with `SESSIONS=1` the collision resolves as before.
+  `MAXSESS` reached keeps the silent close. Open: a session ending while
+  it holds a claim is read, not measured.
+- A file over about 750 KB between two OFTPDs ends EFNA 12: the SFID
+  carries no size, the receiver allocates `TRK(5,3)` -- **#21**.
+- The control port answers one of several requests that arrive at once:
+  of four parallel `RELEASE`s one got `200` (containers, 2026-10-18).
 - `F OFTPD,D P`: name the `VIA` partner instead of `-:3305`.
 - ~~mendelson: the M38 nodes as partners there~~ — 2026-10-14, with
   the rename DEV1 -> `O0000000000DEV1`, MENDEL -> MAC1

@@ -421,7 +421,7 @@ ends with ESID 08 (DF9429E). OFTPD follows that:
 Measured for the first step (ESID 08 and the pause, `SESSIONS=1` only)
 on 2026-10-18 in two MVS/CE containers (`mvsce-target`,
 image `mvsce-builder@sha256:8b8269051cea`), each running OFTPD
-`bb952b3` with the other as its only partner, calling each other over
+`bb952b3` (on `main` as `a58a3c8`, the same `src/` and `include/`) with the other as its only partner, calling each other over
 the Docker bridge. Seven trials, each a held file on both sides, both
 `CALL`ed at the same moment, the files released 3 s later:
 
@@ -436,8 +436,8 @@ EERPs (`FILES 1 OUT 1 IN`); the other side never had to call.
 
 `SESSIONS` and the claims, measured the same day in two fresh
 containers (image `mvsce-builder@sha256:caf9a92f1210`), OFTPD
-`1367fca` (built from its tree before the commit, so the banner says
-`54c6538-dirty`), `SESSIONS=2` on both
+`1367fca` (on `main` as `4f9d639`, the same tree; built before the
+commit, so the banner says `54c6538-dirty`), `SESSIONS=2` on both
 sides. Each file was queued held and released through the control
 port, one release after another:
 
