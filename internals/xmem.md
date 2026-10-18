@@ -1236,6 +1236,8 @@ now asserted by the job itself rather than assumed:
 ### What this run does not show
 
 - **TK5.** MVS/CE only, including the `00CCC8` invalid-SVC entry point.
+  Since run in a TK5 container, `TSTSVC` 34/34 with TK5's `017068`
+  (section 13); `TSTPROT` (#15) was not run there.
 - **The granularity**, as above.
 - **An abend with slots in flight.** The sweep never ran, so its state
   table is still unexercised: no slot was ever CLAIMED or COPYOUT when
@@ -1243,7 +1245,8 @@ now asserted by the job itself rather than assumed:
 - **Two userids.** `OWNER=` substitution was exercised but nothing
   reads the resulting userid back, so "a second user sees only its
   own transfers" is still untested (`LIST OWNER=` from two ids).
-  Section 13 measures two owners with one caller.
+  Section 13 measures two owners with one caller, and in the TK5
+  container two RAKF userids.
 - The deploy put OFTPD and OFTPSVC in `SYS2.LINKLIB`, which is in the
   linklist, so the modules had linklist reach. Harmless in a throwaway
   and **not a recipe for a stand**, where they belong in the product's
@@ -1253,7 +1256,8 @@ now asserted by the job itself rather than assumed:
 
 mvslovers/oftpd#22. `OFTP` and the dialog use the transport; OFTPD
 decides what the caller may do. Measured in two throwaway MVS/CE
-containers on mvsdev, one after the other, and not on a stand.
+containers on mvsdev, one after the other, then in a TK5 container
+(the batch utility and `TSTSVC`, not the dialog), and not on a stand.
 
 ### What changed
 
@@ -1268,8 +1272,9 @@ containers on mvsdev, one after the other, and not on a stand.
   client used to shorten it to `OFTP_SVC_REQMAX` while `OFTP` builds
   requests of up to 300: what was left would have been another request,
   and OFTPD would have answered that one. `TSTSVC` step 2b checks it;
-  **written, not run** -- both containers ran `OFTP`, not `TSTSVC`, and
-  no command there was long enough to reach the limit.
+  run in the TK5 container (below), not in the MVS/CE ones -- they ran
+  `OFTP`, not `TSTSVC`, and no command there was long enough to reach
+  the limit.
 - **The userid goes beside the line, not in it.** Piece two appended
   `OWNER=<slot userid>` to every request. That had two consequences
   nobody had chosen:
@@ -1357,11 +1362,94 @@ as this one. `mbt test --tso` sizes the screen from `[tso.ispf]`, so a
 script under another name gets 24 rows; `MBT_TARGET_TN3270_SIZE=80x43`
 gives it 43.
 
+### TK5, in a container
+
+The same branch (`d04f23f`) in a throwaway container of the `tk5` image
+(TK5 Update 5, minimal configuration; a local build on mvsdev, not yet
+published), and not on a TK5 stand.
+
+**Authorization and the slot.** OFTPD and OFTPSVC from
+`HERC01.OFTPD.LOAD`, which is not in `IEAAPF00` -- as an SMP install on
+TK5 would be, where no product library is -- so `OFTP004I AUTHORIZED BY
+SVC` (RAKF's SVC 244). SVC 235-239, read by a BREXX `STORAGE()` job
+(`CVT` → `CVTABEND` → `SCVTSVCT`), as OFTPD's messages say:
+
+| When | `SVC 237` | OFTPD said |
+|---|---|---|
+| before the start (JOB00040) | `00017068 80000000` | `OFTP031I … FOUND 00017068 80000000` |
+| transport active (JOB00048) | `00AD8608 C0000000` | `OFTP030I … MODULE=00AD8608`, then `OFTP039I` |
+| after `P OFTPD` (job number not recorded) | `00017068 80000000` | `OFTP032I … RESTORED, ENTRY READS 00017068 80000000` |
+
+235, 236, 238 and 239 read `00017068 80000000` throughout: `017068` is
+TK5's invalid-SVC routine, as on m38b and m38r (section 3).
+
+**Two RAKF userids.** `ADMIN=HERC01`; HERC02 is an ordinary TSO user.
+`OFTP` from `HERC01.OFTP.LOAD`, not in `IEAAPF00`.
+
+A trap first: **mvsMF rewrites the job card's `USER=` to the userid
+that submitted the job** -- `USER=HERC02` came back as `NOTIFY=$MVSMF,
+USER=HERC01,PASSWORD= BY MVSMF`, and OFTPD rightly took the job for
+HERC01's (JOB00050, discarded). To run as HERC02 the job has to be
+submitted through mvsMF *as* HERC02 (JOB00051).
+
+HERC01, the administrator (JOB00049):
+
+| Command | CC | Answer |
+|---|---|---|
+| `SEND … VFN(ADMIN.FILE) HOLD` | 0 | `T0000001 queued and held` |
+| `SEND … HOLD -` / `OWNER(OTHER)` | 0 | `T0000002`, owner HERC01: `LIST MINE` below lists it |
+| `LIST`, `LIST MINE` | 0 | both, 2 transfers |
+| `PARTNERS` | 0 | 1 partner |
+
+HERC02, not in `ADMIN=` (JOB00051); T0000003 belongs to HERC01:
+
+| Command | CC | Answer |
+|---|---|---|
+| `SEND … VFN(USER.FILE) HOLD` | 0 | `T0000004`, owner HERC02 |
+| `LIST`, `LIST MINE` | 0 | T0000004 only, `1 transfers` |
+| `SHOW T0000003` | 8 | `not your transfer` |
+| `DELETE T0000003` | 8 | `not your transfer` |
+| `RELEASE T0000003` | 8 | `not your transfer` |
+| `SHOW T0000004` | 0 | `owner HERC02` |
+| `RELEASE T0000004` | 0 | queued; console `OFTP232I T0000004 RELEASE BY HERC02` |
+| `CALL PEER` | 8 | `needs ADMIN= in OFTPPRM` |
+| `PARTNERS` | 0 | 1 partner |
+
+HERC01 again (JOB00053): `LIST` shows HERC02's T0000004 beside its own,
+`SHOW T0000004` says `owner HERC02`, and `DELETE T0000004` deletes it,
+console `OFTP231I T0000004 DELETED BY HERC01`. Every step CC 0.
+
+**Paging** (JOB00054): 40 further sends and one `LIST`: 42 rows, 3318
+bytes as printed and more on the wire (each row has its `100 ` there),
+through the 2048-byte buffer, every number from T0000005 to
+T0000044 there once and in order, and no sweep message on the console.
+
+**`TSTSVC`** (`tstsvc.jcl`, from the `TESTLIB`, not authorized, JOB00057):
+**34/34**, step 2b included. Step 2b proves the *client's* refusal: a
+request over `REQMAX` gets `BADREQ` from `oftp_svc_call()` without
+the SVC being issued, so the routine's own length check is still not
+exercised by any test.
+
+**Negative control** after `P OFTPD` (JOB00059): `LIST` CC 12,
+`OFTP010E OFTPD not reached: not running, or without SVC=`.
+
+**Issue #12 on TK5 too.** With the procedure's `SYSOUT=*`, TK5 prints and
+purges the STC output, and the `$HASP150` line was the only sign:
+14,524 lines. With `SYSOUT=H` (STC00043, idle, started and stopped):
+a `SYSUDUMP` of 14,046 lines, `S30A` in a subtask running `CTHREAD`,
+PSW `075C2000 00F1BB0C`, step `COND CODE 0000`, nothing on the console.
+That is the dump of mvslovers/oftpd#12 on MVS/CE, so not new and not
+TK5's.
+
+**`SEND` and the caller's authority** stayed out of reach: HERC02 may
+read `HERC01.OFTP.TESTA` itself (IEBGENER as HERC02, JOB00052, CC 0), so
+sending it shows nothing.
+
 ### What this does not show
 
-- **TK5**, again: MVS/CE only.
-- **A second RAKF userid** on the SVC. The rule is the same code for any
-  userid, but the ACEE read was exercised for IBMUSER only.
+- **A TK5 stand** (m38r, m38b). The container is TK5 as shipped plus the
+  products installed with SMP, but it is not a stand, and the dialog was
+  not run on TK5 at all.
 - **A caller without an ACEE**, which owns nothing by this rule.
 - **`SEND` reads the data set with OFTPD's authority, not the
   caller's.** With a real caller identity this is now visible: an
