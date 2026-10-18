@@ -107,6 +107,21 @@ main(int argc, char **argv)
         memset(&r, 0, sizeof(r));
         CHECK(oftp_spl_add(sp, &r) == 0 && memcmp(r.key, "T0000011", 8) == 0,
               "numbering goes on after a purge: T0000011");
+
+        /* a conditional put: only while the state is the one read */
+        CHECK_EQ(oftp_spl_get(sp, "T0000002", &g), 0, "get T0000002 (SENT)");
+        g.state = SPL_HELD;
+        CHECK_EQ(oftp_spl_putif(sp, &g, SPL_QUEUED), OFTP_SPL_CHANGED,
+                 "putif against the wrong state: CHANGED");
+        oftp_spl_get(sp, "T0000002", &r);
+        CHECK(r.state == SPL_SENT, "and the record is untouched");
+        CHECK_EQ(oftp_spl_putif(sp, &g, SPL_SENT), 0,
+                 "putif against the state read: written");
+        oftp_spl_get(sp, "T0000002", &r);
+        CHECK(r.state == SPL_HELD, "and the change is there");
+        memcpy(g.key, "T0000099", 8);
+        CHECK_EQ(oftp_spl_putif(sp, &g, SPL_SENT), OFTP_SPL_NOTFOUND,
+                 "putif of a key not there: NOTFOUND");
         oftp_spl_close(sp);
     }
     return mbt_test_summary("TSTSPL");

@@ -5,6 +5,9 @@
 **   OFTP LIST [PARTNER(name)] [STATUS(state)] [MINE]
 **   OFTP SHOW key           OFTP DELETE key
 **   OFTP HOLD key           OFTP RELEASE key        OFTP RETRY key
+**   OFTP HOLD|RELEASE PARTNER(name|*) [VFN(name|prefix*)]
+**                           every send to that partner (* all) that you
+**                           may change: QUEUED/WAITING held, HELD queued
 **   OFTP CALL partner       OFTP PARTNERS
 **   OFTP PURGE [DAYS(n)]    finished transfers older than n days (default
 **                           KEEPDAYS in OFTPPRM); administrators only

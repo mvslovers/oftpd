@@ -162,7 +162,10 @@ work.
 
 The operator commands are listed at the top of the procedure: `F OFTPD,D P`
 (partners), `D Q` (the spool), `D S` (sessions), `F OFTPD,CALL name`,
-`F OFTPD,REFRESH` (read the partner member again), `F OFTPD,PURGE [days]`
+`F OFTPD,REFRESH` (read the partner member again), `F OFTPD,HOLD name`
+and `F OFTPD,RELEASE name` (every send to that partner, `ALL` for every
+partner: queued and waiting ones are held, held ones queued again),
+`F OFTPD,PURGE [days]`
 (delete finished transfers older than that now; `KEEPDAYS` without a
 number) and `P OFTPD`.
 
@@ -187,7 +190,10 @@ link list or in the logon procedure's `STEPLIB`, as in the `TSO` step of
 `OFTPBAT`.
 
 The commands are `SEND`, `LIST`, `SHOW`, `DELETE`, `HOLD`, `RELEASE`,
-`RETRY`, `CALL`, `PARTNERS` and `PURGE [DAYS(n)]`. `OFTP` needs no authorization of its own:
+`RETRY`, `CALL`, `PARTNERS` and `PURGE [DAYS(n)]`. `HOLD` and `RELEASE`
+take a transfer's key, or `PARTNER(name)` (`*` for all) and optionally
+`VFN(name)` or `VFN(prefix*)` for every send that matches and that you
+may change. `OFTP` needs no authorization of its own:
 it reaches OFTPD through OFTPD's SVC, and OFTPD reads the userid of the
 job or TSO session itself.
 

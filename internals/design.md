@@ -567,6 +567,16 @@ P OFTPD                       (stop accepting, end sessions at the next
                                file boundary, close the spool)
 ```
 
+`HOLD`/`RELEASE` of a partner (2026-10-18, after rvsMVS `H-ALL`, `S-ALL`,
+`S-sid[,name]`): every send to it -- `ALL`, or `PARTNER=*` from the
+utility, for every partner -- goes from `QUEUED` or `WAITING` to `HELD`,
+or from `HELD` back to `QUEUED` with its attempts reset; a name or a
+`prefix*` narrows it (utility only). From the utility it takes only what
+the caller may change (an administrator: everything). Each change is a
+conditional put (`oftp_spl_putif()`): a send a session claimed in the
+meantime keeps its new state. The single-key `HOLD`, `RELEASE` and
+`RETRY` use the same put now and answer `450` instead of overwriting.
+
 Stopping a session or OFTPD comes in three strengths: **graceful** (at the
 next file boundary), **cancel** (now; the transfer goes to `WAITING`) and
 **break** (now, and the transfer goes to `HELD`).

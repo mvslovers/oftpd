@@ -1455,13 +1455,90 @@ ctl_show(OFTP_MON *m, CTLOUT *o, const char *line)
 }
 
 /* DELETE, HOLD, RELEASE, RETRY of one transfer */
+/* HOLD or RELEASE of every send to partner (all for "*") whose name
+** matches vfn ("" any, "ABC*" a prefix), of those o may change -- o NULL
+** is the operator, who may change all. HOLD takes QUEUED and WAITING,
+** RELEASE takes HELD; anything else is left as it is. A send that
+** changed between the walk and the write (a session claimed it) is left
+** to its new state. *n gets the number changed; -1 when the spool failed.
+*/
+static int
+bulk(OFTP_MON *m, const CTLOUT *o, int hold, const char *partner,
+     const char *vfn, unsigned *n)
+{
+    OFTP_SPREC r;
+    char last[8], was;
+    int rc;
+
+    *n = 0;
+    last[0] = '\0';
+    while ((rc = oftp_spl_next(m->spool, last, &r)) == 0) {
+        memcpy(last, r.key, 8);
+        if (r.dir != SPL_SEND || !oftp_spl_match(&r, partner, vfn)
+            || (o != NULL && !ctl_may(o, &r)))
+            continue;
+        was = r.state;
+        if (hold) {
+            if (was != SPL_QUEUED && was != SPL_WAITING)
+                continue;
+            r.state = SPL_HELD;
+            settext(&r, "held");
+        } else {
+            if (was != SPL_HELD)
+                continue;
+            r.state = SPL_QUEUED;
+            r.attempts = 0;
+            settext(&r, "released");
+        }
+        rc = oftp_spl_putif(m->spool, &r, was);
+        if (rc == OFTP_SPL_CHANGED || rc == OFTP_SPL_NOTFOUND)
+            continue;
+        if (rc != 0)
+            return -1;
+        (*n)++;
+    }
+    if (rc != OFTP_SPL_NOTFOUND)
+        return -1;
+    if (*n > 0 && !hold)
+        ecb_post(&m->wake, 0);
+    return 0;
+}
+
 static void
 ctl_change(OFTP_MON *m, CTLOUT *o, const char *verb, const char *line)
 {
     OFTP_SPREC r;
-    char key[12], out[80];
+    char key[12], out[80], was;
+    int rc;
 
     kw(line, "KEY", key, sizeof(key));
+    if (key[0] == '\0' && (strcmp(verb, "HOLD") == 0
+                           || strcmp(verb, "RELEASE") == 0)) {
+        char ptn[12], vfn[OFTP_DSNLEN + 2];
+        unsigned n;
+
+        kw(line, "PARTNER", ptn, sizeof(ptn));
+        kw(line, "VFN", vfn, sizeof(vfn));
+        if (ptn[0] == '\0') {
+            ctl_put(o, "508 give KEY= or PARTNER= (PARTNER=* for all)");
+            return;
+        }
+        if (strcmp(ptn, "*") != 0 && oftp_cfg_find(&m->cfg, ptn) == NULL) {
+            ctl_put(o, "501 unknown partner");
+            return;
+        }
+        if (bulk(m, o, verb[0] == 'H', ptn, vfn, &n) != 0) {
+            ctl_put(o, "451 spool not available");
+            return;
+        }
+        snprintf(out, sizeof(out), "200 %u sends %s", n,
+                 verb[0] == 'H' ? "held" : "released");
+        ctl_put(o, out);
+        oftp_mon_msg("OFTP233I %u SENDS FOR %s%s%s %s BY %s", n, ptn,
+                     vfn[0] ? " " : "", vfn,
+                     verb[0] == 'H' ? "HELD" : "RELEASED", ctl_by(o));
+        return;
+    }
     if (strlen(key) != 8 || oftp_spl_get(m->spool, key, &r) != 0) {
         ctl_put(o, "504 no such transfer");
         return;
@@ -1488,6 +1565,7 @@ ctl_change(OFTP_MON *m, CTLOUT *o, const char *verb, const char *line)
         ctl_put(o, "505 only a send can be held, released or retried");
         return;
     }
+    was = r.state;
     if (strcmp(verb, "HOLD") == 0) {
         if (r.state != SPL_QUEUED && r.state != SPL_WAITING) {
             ctl_put(o, "505 only a queued or waiting send can be held");
@@ -1515,7 +1593,14 @@ ctl_change(OFTP_MON *m, CTLOUT *o, const char *verb, const char *line)
         r.erp = 0;
         settext(&r, "queued again");
     }
-    if (oftp_spl_put(m->spool, &r) != 0) {
+    /* only if nothing changed it since the read: a session may have
+    ** claimed it in between, and its state wins */
+    if ((rc = oftp_spl_putif(m->spool, &r, was)) == OFTP_SPL_CHANGED
+        || rc == OFTP_SPL_NOTFOUND) {
+        ctl_put(o, "450 transfer changed meanwhile, try again");
+        return;
+    }
+    if (rc != 0) {
         ctl_put(o, "451 spool not available");
         return;
     }
@@ -2308,6 +2393,20 @@ oftp_mon_command(OFTP_MON *m, const char *cmd)
     } else if (strcmp(verb, "REFRESH") == 0) {
         if (oftp_mon_refresh(m) < 0)
             oftp_mon_msg("OFTP017E DD OFTPPTN CANNOT BE READ");
+    } else if (strcmp(verb, "HOLD") == 0 || strcmp(verb, "RELEASE") == 0) {
+        /* F OFTPD,HOLD|RELEASE partner|ALL: every send to it */
+        const char *ptn = strcmp(arg, "ALL") == 0 ? "*" : arg;
+        unsigned n;
+
+        if (arg[0] == '\0')
+            oftp_mon_msg("OFTP123E %s NEEDS A PARTNER OR ALL", verb);
+        else if (strcmp(ptn, "*") != 0 && oftp_cfg_find(&m->cfg, ptn) == NULL)
+            oftp_mon_msg("OFTP120E %s IS NOT A PARTNER", arg);
+        else if (bulk(m, NULL, verb[0] == 'H', ptn, "", &n) != 0)
+            oftp_mon_msg("OFTP237E %s OF %s: SPOOL NOT AVAILABLE", verb, arg);
+        else
+            oftp_mon_msg("OFTP233I %u SENDS FOR %s %s BY OPERATOR", n, arg,
+                         verb[0] == 'H' ? "HELD" : "RELEASED");
     } else if (strcmp(verb, "PURGE") == 0) {
         /* F OFTPD,PURGE [days]: without a number, KEEPDAYS */
         char *end;
