@@ -67,6 +67,28 @@ settext(OFTP_SPREC *r, const char *text)
     snprintf(r->text, sizeof(r->text), "%s", text);
 }
 
+/* A send a session may take now */
+static int
+send_due(const OFTP_SPREC *r, long now)
+{
+    return r->dir == SPL_SEND
+           && (r->state == SPL_QUEUED
+               || (r->state == SPL_WAITING && r->tnext <= now));
+}
+
+/* Whether a session is sending the EERP or NERP of key: under lock(m)
+** where the answer decides a claim */
+static int
+erp_held(OFTP_MON *m, const char *key)
+{
+    int i;
+
+    for (i = 0; i < OFTP_MAXSESS; i++)
+        if (memcmp(m->erpheld[i], key, 8) == 0)
+            return 1;
+    return 0;
+}
+
 /* An EERP or NERP to pass back to the partner a relayed file came from:
 ** a receive record in state RECEIVED that holds no file, only the
 ** response (f_next_erp sends it like the EERP of a received file).
@@ -140,7 +162,11 @@ typedef struct sesctx {
     int         sock;
     int         slot;                   /* in m->ssock, or -1            */
     int         initiator;
-    OFTP_SPREC  out;                    /* the file being sent           */
+    int         starting;               /* our call, counted in
+                                        ** m->calling until it first
+                                        ** looks for a file to send     */
+    OFTP_SPREC  out;                    /* the file being sent, claimed
+                                        ** while out.key is set         */
     OFTP_DSF   *odsf;
     OFTP_SPREC  in;                     /* the file being received       */
     OFTP_DSF   *idsf;
@@ -151,6 +177,41 @@ typedef struct sesctx {
     OFTP_SESS   s;
 } SESCTX;
 
+/* Our call is past its start: the scheduler counts its work as taken
+** from now on (sched_thread) */
+static void
+started(SESCTX *c)
+{
+    if (!c->starting)
+        return;
+    lock(c->m, 0);
+    c->m->calling[ptn_index(c->m, c->pt)]--;
+    c->starting = 0;
+    unlock(c->m, 0);
+}
+
+/* Takes the send of key for this session. Under the monitor lock it is
+** read again and, if it is still due, written back ACTIVE: of two
+** sessions to one partner only one gets it (#18). The data set is opened
+** afterwards, outside the lock. 1 when it is ours, in *r.
+*/
+static int
+claim_out(SESCTX *c, const char *key, OFTP_SPREC *r, long now)
+{
+    int ok;
+
+    lock(c->m, 0);
+    ok = oftp_spl_get(c->m->spool, key, r) == 0 && send_due(r, now);
+    if (ok) {
+        r->state = SPL_ACTIVE;
+        r->attempts++;
+        r->tlast = now;
+        ok = oftp_spl_put(c->m->spool, r) == 0;
+    }
+    unlock(c->m, 0);
+    return ok;
+}
+
 static int
 f_next_out(void *ctx, const OFTP_PEER *peer, OFTP_SFIDCMD *f, OFTP_FH **fh)
 {
@@ -160,13 +221,14 @@ f_next_out(void *ctx, const OFTP_PEER *peer, OFTP_SFIDCMD *f, OFTP_FH **fh)
     long now = (long)time(NULL);
 
     (void)peer;
+    started(c);
     last[0] = '\0';
     while (oftp_spl_next(c->m->spool, last, &r) == 0) {
         memcpy(last, r.key, 8);
-        if (r.dir != SPL_SEND || strcmp(r.partner, c->pt->peer.name) != 0)
+        if (r.dir != SPL_SEND || strcmp(r.partner, c->pt->peer.name) != 0
+            || !send_due(&r, now) || !claim_out(c, last, &r, now))
             continue;
-        if (r.state != SPL_QUEUED && !(r.state == SPL_WAITING && r.tnext <= now))
-            continue;
+        c->out = r;                     /* ours: end_files gives it back */
         if (r.member[0])
             snprintf(name, sizeof(name), "%s(%s)", r.local, r.member);
         else
@@ -181,6 +243,7 @@ f_next_out(void *ctx, const OFTP_PEER *peer, OFTP_SFIDCMD *f, OFTP_FH **fh)
             r.reas = 12;
             settext(&r, "data set cannot be opened");
             oftp_spl_put(c->m->spool, &r);
+            c->out.key[0] = '\0';
             oftp_mon_msg("OFTP210E %.8s %s: %s CANNOT BE OPENED", r.key,
                          r.partner, name);
             continue;
@@ -204,10 +267,7 @@ f_next_out(void *ctx, const OFTP_PEER *peer, OFTP_SFIDCMD *f, OFTP_FH **fh)
         strcpy(f->dest, r.dest[0] ? r.dest : c->pt->peer.code);
         /* the originator: we, or for a relayed file the one who sent it */
         strcpy(f->orig, r.relay == 'Y' ? r.orig : c->pt->peer.ourcode);
-        r.state = SPL_ACTIVE;
-        r.attempts++;
-        r.tlast = now;
-        oftp_spl_put(c->m->spool, &r);
+        oftp_spl_put(c->m->spool, &r);  /* the format the open found */
         c->out = r;
         *fh = c;
         return 1;
@@ -449,6 +509,30 @@ f_close_in(void *ctx, OFTP_FH *fh, int ok)
     return 0;
 }
 
+/* Takes the EERP or NERP of key for this session: the session's entry
+** in m->erpheld, set under the lock once the record has been read again,
+** since another session may have sent it after the scan read it. Given
+** back by f_erp_sent, or with the session whichever way it ends.
+*/
+static int
+claim_erp(SESCTX *c, const char *key, OFTP_SPREC *r)
+{
+    OFTP_MON *m = c->m;
+    int ok;
+
+    lock(m, 0);
+    ok = oftp_spl_get(m->spool, key, r) == 0 && r->dir == SPL_RECV
+         && r->state == SPL_RECEIVED && !erp_held(m, key);
+    if (ok)
+        memcpy(m->erpheld[c->slot], key, 8);
+    unlock(m, 0);
+    return ok;
+}
+
+/* The next EERP or NERP owed to the partner that no other session is
+** sending. A session without a slot in m->ssock (more than MAXSESS at
+** once) has no place for a claim and sends none.
+*/
 static int
 f_next_erp(void *ctx, const OFTP_PEER *peer, char *code, OFTP_ERPCMD *e,
            OFTP_FH **h)
@@ -457,11 +541,14 @@ f_next_erp(void *ctx, const OFTP_PEER *peer, char *code, OFTP_ERPCMD *e,
     OFTP_SPREC r;
     char last[8];
 
+    if (c->slot < 0)
+        return 0;
     last[0] = '\0';
     while (oftp_spl_next(c->m->spool, last, &r) == 0) {
         memcpy(last, r.key, 8);
         if (r.dir != SPL_RECV || r.state != SPL_RECEIVED
-            || strcmp(r.partner, c->pt->peer.name) != 0)
+            || strcmp(r.partner, c->pt->peer.name) != 0
+            || !claim_erp(c, last, &r))
             continue;
         memset(e, 0, sizeof(*e));
         *code = r.erp == OFTP_NERP ? OFTP_NERP : OFTP_EERP;
@@ -494,6 +581,11 @@ f_erp_sent(void *ctx, OFTP_FH *h)
                                        : "received, EERP sent");
         oftp_spl_put(c->m->spool, &r);
     }
+    /* only now: given back before CONFIRMED was written, another
+    ** session could still find the record RECEIVED */
+    lock(c->m, 0);
+    memset(c->m->erpheld[c->slot], 0, 8);
+    unlock(c->m, 0);
 }
 
 static void
@@ -542,7 +634,7 @@ p_lookup(void *ctx, const char *code, OFTP_PEER *peer)
 {
     SESCTX *c = ctx;
     OFTP_PARTNER *p = oftp_cfg_byid(&c->m->cfg, code);
-    int i;
+    int i, n;
 
     if (p == NULL)
         return -1;
@@ -553,12 +645,13 @@ p_lookup(void *ctx, const char *code, OFTP_PEER *peer)
     }
     i = ptn_index(c->m, p);
     lock(c->m, 0);
-    if (c->m->busy[i]) {
+    if ((n = c->m->busy[i]) >= p->sessions) {
         unlock(c->m, 0);
-        oftp_mon_msg("OFTP202W %s ALREADY IN A SESSION", p->peer.name);
+        oftp_mon_msg("OFTP202W %s REFUSED, %d SESSIONS RUNNING, SESSIONS=%d",
+                     p->peer.name, n, p->sessions);
         return 8;                       /* ESID 08: retry later (#18)   */
     }
-    c->m->busy[i] = 1;
+    c->m->busy[i]++;
     unlock(c->m, 0);
     c->pt = p;
     *peer = p->peer;
@@ -591,9 +684,9 @@ end_files(SESCTX *c)
     OFTP_MON *m = c->m;
     OFTP_DSF *f;
 
-    /* a file cut off in the middle: an attempt that failed, or with a
-    ** stop none at all; a receive is away */
-    if ((f = c->odsf) != NULL) {
+    /* a file cut off in the middle, or claimed and not yet open: an
+    ** attempt that failed, or with a stop none at all; a receive is away */
+    if ((f = c->odsf) != NULL || c->out.key[0] != '\0') {
         c->odsf = NULL;
         c->out.reasby = 'L';
         settext(&c->out, "session ended during the transfer");
@@ -605,7 +698,9 @@ end_files(SESCTX *c)
         } else
             failed(m, &c->out);
         oftp_spl_put(m->spool, &c->out);
-        oftp_dsf_close(f, 1);
+        c->out.key[0] = '\0';
+        if (f != NULL)
+            oftp_dsf_close(f, 1);
     }
     if ((f = c->idsf) != NULL) {
         c->idsf = NULL;
@@ -702,7 +797,7 @@ session_thread(void *arg1, void *arg2)
                      c->pt ? c->pt->peer.name : c->ip, abt);
     }
 
-    if (c->odsf != NULL || c->idsf != NULL) {
+    if (c->odsf != NULL || c->idsf != NULL || c->out.key[0] != '\0') {
         int fab = try(end_files, c);
 
         if (fab < 0)
@@ -713,8 +808,14 @@ session_thread(void *arg1, void *arg2)
                          c->pt ? c->pt->peer.name : c->ip, abt);
         }
     }
-    if (c->slot >= 0)
+    /* the EERP claim goes with the slot, and before it: a session given
+    ** the slot next must not find it taken, nor lose its own */
+    if (c->slot >= 0) {
+        lock(m, 0);
+        memset(m->erpheld[c->slot], 0, 8);
         m->ssock[c->slot] = 0;
+        unlock(m, 0);
+    }
     oftp_net_close(c->sock);
     if (ab != 0)
         oftp_mon_msg("OFTP203I %s: SESSION ENDED BY ABEND %s, FILES %u OUT %u IN",
@@ -741,8 +842,11 @@ session_thread(void *arg1, void *arg2)
                                             && c->s.files_in == 0)))
         m->tcall[ptn_index(m, c->pt)] = (long)time(NULL) + m->cfg.retry;
     lock(m, 0);
-    if (c->pt)
-        m->busy[ptn_index(m, c->pt)] = 0;
+    if (c->pt) {
+        m->busy[ptn_index(m, c->pt)]--;
+        if (c->starting)
+            m->calling[ptn_index(m, c->pt)]--;
+    }
     m->nsess--;
     unlock(m, 0);
     free(c);
@@ -822,7 +926,8 @@ start_session(OFTP_MON *m, CTHDTASK **own, int sock, const char *ip,
                      pt ? pt->peer.name : ip);
         if (pt) {
             lock(m, 0);
-            m->busy[ptn_index(m, pt)] = 0;
+            m->busy[ptn_index(m, pt)]--;
+            m->calling[ptn_index(m, pt)]--;
             unlock(m, 0);
         }
         oftp_net_close(sock);
@@ -836,6 +941,7 @@ start_session(OFTP_MON *m, CTHDTASK **own, int sock, const char *ip,
     c->sock = sock;
     c->pt = pt;
     c->initiator = pt != NULL;
+    c->starting = pt != NULL;
     snprintf(c->ip, sizeof(c->ip), "%s", ip);
     c->slot = -1;
     lock(m, 0);
@@ -851,8 +957,10 @@ start_session(OFTP_MON *m, CTHDTASK **own, int sock, const char *ip,
     if (t == NULL) {
         lock(m, 0);
         m->nsess--;
-        if (pt)
-            m->busy[ptn_index(m, pt)] = 0;
+        if (pt) {
+            m->busy[ptn_index(m, pt)]--;
+            m->calling[ptn_index(m, pt)]--;
+        }
         if (c->slot >= 0)
             m->ssock[c->slot] = 0;
         unlock(m, 0);
@@ -896,34 +1004,42 @@ listen_thread(void *arg1, void *arg2)
     return 0;
 }
 
-/* Marks each partner that has work: a send due or an EERP owed */
+/* Counts each partner's work that no session holds: sends due (a claimed
+** one is ACTIVE), and EERPs or NERPs owed that no session is sending */
 static void
-due(OFTP_MON *m, char *work)
+due(OFTP_MON *m, int *sends, int *erps)
 {
     OFTP_SPREC r;
     char last[8];
     long now = (long)time(NULL);
-    int i;
+    int i, *n;
 
-    memset(work, 0, OFTP_MAXPTN);
+    memset(sends, 0, OFTP_MAXPTN * sizeof(*sends));
+    memset(erps, 0, OFTP_MAXPTN * sizeof(*erps));
     last[0] = '\0';
     while (oftp_spl_next(m->spool, last, &r) == 0) {
         memcpy(last, r.key, 8);
-        if ((r.dir == SPL_SEND && (r.state == SPL_QUEUED
-                                   || (r.state == SPL_WAITING && r.tnext <= now)))
-            || (r.dir == SPL_RECV && r.state == SPL_RECEIVED))
-            for (i = 0; i < m->cfg.nptn; i++)
-                if (strcmp(m->cfg.ptn[i].peer.name, r.partner) == 0)
-                    work[i] = 1;
+        if (send_due(&r, now))
+            n = sends;
+        else if (r.dir == SPL_RECV && r.state == SPL_RECEIVED
+                 && !erp_held(m, r.key))
+            n = erps;
+        else
+            continue;
+        for (i = 0; i < m->cfg.nptn; i++)
+            if (strcmp(m->cfg.ptn[i].peer.name, r.partner) == 0)
+                n[i]++;
     }
 }
 
 /* A partner that was not reached: each send due for it has had an
 ** attempt, and the partner is not called again before RETRY seconds.
-** busy[i] is still set, so no session for it changes these records.
+** Not while another session with it runs (others): that one takes the
+** sends itself. A call from the partner may still come in meanwhile, so
+** each record is read again under the lock, as a claim reads it.
 */
 static void
-unreached(OFTP_MON *m, int i)
+unreached(OFTP_MON *m, int i, int others)
 {
     OFTP_PARTNER *p = &m->cfg.ptn[i];
     OFTP_SPREC r;
@@ -931,20 +1047,24 @@ unreached(OFTP_MON *m, int i)
     long now = (long)time(NULL);
 
     m->tcall[i] = now + m->cfg.retry;
+    if (others)
+        return;
     last[0] = '\0';
     while (oftp_spl_next(m->spool, last, &r) == 0) {
         memcpy(last, r.key, 8);
-        if (r.dir != SPL_SEND || strcmp(r.partner, p->peer.name) != 0
-            || !(r.state == SPL_QUEUED
-                 || (r.state == SPL_WAITING && r.tnext <= now)))
+        if (strcmp(r.partner, p->peer.name) != 0 || !send_due(&r, now))
             continue;
-        r.attempts++;
-        r.tlast = now;
-        r.reasby = 'L';
-        r.reas = 0;
-        settext(&r, "partner not reached");
-        failed(m, &r);
-        oftp_spl_put(m->spool, &r);
+        lock(m, 0);
+        if (oftp_spl_get(m->spool, last, &r) == 0 && send_due(&r, now)) {
+            r.attempts++;
+            r.tlast = now;
+            r.reasby = 'L';
+            r.reas = 0;
+            settext(&r, "partner not reached");
+            failed(m, &r);
+            oftp_spl_put(m->spool, &r);
+        }
+        unlock(m, 0);
     }
 }
 
@@ -952,7 +1072,7 @@ static int
 sched_thread(void *arg1, void *arg2)
 {
     OFTP_MON *m = arg1;
-    char work[OFTP_MAXPTN];
+    int sends[OFTP_MAXPTN], erps[OFTP_MAXPTN];
     int i;
 
     (void)arg2;
@@ -964,34 +1084,51 @@ sched_thread(void *arg1, void *arg2)
         for (i = 0; i < m->cfg.nptn; i++)
             if (m->tcall[i] > now && (m->tcall[i] - now) * 100 < t)
                 t = (m->tcall[i] - now) * 100;
-        m->wake = 0;
+        /* cleared after the wait, not before it: a post while the last
+        ** round ran (a RELEASE during a connect) ends this wait at once
+        ** instead of waiting for the next tick */
         ecb_timed_wait(&m->wake, (unsigned)t, 0);
+        m->wake = 0;
         if (m->stop)
             break;
         reap(m->ssess);
-        due(m, work);
+        due(m, sends, erps);
+        /* Another session to a partner, up to SESSIONS, while more files
+        ** wait than our calls not yet under way will take: each of those
+        ** is counted as taking one. EERPs and NERPs alone open a session
+        ** only when none is running, since a running one sends them at
+        ** its next turn; so does the operator's CALL.
+        */
         for (i = 0; i < m->cfg.nptn && !m->stop; i++) {
             OFTP_PARTNER *p = &m->cfg.ptn[i];
-            int s;
+            int s, others;
+            int more = sends[i] > m->calling[i]
+                       || (erps[i] > 0 && m->busy[i] == 0);
 
-            if (!(work[i] || m->callreq[i]) || !p->enabled || !p->call
+            if (!(more || m->callreq[i]) || !p->enabled || !p->call
                 || (!m->callreq[i] && (long)time(NULL) < m->tcall[i]))
                 continue;
             lock(m, 0);
-            if (m->busy[i] || m->nsess >= m->cfg.maxsess) {
+            if (m->busy[i] >= p->sessions || m->nsess >= m->cfg.maxsess
+                || (!more && m->busy[i] > 0)) {
                 unlock(m, 0);
                 continue;
             }
-            m->busy[i] = 1;
+            m->busy[i]++;
+            m->calling[i]++;
             unlock(m, 0);
             m->callreq[i] = 0;
             oftp_mon_msg("OFTP206I CALLING %s AT %s PORT %d", p->peer.name,
                          p->host, p->port);
             if ((s = oftp_net_connect(p->host, p->port, 5)) < 0) {
                 oftp_mon_msg("OFTP207W %s NOT REACHED", p->peer.name);
-                unreached(m, i);
                 lock(m, 0);
-                m->busy[i] = 0;
+                others = m->busy[i] - 1;
+                unlock(m, 0);
+                unreached(m, i, others);
+                lock(m, 0);
+                m->busy[i]--;
+                m->calling[i]--;
                 unlock(m, 0);
                 continue;
             }
@@ -1981,11 +2118,15 @@ cmd_display(OFTP_MON *m, const char *what)
     if (what[0] == 'P') {
         for (i = 0; i < m->cfg.nptn; i++) {
             OFTP_PARTNER *p = &m->cfg.ptn[i];
+            char ss[24];
 
+            ss[0] = '\0';
+            if (m->busy[i])
+                snprintf(ss, sizeof(ss), " %d OF %d SESSIONS", m->busy[i],
+                         p->sessions);
             oftp_mon_msg("OFTP100I %-8s %-25s %s%s LEVEL %d %s:%d", p->peer.name,
                          p->peer.code, p->enabled ? "ENABLED" : "DISABLED",
-                         m->busy[i] ? " IN SESSION" : "", p->peer.level,
-                         p->host[0] ? p->host : "-", p->port);
+                         ss, p->peer.level, p->host[0] ? p->host : "-", p->port);
         }
         oftp_mon_msg("OFTP101I %d PARTNERS, %d SESSIONS", m->cfg.nptn, m->nsess);
     } else if (what[0] == 'Q') {

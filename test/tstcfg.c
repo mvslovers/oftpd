@@ -30,7 +30,7 @@ main(void)
         "* partners",
         "PARTNER=MVS2 ODETTEID=O0013000000MVS2 PASSWORD=pw2",
         "  OURPASSWORD=PW1 HOST=mvs2.Example.org PORT=13305 LEVEL=4",
-        "PARTNER=PC ODETTEID=O0013000000PC MODE=R COMPRESS=Y",
+        "PARTNER=PC ODETTEID=O0013000000PC MODE=R COMPRESS=Y SESSIONS=3",
         "PARTNER=BAD ODETTEID=O0013000000BAD LEVEL=3",
         "PARTNER=NOID HOST=x",
         "PARTNER=DUP ODETTEID=O0013000000MVS2",
@@ -85,10 +85,12 @@ main(void)
         CHECK(strcmp(p->peer.ourcode, "O0013000000MVS1") == 0, "our ID defaults to ODETTEID");
         CHECK(p->peer.sdeb == 2048 && p->peer.cred == 7, "buffer and credit from the monitor");
         CHECK(p->call == 1 && p->peer.mode == 'B', "callable, mode B");
+        CHECK_EQ(p->sessions, 1, "one session at a time by default");
     }
     p = oftp_cfg_byid(&c, "O0013000000PC");
     CHECK(p != NULL && p->peer.mode == 'R' && p->peer.cmpr == 1 && p->call == 0,
           "PC by ID: mode R, compression, no HOST so not called");
+    CHECK(p != NULL && p->sessions == 3, "PC: SESSIONS=3");
     CHECK(oftp_cfg_find(&c, "BAD") == NULL, "level 3 disables the partner");
     CHECK(oftp_cfg_find(&c, "NOID") == NULL, "no ODETTEID disables the partner");
     CHECK(oftp_cfg_find(&c, "DUP") == NULL, "a second ODETTEID disables the partner");
@@ -101,6 +103,12 @@ main(void)
     CHECK(oftp_cfg_find(&c, "LOOP") == NULL, "VIA to a routed partner disabled");
     CHECK(oftp_cfg_find(&c, "GHOST") == NULL, "VIA to an unknown partner disabled");
     CHECK(msgs == 5, "five messages for the partner member");
+    CHECK_EQ(oftp_cfg_line(&c, 1, "PARTNER=S0 SESSIONS=0", 20, count, NULL), 1,
+             "SESSIONS=0 refused");
+    CHECK_EQ(oftp_cfg_line(&c, 1, "PARTNER=S17 SESSIONS=17", 21, count, NULL), 1,
+             "SESSIONS above 16 refused");
+    CHECK_EQ(oftp_cfg_line(&c, 1, "PARTNER=S16 SESSIONS=16", 22, count, NULL), 0,
+             "SESSIONS=16 accepted");
 
     /* retries: progressive, a day at most, MAXRETRY ends them */
     {

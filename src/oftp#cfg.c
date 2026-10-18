@@ -163,6 +163,8 @@ partner_kw(OFTP_PARTNER *p, const char *k, const char *v)
         return (b = yesno(v)) < 0 ? -1 : (p->xlate = b, 0);
     if (strcmp(k, "VIA") == 0)
         return put(p->via, sizeof(p->via), v);
+    if (strcmp(k, "SESSIONS") == 0)
+        return (n = num(v, 1, OFTP_MAXSESS)) < 0 ? -1 : (p->sessions = (int)n, 0);
     return -2;
 }
 
@@ -275,6 +277,8 @@ oftp_cfg_finish(OFTP_CONFIG *c, OFTP_CFGMSG msg, void *ctx)
             p->peer.mode = 'B';
         if (p->port == 0)
             p->port = 3305;
+        if (p->sessions == 0)
+            p->sessions = 1;
         if (p->host[0] == '\0' || p->via[0])
             p->call = 0;
         if (p->enabled)

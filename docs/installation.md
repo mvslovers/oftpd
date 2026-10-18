@@ -123,6 +123,9 @@ them. Each member describes its keywords at the top.
 - `OFTPPTN0`: one `PARTNER=` entry per partner, with its Odette ID, the
   passwords both ways, and `HOST`/`PORT` if this system is to call it. A
   partner reached through another one gets `VIA=name` instead of a host.
+  `SESSIONS=n` lets up to n sessions with the partner run at once (1 by
+  default); give both sides the same number, since a call beyond the
+  other side's limit is refused and made again after a short pause.
 
 The sockets are the Hercules host's: `127.0.0.1` is the machine Hercules
 runs on, not MVS, and the ports are opened there. Anyone who can reach
