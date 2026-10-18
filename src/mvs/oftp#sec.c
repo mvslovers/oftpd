@@ -8,7 +8,8 @@
 #include "oftpsec.h"
 
 int
-oftp_sec_may_read(const char *user, const char *dsn, char *why, size_t cap)
+oftp_sec_may_read(const char *user, const char *dsn, int alter, char *why,
+                  size_t cap)
 {
     CVT  *cvt = CVTPTR;
     ACEE *acee;
@@ -36,12 +37,14 @@ oftp_sec_may_read(const char *user, const char *dsn, char *why, size_t cap)
                  user, rc);
         return 1;
     }
-    rc = racf_auth(acee, "DATASET", name, RACF_ATTR_READ);
+    rc = racf_auth(acee, "DATASET", name,
+                   alter ? RACF_ATTR_ALTER : RACF_ATTR_READ);
     racf_logout(&acee);
     /* 0 a profile permits it, 4 none covers the data set: both SAF's
     ** "allowed", as OPEN itself would proceed (libc370 mvs/racf.h) */
     if (rc <= 4)
         return 0;
-    snprintf(why, cap, "%s may not read %s", user, name);
+    snprintf(why, cap, "%s may not %s %s", user, alter ? "delete" : "read",
+             name);
     return 1;
 }

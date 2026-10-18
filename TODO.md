@@ -232,6 +232,11 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   Still open from design 8: `STOP partner`, `TRACE`, the three stop
   strengths, and rvs `C-sid` (cancel the running transfer into HELD).
   The session's own claim (`claim_out`) is still a plain get and put.
+- ~~Delete after EERP~~ (rvs `DISP=DELETE`): `SEND ... DISP(DELETE)`,
+  over the SVC, ALTER checked at queue time, the data set deleted when the
+  EERP arrives (design 3.2). Measured between two MVS/CE containers; the
+  NERP case (source kept) and an ALTER refusal are read, not run. Later:
+  `DISP=COPY`, and rvs's rename of the source at queue time.
 - Log to a SYSOUT data set instead of every line by WTO; a log-only
   message class (design 8).
 - `docs/`: a configuration guide beside `docs/installation.md`.

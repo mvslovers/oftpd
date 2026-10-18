@@ -51,7 +51,8 @@ typedef struct oftp_sprec {
     char        xlate;                  /* 'Y' translate F/V/U data       */
     char        erp;                    /* send: 'E'/'N' arrived          */
     char        ppstate;                /* post-processing, later         */
-    char        rsv1;
+    char        disp;                   /* send: 'D' delete the data set
+                                           once the EERP is in; else keep */
     unsigned    lrecl;
     unsigned    attempts;
     int         reas;                   /* last reason code               */
