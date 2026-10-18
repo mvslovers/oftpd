@@ -272,15 +272,29 @@ check. Three things about it are worth keeping in mind:
   routine's older comment claiming a forged pointer "fails the
   caller-key check in MVCK" was true only for fetch-protected storage.
 - Two `TPROT`s per range are enough **because every range is at most
-  2048 bytes**, so it spans at most two 4K blocks and its first and
-  last byte cover both. That stops being true if `REPMAX` ever goes
-  above 4096; the check would then need a walk.
+  2048 bytes**: at that size it spans at most two protection blocks
+  whichever block size holds, so its first and last byte cover both.
+  **The reason given here used to read "two 4K blocks", and that was
+  the pre-correction one** (KB `MVS-PROT-0001`, 2026-10-18). A storage
+  key covers **2 K** on S/370 and 4 K only from 370-XA on, and the
+  emulator we run on builds the 2 K case: Hercules defines
+  `FEATURE_2K_STORAGE_KEYS` for S/370 mode (`hyperion/feat370.h:30`)
+  and sets `STORAGE_KEY_PAGESIZE 2048` under it
+  (`feature.h:397-407`). Under 2 K a range of 2049 to 4096 bytes spans
+  **three** blocks and a two-ended probe never looks at the middle
+  one. So 2048 is the bound that is safe under either value, which is
+  what `REPMAX` happens to be; raise it and the check needs a walk,
+  one probe per 2 K. The granularity is still a reading of the
+  emulator's source and not a measurement -- a `TPROT` at offset
+  +2048 across a known boundary settles it, and that probe belongs
+  with #15.
 - It does not close a TOCTOU window: a second task in the caller's
   address space can free the storage between the `TPROT` and the
   `MVCK`. That window is what the sweep is for.
 
-**The sweep, in `oftp#svc.c`, still to write -- and it is not purely
-OFTPD-side, which is how this was first framed.** The leak states are
+**The sweep, in `oftp#svc.c` -- written 2026-10-18, see section 11 --
+and it is not purely OFTPD-side, which is how this was first
+framed.** The leak states are
 CLAIMED (the routine faulted before publishing) and DONE (it faulted
 during the copy-out); PENDING is not a leak, OFTPD answers it. For
 CLAIMED, OFTPD needs no clock: the claim-to-PENDING window contains no
@@ -896,3 +910,180 @@ are the maintainer's own emulated MVS 3.8j systems, and the review that
 produced the three fixes above was work on identity handling and caller
 isolation, i.e. it made the routine stricter. Write and review it like any
 other module in the ecosystem.
+
+## 11. Piece two: the slot thread, the SSCT and the sweep (2026-10-18)
+
+Written on `issue-16-xmem-piece-two`, host build and 220/220 host
+tests clean. **Nothing in this section has run on MVS.** What it
+describes is code and the reasoning behind it; `test/mvs/tstsvc.c`
+and its JCL are the measurement, and they need a stand and a slot.
+
+### What was added
+
+| Where | What |
+|---|---|
+| `src/mvs/oftp#svc.c` | `oftp_svc_activate` / `_deactivate`, `_take`, `_answer`, `_sweep`; the SSCT install and removal; the STOP posts in the drain and in the ESTAE |
+| `src/mvs/oftp#svcc.c` | the client side: `ssct_find` -> anchor -> `EX`-of-`SVC 0` |
+| `src/mvs/oftp#mon.c` | the slot thread, `put_slot`, the `OWNER=` substitution, `oftp_mon_svc_start` / `_stop` |
+| `include/oftpsvc.h` | `OFTP_SVCJOB`, the `OFTP_SW_*` clocks, `oftp_svc_call` |
+| `test/mvs/tstsvc.c`, `.jcl` | the end-to-end probe from an unauthorized program |
+
+### The division is by storage key, and that is what makes #15 optional
+
+Everything that touches the anchor lives in `oftp#svc.c` and runs
+inside the key-0 bracket. Everything above it -- the slot thread, the
+`ctl_*` handlers, the reply formatting -- works on an `OFTP_SVCJOB`
+and a plain buffer in OFTPD's own key-8 storage. A slot is read once,
+under the bracket, into private storage; the answer is written back
+the same way.
+
+Two things follow, and the second is the one worth stating:
+
+- A request handler cannot cause a key-0 store by being wrong about a
+  pointer. The handlers are the part of OFTPD that keeps changing.
+- **Whether a key-8 read of subpool 241 is legal cannot affect this
+  code's correctness.** Every read is already bracketed, so #15 can
+  only ever let a bracket come off -- it can never force one on, and
+  it never blocked writing this.
+
+**The client is the exception, and it is unavoidable.** An
+unauthorized program cannot bracket anything, so `oftp#svcc.c` does
+two key-8 fetches of key-0 CSA: the SSCT chain, to find OFTPD, and the
+anchor header, for the SVC number and the ACTIVE flag. What makes that
+defensible rather than hopeful is one fact that was read rather than
+assumed: **libc370's `ssct_find()` contains no MODESET** -- it takes
+`CVTJESCT`, follows `JESSSCT` and walks `SSCTSCTA`, all in whatever
+key its caller is in (`src/mvs/subsys/@@ssfind.c`). It is an ordinary
+library function with no authorization requirement in its contract,
+so libc370 expects a problem-state key-8 caller to read the SSCT
+chain, and the SSCT chain is key-0 CSA.
+
+That is the whole of the evidence. It says libc370 relies on the
+fetch-protection bit being off for that storage, exactly as
+`MVS-PROT-0001` requires for the fetch to be permitted; it does not
+establish that subpool 241 generally is, and no program's behaviour
+other than libc370's own source was examined. **#15 is the
+measurement.**
+
+### Who frees a slot owns its decrement -- read off the routine, not the prose
+
+The exits in `asm/oftpsvc.asm` decide this, and they were read rather
+than assumed:
+
+| Exit | Slot | `inflight` | So OFTPD must |
+|---|---|---|---|
+| `RETREL` (served) | routine sets FREE | routine decrements | nothing |
+| `FREEDEC` (`BADHDR`/`BADREPLY`/`BADSTATE`/`POSTBAD`) | routine sets FREE | routine decrements | nothing |
+| `STOPDEC` (woken with ACTIVE off) | routine sets FREE | routine decrements | **not free, not decrement** |
+| `SWEPT` (its `CS` from DONE lost) | untouched | untouched | **free and decrement** -- the sweep took it |
+
+So OFTPD decrements in exactly one place: after it has **won** a
+`CS` that freed a slot. A second decrement takes the count below zero
+-- the routine's `BCTR` loops have no floor -- and every later
+`P OFTPD` drains forever.
+
+That is also why the stop posts parked slots and frees nothing: with
+ACTIVE already off, the routine tests `ANCFLAG` before it looks at the
+state, so every wake-up takes `STOPDEC` and cleans up after itself.
+
+### Three clocks in the sweep, and `stamp` serves only one
+
+`stamp` is OFTPD's *answer* time, so it cannot time a copy-out: a
+swapped-out caller may wake five minutes after the answer and finish
+in microseconds. Freeing that slot on age is a live corruption.
+
+| State | Clock | Why |
+|---|---|---|
+| CLAIMED | 3 sweep passes, private per slot | the claim-to-PENDING window holds no WAIT |
+| COPYOUT | 2 sweep passes, private per slot | the routine says when it woke; a copy-out is microseconds |
+| DONE | `stamp`, 300 s | the purged caller (`S322`) that will never write COPYOUT -- and nothing else |
+
+**The passes are the clock, so a pass has to be worth about a second
+whatever the traffic is.** The slot thread wakes on every POST, but it
+sweeps only when `time()` has moved on. Without that, three passes
+could be three milliseconds under load, and a caller merely preempted
+inside the CLAIMED window would lose its slot.
+
+### The wake ECB, and the one ordering that loses a request
+
+The thread zeroes `svcwake` **before** the slot scan, never after. A
+POST landing between the two is found by the scan; one landing after
+it leaves the ECB posted and the next wait returns at once. The other
+order drops a wake-up and nothing notices -- the caller waits until
+the stop.
+
+`ecb_timed_wait(&m->svcwake, 100, 0)` is one second. libc370 issues
+`TTIMER CANCEL` after the WAIT, so a real POST leaves no armed timer
+behind; and a negative rc means STIMER REAL failed and **nothing
+waited** (libc370 #94), so that case falls back to the untimed
+`ecb_wait` rather than spinning.
+
+### Ordering at start and stop
+
+Start: publish the wake ECB -> install the module and reserve the SVC
+entry -> start the slot thread -> install the SSCT -> set ACTIVE.
+`oftp_svc_activate()` does the last two, and from the instruction
+after the flag goes on any program on the system can park a request.
+A stale `OFT1` found at start is unchained by name (`ssct_remove`
+never dereferences `SSCTSUSE`) and **not** freed, and the anchor it
+names is not touched at all.
+
+Stop: ACTIVE off and the slot thread joined (`oftp_mon_svc_stop`) ->
+SSCT unchained -> drain, posting parked slots **each pass** -> restore
+the SVC entry -> read it back -> free. The thread has to be joined
+before the anchor is freed or it reads freed CSA, which is why the
+stop is two calls in `oftpd.c` and not one.
+
+**The STOP post is inside the drain loop, not once before it.**
+Clearing ACTIVE does not stop a caller already past the flag test: it
+goes on to claim, publish and WAIT. Posting once misses every one of
+those, and each costs the drain its ten seconds and the caller its
+session.
+
+ESTAE: `restore_locked()` stays first -- it is the step that costs an
+IPL -- then ACTIVE off, then the STOP posts, then percolate. A parked
+caller WAITs in key 0 in its own address space, so an OFTPD that dies
+without waking it leaves a task that cannot even be cancelled.
+
+### Open after this piece
+
+- **Nothing has run on MVS.** `test/mvs/tstsvc.c` is the probe and it
+  needs a stand with OFTPD up and `SVC=` set; #15 wants the same
+  stand, so they are one slot request and not two.
+- **The SSCT block is unchained and never freed**, ours included: 24
+  bytes of CSA per start/stop. The chain walk in another address space
+  is unserialised on MVS, so freeing it has a window that unchaining
+  does not, and 24 bytes is the cheaper side. nsf370 took the same
+  decision (ADR-0048 5.2). Revisit only with a reason.
+- **`OWNER=` substitution is untested against a real ACEE.** The
+  routine reads the userid length-prefixed and correctly
+  (`ACEEUSER` as the length, text from +1 -- KB `ECO-0008`), and the
+  thread drops any caller-supplied `OWNER=` and appends the slot's.
+  What no test shows yet is a *second* userid seeing only its own
+  transfers, because the reply of `STATUS` carries no userid to read
+  it off. `LIST OWNER=` from two ids on a stand is the measurement.
+- **A caller whose userid is blank gets no `OWNER=` at all**, which is
+  the pre-SVC behaviour and no worse than the TCP port. It arises only
+  where the caller's address space has no ACEE.
+- **`USER=` is left to the caller on purpose**, and that needs saying
+  before somebody "fixes" it. It is not an identity on this system:
+  `ctl_send()` puts it in the spool record's `user`, which travels in
+  the OFTP SFID user-data field (`oftp#cmd.c`, +48/+52) as free-form
+  text agreed between partners. `OWNER=` is the identity and it is
+  the one substituted.
+- **The `552` path is unreachable with today's handlers**, and the
+  bound is structural: every reply line is `snprintf`ed into a
+  `char out[N]` local and the largest `N` in `oftp#mon.c` is 200
+  (`ctl_list`, `ctl_show`), i.e. 201 bytes with the newline against
+  an `OFTP_SVC_REPMIN` of 256. A handler that grows its buffer past
+  255 breaks it, which is why the branch exists and says so rather
+  than looping.
+- **A clock set back parks the DONE sweep** until wall time catches
+  up with the stamps already written: the age test is
+  `now > stamp && now - stamp > OFTP_SW_DONE_SEC`, deliberately, so
+  that unsigned arithmetic cannot turn a stamp in the future into a
+  huge age and free a live slot. The cost is that an operator
+  `SET CLOCK` backwards suspends that one case. Harmless -- the slot
+  sits -- but it is an hour of diagnosis if it is not written down.
+- `CONTROLPORT` still defaults on. Turning it off is the transition
+  step (section 7) and deliberately not part of this piece.

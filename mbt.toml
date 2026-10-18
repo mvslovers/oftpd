@@ -78,6 +78,14 @@ host = false
 sources = ["test/mvs/tstspl.c"]
 host = false
 
+# The cross-memory transport end to end: an unauthorized, problem-state
+# program against a RUNNING OFTPD that has SVC= in OFTPPRM. Needs no
+# authorization of its own -- that it needs none is the point. Runs for
+# real only from test/mvs/tstsvc.jcl (PARM='RUN').
+[test.TSTSVC]
+sources = ["test/mvs/tstsvc.c"]
+host = false
+
 # The SMP installation package (mbt package): the load modules go to
 # OFTPD.LINKLIB (SMP's, distribution library OFTPD.AOFTPLOD), samplib/
 # and ispplib/ are received as text libraries beside it.

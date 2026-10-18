@@ -1442,6 +1442,249 @@ ctl_thread(void *arg1, void *arg2)
     return 0;
 }
 
+/* ---- the cross-memory slot thread -------------------------------- */
+/* The second transport for the same requests (internals/xmem.md
+** section 4, steps 9 and 10). Everything here works on an
+** OFTP_SVCJOB and a plain char buffer, both in OFTPD's own key-8
+** storage: oftp#svc.c copies a slot out and writes the answer back,
+** and no line below ever holds a CSA address. That is what lets the
+** ordinary ctl_* handlers serve a cross-memory request without
+** knowing one arrived -- and it is why this half does not wait on
+** the key-8 read oftpd#15 measures.
+*/
+
+static void join(CTHDTASK **t);
+
+/* Where a cross-memory answer accumulates. CTLOUT must stay the first
+** member: ctl_put() hands the handlers' output back as a CTLOUT * and
+** this casts it down again.
+*/
+typedef struct slotout {
+    CTLOUT   o;
+    char    *buf;
+    unsigned cap;
+    unsigned len;
+    unsigned sent;      /* 1xx lines the caller has after this piece  */
+    unsigned skip;      /* 1xx lines it already had: the resume index */
+    int      more;      /* the buffer ran out: this is a piece        */
+} SLOTOUT;
+
+/* One line into the reply area.
+**
+** Long answers come in pieces, and the boundary is counted in 1xx
+** lines and nothing else. A 1xx line is a row of the answer; the
+** single 2xx/4xx/5xx line that ends one is its status, belongs to
+** every piece that ends, and counting it would make the resume index
+** mean two different things on the two sides of the SVC.
+**
+** A piece never ends inside a line. The client reads whole lines, and
+** half of one is indistinguishable from a short one -- so when the
+** next line does not fit, the piece ends before it.
+*/
+static void
+put_slot(CTLOUT *co, const char *line)
+{
+    SLOTOUT *o = (SLOTOUT *)co;
+    unsigned n;
+
+    if (line == NULL)
+        return;
+    if (line[0] == '1' && o->sent < o->skip) {
+        o->sent++;                      /* the caller has this row    */
+        return;
+    }
+    if (o->more)
+        return;
+    n = (unsigned)strlen(line);
+    if (o->len + n + 1 > o->cap) {
+        o->more = 1;
+        return;
+    }
+    memcpy(o->buf + o->len, line, n);
+    o->len += n;
+    o->buf[o->len++] = '\n';
+    if (line[0] == '1')
+        o->sent++;
+}
+
+/* The request line as the handlers will see it.
+**
+** **The caller's own OWNER= is dropped and the slot's userid put in
+** its place, and that is the property the whole transport exists
+** for.** The TCP control port takes OWNER= from whoever connects,
+** which is why it has no security at all; here the userid came out of
+** the caller's ACEE, read by the SVC routine in the caller's own
+** address space, and the request block has no field a client could
+** have put one in.
+**
+** An empty userid leaves the keyword off rather than inventing one.
+** That is the pre-SVC behaviour of the request, no worse than the TCP
+** port and no better, and it arises only where the caller's address
+** space has no ACEE at all.
+**
+** **`USER=` is deliberately left alone**, and that is not an
+** oversight in the same spirit. It is not an identity on this system:
+** ctl_send() puts it in the spool record's `user`, which travels in
+** the OFTP SFID user-data field (oftp#cmd.c, +48/+52) as free-form
+** text agreed between partners. The identity is `owner`, and that is
+** the one substituted here.
+*/
+static void
+svc_line(const OFTP_SVCJOB *j, char *out, size_t cap)
+{
+    const char *p = j->req;
+    size_t      w = 0;
+    char        user[9];
+    int         n;
+
+    while (*p != '\0' && w + 1 < cap) {
+        const char *s = p;
+        size_t      l = 0;
+
+        while (s[l] != '\0' && s[l] != ' ')
+            l++;
+        /* ctl_request() uppercases the line afterwards, so a keyword
+        ** typed in either case has to be recognised here
+        */
+        if (!(l >= 6 && (s[0] == 'O' || s[0] == 'o')
+                     && (s[1] == 'W' || s[1] == 'w')
+                     && (s[2] == 'N' || s[2] == 'n')
+                     && (s[3] == 'E' || s[3] == 'e')
+                     && (s[4] == 'R' || s[4] == 'r')
+                     && s[5] == '=')) {
+            size_t i;
+
+            if (w != 0 && w + 1 < cap)
+                out[w++] = ' ';
+            for (i = 0; i < l && w + 1 < cap; i++)
+                out[w++] = s[i];
+        }
+        p = s + l;
+        while (*p == ' ')
+            p++;
+    }
+    out[w] = '\0';
+
+    for (n = 8; n > 0 && j->user[n - 1] == ' '; n--)
+        ;
+    if (n > 0) {
+        memcpy(user, j->user, (size_t)n);
+        user[n] = '\0';
+        if (w + 7 + (size_t)n < cap)
+            snprintf(out + w, cap - w, " OWNER=%s", user);
+    }
+}
+
+static int
+svc_thread(void *arg1, void *arg2)
+{
+    OFTP_MON   *m = arg1;
+    OFTP_SVCJOB j;
+    SLOTOUT     o;
+    char        line[OFTP_SVC_REQMAX + 24];
+    char        buf[OFTP_SVC_REPMAX];
+    long        swept = 0;
+    unsigned    i;
+
+    (void)arg2;
+    while (!m->stop && !m->svcstop) {
+        long now;
+
+        /* Zero the ECB BEFORE the scan, never after. A POST landing
+        ** between the two is found by the scan; one landing after it
+        ** leaves the ECB posted and the next wait comes straight
+        ** back. The other order loses a wake-up, and nothing on
+        ** either side would notice -- the caller waits until the
+        ** stop.
+        */
+        m->svcwake = 0;
+        for (i = 0; i < OFTP_SVC_NSLOT; i++) {
+            if (!oftp_svc_take(m, i, &j))
+                continue;
+            memset(&o, 0, sizeof(o));
+            o.o.put  = put_slot;
+            o.o.sock = -1;      /* no socket; a stray write fails     */
+            o.buf    = buf;
+            o.cap    = j.cap;
+            o.skip   = j.resume;
+            svc_line(&j, line, sizeof(line));
+            ctl_request(m, &o.o, line);
+            /* A single line longer than the caller's whole buffer
+            ** would answer MORE for ever and the client would ask
+            ** for ever.
+            **
+            ** It cannot happen with today's handlers, and the bound
+            ** is structural rather than arithmetic: every reply line
+            ** is formatted by snprintf into a `char out[N]` local,
+            ** and the largest N in this file is 200 (ctl_list,
+            ** ctl_show). With the newline that is 201 bytes against
+            ** an OFTP_SVC_REPMIN of 256. A handler that grows its
+            ** buffer past 255 breaks that, which is why this says so
+            ** instead of guarding silently.
+            */
+            if (o.more && o.len == 0) {
+                const char *e = "552 reply does not fit in the buffer\n";
+
+                o.len = (unsigned)strlen(e);
+                if (o.len > o.cap)
+                    o.len = o.cap;
+                memcpy(buf, e, o.len);
+                o.more = 0;
+            }
+            if (!oftp_svc_answer(m, i, buf, o.len, o.sent,
+                                 o.more ? OFTP_SVC_MORE : OFTP_SVC_OK))
+                oftp_mon_msg("OFTP064W CROSS MEMORY: THE OWNER OF SLOT %u"
+                             " IS GONE, ANSWER DISCARDED", i);
+        }
+        /* The sweep counts passes, so a pass has to be worth about a
+        ** second whatever the traffic is -- see OFTP_SW_* in
+        ** oftpsvc.h for why that is not a detail.
+        */
+        now = (long)time(NULL);
+        if (now != swept) {
+            swept = now;
+            oftp_svc_sweep(m);
+        }
+        if (m->stop || m->svcstop)
+            break;
+        /* 100 BINTVL units = 1 s. A negative rc means STIMER REAL
+        ** failed and nothing waited at all (libc370 #94); fall back
+        ** to the untimed wait rather than spin. The sweep stops
+        ** ticking, requests are still served, and the stop still
+        ** wakes us.
+        */
+        if (ecb_timed_wait(&m->svcwake, 100, 0) < 0)
+            ecb_wait(&m->svcwake);
+    }
+    return 0;
+}
+
+int
+oftp_mon_svc_start(OFTP_MON *m)
+{
+    m->svcstop = 0;
+    m->t_svc = cthread_create_ex(svc_thread, m, NULL, 32 * 1024);
+    if (m->t_svc == NULL) {
+        oftp_mon_msg("OFTP065E CROSS MEMORY SLOT THREAD NOT STARTED,"
+                     " CROSS MEMORY STAYS OFF");
+        return -1;
+    }
+    /* The thread first, the flag second: from the moment ACTIVE goes
+    ** on, any program on the system can park a request in a slot.
+    */
+    oftp_svc_activate(m);
+    return 0;
+}
+
+void
+oftp_mon_svc_stop(OFTP_MON *m)
+{
+    oftp_svc_deactivate(m);
+    m->svcstop = 1;
+    ecb_post(&m->svcwake, 0);
+    join(&m->t_svc);
+}
+
 /* ---- configuration ----------------------------------------------- */
 
 static void
@@ -1574,6 +1817,15 @@ oftp_mon_stop(OFTP_MON *m)
     join(&m->t_listen);
     join(&m->t_sched);
     join(&m->t_ctl);
+    /* Normally already gone: oftp_mon_svc_stop() runs ahead of
+    ** oftp_svc_stop() so the anchor is not freed under the thread.
+    ** This is the net for a path that skipped it -- join() takes a
+    ** NULL and cthread_delete() clears the pointer, so it is a no-op
+    ** the second time.
+    */
+    m->svcstop = 1;
+    ecb_post(&m->svcwake, 0);
+    join(&m->t_svc);
     /* closed numbers go back to the system: forget them, or an abend
     ** during the wait below would close whatever got them next
     */
