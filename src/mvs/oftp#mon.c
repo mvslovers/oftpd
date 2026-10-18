@@ -1149,7 +1149,35 @@ typedef struct ctlout CTLOUT;
 struct ctlout {
     void      (*put)(CTLOUT *o, const char *line);
     int         sock;                   /* the TCP transport's socket    */
+    /* Who asks. Over the SVC the userid is the caller's ACEE, read by
+    ** the routine and never by the client, and ADMIN= decides what it
+    ** may do. The TCP port knows nobody: it takes OWNER= from the line
+    ** and may do everything, as it always has -- the development port
+    ** without security (CLAUDE.md), off by default from 0.2.0.
+    */
+    int         svc;                    /* 1: the userid is real         */
+    int         admin;                  /* may see and change everything */
+    char        user[9];                /* "" when nobody is known       */
 };
+
+/* May the asker see and change transfer r: an administrator, or the
+** owner. No userid owns nothing, so a received file, which has no
+** owner, is an administrator's.
+*/
+static int
+ctl_may(const CTLOUT *o, const OFTP_SPREC *r)
+{
+    return o->admin || (o->user[0] != '\0' && strcmp(o->user, r->owner) == 0);
+}
+
+/* For the console: who changed a transfer */
+static const char *
+ctl_by(const CTLOUT *o)
+{
+    if (!o->svc)
+        return "CONTROL PORT";
+    return o->user[0] ? o->user : "A CALLER WITHOUT USERID";
+}
 
 static void
 ctl_put(CTLOUT *o, const char *line)
@@ -1190,7 +1218,7 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
 {
     OFTP_SPREC r;
     OFTP_PARTNER *p;
-    char partner[16], dsn[60], vfn[40], fmt[4], xl[4], user[12], owner[12];
+    char partner[16], dsn[60], vfn[40], fmt[4], xl[4], user[12];
     char hold[4], reply[100];
     int empty;
     char *lp;
@@ -1203,7 +1231,6 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
     kw(line, "FMT", fmt, sizeof(fmt));
     kw(line, "XLATE", xl, sizeof(xl));
     kw(line, "USER", user, sizeof(user));
-    kw(line, "OWNER", owner, sizeof(owner));
     kw(line, "HOLD", hold, sizeof(hold));
     if ((p = oftp_cfg_find(&m->cfg, partner)) == NULL) {
         ctl_put(o, "501 unknown or disabled partner");
@@ -1274,7 +1301,7 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
     r.fmt = fmt[0] == 'T' ? 'T' : 0;
     r.xlate = xl[0] == 'Y' ? 'Y' : 'N';
     strcpy(r.partner, p->peer.name);
-    snprintf(r.owner, sizeof(r.owner), "%s", owner);
+    snprintf(r.owner, sizeof(r.owner), "%s", o->user);
     snprintf(r.user, sizeof(r.user), "%s", user);
     strcpy(r.dsn, vfn);
     strcpy(r.local, dsn);
@@ -1330,12 +1357,17 @@ static void
 ctl_list(OFTP_MON *m, CTLOUT *o, const char *line)
 {
     OFTP_SPREC r;
-    char last[8], partner[16], status[16], owner[12], out[200];
-    int n = 0;
+    char last[8], partner[16], status[16], mine[4], out[200];
+    int n = 0, own;
 
     kw(line, "PARTNER", partner, sizeof(partner));
     kw(line, "STATUS", status, sizeof(status));
-    kw(line, "OWNER", owner, sizeof(owner));
+    kw(line, "MINE", mine, sizeof(mine));
+    /* Only one's own: asked for with MINE=Y, and all there is for
+    ** anyone but an administrator. Over TCP an OWNER= has always meant
+    ** the same, and a client of 0.1.0 still sends just that.
+    */
+    own = mine[0] == 'Y' || !o->admin || (!o->svc && o->user[0]);
     last[0] = '\0';
     while (oftp_spl_next(m->spool, last, &r) == 0) {
         memcpy(last, r.key, 8);
@@ -1344,7 +1376,7 @@ ctl_list(OFTP_MON *m, CTLOUT *o, const char *line)
             continue;
         if (status[0] && strncmp(status, state_name(r.state), strlen(status)) != 0)
             continue;
-        if (owner[0] && strcmp(owner, r.owner) != 0)
+        if (own && !(o->user[0] && strcmp(o->user, r.owner) == 0))
             continue;
         snprintf(out, sizeof(out), "100 %.8s %-4s %-9s %-8s %-26s %s",
                  r.key, r.dir == SPL_SEND ? "SEND" : "RECV",
@@ -1366,6 +1398,10 @@ ctl_show(OFTP_MON *m, CTLOUT *o, const char *line)
     kw(line, "KEY", key, sizeof(key));
     if (strlen(key) != 8 || oftp_spl_get(m->spool, key, &r) != 0) {
         ctl_put(o, "504 no such transfer");
+        return;
+    }
+    if (!ctl_may(o, &r)) {
+        ctl_put(o, "506 not your transfer");
         return;
     }
     snprintf(out, sizeof(out), "100 %.8s %s %s, partner %s%s%s, owner %s",
@@ -1404,6 +1440,10 @@ ctl_change(OFTP_MON *m, CTLOUT *o, const char *verb, const char *line)
         ctl_put(o, "504 no such transfer");
         return;
     }
+    if (!ctl_may(o, &r)) {
+        ctl_put(o, "506 not your transfer");
+        return;
+    }
     if (r.state == SPL_ACTIVE) {
         ctl_put(o, "450 transfer is active, try later");
         return;
@@ -1415,7 +1455,7 @@ ctl_change(OFTP_MON *m, CTLOUT *o, const char *verb, const char *line)
         }
         snprintf(out, sizeof(out), "200 %.8s deleted", r.key);
         ctl_put(o, out);
-        oftp_mon_msg("OFTP231I %.8s DELETED", r.key);
+        oftp_mon_msg("OFTP231I %.8s DELETED BY %s", r.key, ctl_by(o));
         return;
     }
     if (r.dir != SPL_SEND) {
@@ -1455,7 +1495,7 @@ ctl_change(OFTP_MON *m, CTLOUT *o, const char *verb, const char *line)
     }
     snprintf(out, sizeof(out), "200 %.8s %s", r.key, state_name(r.state));
     ctl_put(o, out);
-    oftp_mon_msg("OFTP232I %.8s %s BY CONTROL PORT", r.key, verb);
+    oftp_mon_msg("OFTP232I %.8s %s BY %s", r.key, verb, ctl_by(o));
     ecb_post(&m->wake, 0);
 }
 
@@ -1525,6 +1565,10 @@ ctl_call(OFTP_MON *m, CTLOUT *o, const char *line)
     OFTP_PARTNER *p;
     char partner[16], out[80];
 
+    if (!o->admin) {
+        ctl_put(o, "507 needs ADMIN= in OFTPPRM");
+        return;
+    }
     kw(line, "PARTNER", partner, sizeof(partner));
     if ((p = oftp_cfg_find(&m->cfg, partner)) == NULL || !p->call) {
         ctl_put(o, "501 not a partner that can be called");
@@ -1545,6 +1589,11 @@ ctl_request(OFTP_MON *m, CTLOUT *o, char *line)
     for (c = line; *c; c++)
         if (*c >= 'a' && *c <= 'z')
             *c = (char)(*c - 'a' + 'A');
+    /* the TCP port believes what the line says; see CTLOUT */
+    if (!o->svc) {
+        kw(line, "OWNER", o->user, sizeof(o->user));
+        o->admin = 1;
+    }
     if (strncmp(line, "SEND ", 5) == 0)
         ctl_send(m, o, line);
     else if (strncmp(line, "LIST", 4) == 0)
@@ -1567,9 +1616,13 @@ ctl_request(OFTP_MON *m, CTLOUT *o, char *line)
         ctl_status(m, o);
     else if (strncmp(line, "REFRESH", 7) == 0) {
         char out[80];
-        int on = oftp_mon_refresh(m);
+        int on;
 
-        if (on < 0)
+        if (!o->admin) {
+            ctl_put(o, "507 needs ADMIN= in OFTPPRM");
+            return;
+        }
+        if ((on = oftp_mon_refresh(m)) < 0)
             ctl_put(o, "451 partner member cannot be read");
         else {
             snprintf(out, sizeof(out), "200 partners reloaded, %d enabled", on);
@@ -1588,6 +1641,7 @@ ctl_thread(void *arg1, void *arg2)
     CTLOUT o;
 
     (void)arg2;
+    memset(&o, 0, sizeof(o));
     o.put = put_sock;
     while (!m->stop) {
         int s, n;
@@ -1679,34 +1733,34 @@ put_slot(CTLOUT *co, const char *line)
         o->sent++;
 }
 
-/* The request line as the handlers will see it.
+/* The request line as the handlers will see it, and who sent it.
 **
-** **The caller's own OWNER= is dropped and the slot's userid put in
-** its place, and that is the property the whole transport exists
-** for.** The TCP control port takes OWNER= from whoever connects,
-** which is why it has no security at all; here the userid came out of
-** the caller's ACEE, read by the SVC routine in the caller's own
-** address space, and the request block has no field a client could
-** have put one in.
+** **The caller's own OWNER= is dropped, and the userid the routine
+** read out of the caller's ACEE goes to the handlers beside the line,
+** never in it** -- that is the property the whole transport exists
+** for. The TCP control port takes OWNER= from whoever connects, which
+** is why it has no security at all; here the request block has no
+** field a client could have put a userid in, and a line that names
+** one is answered as if it did not.
 **
-** An empty userid leaves the keyword off rather than inventing one.
-** That is the pre-SVC behaviour of the request, no worse than the TCP
-** port and no better, and it arises only where the caller's address
-** space has no ACEE at all.
+** What the userid may do is ADMIN='s to say (ctl_may()): an
+** administrator sees and changes every transfer, anyone else only
+** their own. An empty userid -- an address space without an ACEE --
+** is nobody, and owns nothing.
 **
 ** **`USER=` is deliberately left alone**, and that is not an
 ** oversight in the same spirit. It is not an identity on this system:
 ** ctl_send() puts it in the spool record's `user`, which travels in
 ** the OFTP SFID user-data field (oftp#cmd.c, +48/+52) as free-form
 ** text agreed between partners. The identity is `owner`, and that is
-** the one substituted here.
+** the one taken from the slot.
 */
 static void
-svc_line(const OFTP_SVCJOB *j, char *out, size_t cap)
+svc_line(OFTP_MON *m, const OFTP_SVCJOB *j, char *out, size_t cap,
+         CTLOUT *who)
 {
     const char *p = j->req;
     size_t      w = 0;
-    char        user[9];
     int         n;
 
     while (*p != '\0' && w + 1 < cap) {
@@ -1737,14 +1791,13 @@ svc_line(const OFTP_SVCJOB *j, char *out, size_t cap)
     }
     out[w] = '\0';
 
-    for (n = 8; n > 0 && j->user[n - 1] == ' '; n--)
+    for (n = 8; n > 0 && (j->user[n - 1] == ' ' || j->user[n - 1] == '\0');
+         n--)
         ;
-    if (n > 0) {
-        memcpy(user, j->user, (size_t)n);
-        user[n] = '\0';
-        if (w + 7 + (size_t)n < cap)
-            snprintf(out + w, cap - w, " OWNER=%s", user);
-    }
+    memcpy(who->user, j->user, (size_t)n);
+    who->user[n] = '\0';
+    who->svc   = 1;
+    who->admin = oftp_cfg_admin(&m->cfg, who->user);
 }
 
 static int
@@ -1779,7 +1832,7 @@ svc_thread(void *arg1, void *arg2)
             o.buf    = buf;
             o.cap    = j.cap;
             o.skip   = j.resume;
-            svc_line(&j, line, sizeof(line));
+            svc_line(m, &j, line, sizeof(line), &o.o);
             ctl_request(m, &o.o, line);
             /* A single line longer than the caller's whole buffer
             ** would answer MORE for ever and the client would ask

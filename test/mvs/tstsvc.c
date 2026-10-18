@@ -116,6 +116,20 @@ main(int argc, char **argv)
     CHECK_EQ(rc, OFTP_SVC_BADREQ, "a reply buffer under the floor is refused");
     CHECK_EQ((int)len, 0, "and nothing is reported written");
 
+    /* 2b. A request longer than the routine takes is refused, not cut:
+    ** what was left of it would be another request.
+    */
+    {
+        char longreq[OFTP_SVC_REQMAX + 2];
+
+        memset(longreq, 'X', sizeof(longreq) - 1);
+        longreq[sizeof(longreq) - 1] = '\0';
+        len = 99;
+        rc = oftp_svc_call(longreq, buf, sizeof(buf), 0, &len, &next);
+        CHECK_EQ(rc, OFTP_SVC_BADREQ, "a request over REQMAX is refused");
+        CHECK_EQ((int)len, 0, "and nothing is reported written");
+    }
+
     /* 3. STATUS, the round trip this test exists for: an unauthorized
     ** program in its own address space gets OFTPD's answer back.
     */
@@ -132,11 +146,12 @@ main(int argc, char **argv)
     }
 
     /* 4. The userid is OFTPD's to decide, not the caller's. OWNER= in
-    ** the request is dropped and the slot's userid put in its place,
-    ** so a request naming somebody else must not be answered as that
-    ** somebody -- there is nothing in the STATUS reply to read it off,
-    ** so this only checks that the substitution does not break the
-    ** request.
+    ** the request is dropped and the slot's userid goes to the
+    ** handlers beside the line, so a request naming somebody else must
+    ** not be answered as that somebody -- there is nothing in the
+    ** STATUS reply to read it off, so this only checks that dropping
+    ** it does not break the request. What a second owner sees is
+    ** measured with OFTP itself (internals/xmem.md section 13).
     */
     memset(buf, 0, sizeof(buf));
     len = 0;

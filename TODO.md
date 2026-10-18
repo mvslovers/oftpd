@@ -111,6 +111,23 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   frees a slot owns its in-flight decrement -- a second decrement
   underflows the count and wedges `P OFTPD`. It replaces the TCP
   control port, which goes off by default in 0.2.0.
+  **The utilities use it** (#22, `internals/xmem.md` section 13): no
+  host means the SVC, no fallback to TCP; the caller's userid travels
+  beside the request line, and `ADMIN=` in `OFTPPRM` decides who sees
+  and changes every transfer (everyone else: only their own). Measured
+  in two throwaway containers: `OFTP` batch from a library that is not
+  APF-authorized, two owners with and without `ADMIN=`, paging through
+  the client, the dialog on a 43-row screen. Open from it:
+  - **TK5 with `SVC=237`** (m38r or m38b): the first run of the
+    transport on a stand at all. Needs a confirmed slot.
+  - **`SEND` reads the data set with OFTPD's authority**, not the
+    caller's: an ordinary user can send what they could not read. Same
+    as over TCP, but now visible. `RACINIT`/`RACHECK` for the caller is
+    the candidate; not decided.
+  - A second RAKF userid on the SVC, and `TSTSVC` step 2b (a request
+    over 255 bytes), are written and not run.
+  - The dialog's profile on dev1 still holds `127.0.0.1`: clear the host
+    under option 5 when the SVC is on there.
 - ~~Before 0.2.0: the spool after an abend~~ (#2) -- OFTPD runs VERIFY
   itself when the open fails (rc 4 after a CANCEL, measured on dev1) and
   says so in `OFTP021W`.

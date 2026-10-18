@@ -22,16 +22,16 @@
 +                  OFTPD reads it again when the edit ends
 +
 %  5  {Monitor    +OFTPD: Odette ID, ports, sessions, spool
-+                  and the control port this dialog talks to
++                  and how this dialog reaches it
 +
 %  X  {Exit
 +
 +
 !OFTMSG
 +
-%  OFTPD control port +  kept in your ISPF profile, option 5 changes it
-+    Host @OFTHOST
-+    Port @OFTPORT
+%  OFTPD reached by +@OFTVIA
++                    kept in your ISPF profile, option 5 changes it
++
 +
 +  Enter an option, END or X to leave.
 )INIT

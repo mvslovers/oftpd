@@ -4,8 +4,10 @@ OFTPD (oftpd) is an OFTP (ODETTE File Transfer Protocol) server for
 MVS 3.8j: a monitor that runs as a started task, the `OFTP` utility for
 TSO and batch, and an ISPF dialog. It speaks OFTP 2.0 without its security
 features, and OFTP 1.4 and 1.3, over plain TCP/IP. It is meant for
-hobbyist and test systems, not for production use: there is no TLS, no
-certificate, and the control port the utilities talk to has no security.
+hobbyist and test systems, not for production use: there is no TLS and
+no certificate. The utilities reach the monitor through an SVC of its
+own, so the monitor knows who is asking; a TCP control port without any
+security is there as well, for development.
 
 This package installs it through SMP 4, the SMP that comes with MVS 3.8j.
 
@@ -116,10 +118,13 @@ Copy `OFTPD.SAMPLIB(OFTPPRM0)` and `(OFTPPTN0)` to `SYS2.PARMLIB` and edit
 them. Each member describes its keywords at the top.
 
 - `OFTPPRM0`: this system's Odette ID (`ODETTEID`, required), the OFTP
-  port (`PORT`, 3305) and the control port (`CONTROLPORT`, 3306), and the
-  prefixes for received files (`INPREFIX`, `TMPPREFIX`). A received file
-  is stored as `INPREFIX.<virtual file name>`. `RELAY=Y` makes this
-  system a node that passes files on to its partners.
+  port (`PORT`, 3305), the SVC the utilities reach OFTPD through
+  (`SVC=237`; without it they find no OFTPD), the userids that may manage
+  every transfer (`ADMIN=`, one per userid), the control port
+  (`CONTROLPORT`, 3306), and the prefixes for received files
+  (`INPREFIX`, `TMPPREFIX`). A received file is stored as
+  `INPREFIX.<virtual file name>`. `RELAY=Y` makes this system a node that
+  passes files on to its partners.
 - `OFTPPTN0`: one `PARTNER=` entry per partner, with its Odette ID, the
   passwords both ways, and `HOST`/`PORT` if this system is to call it. A
   partner reached through another one gets `VIA=name` instead of a host.
@@ -129,7 +134,8 @@ them. Each member describes its keywords at the top.
 
 The sockets are the Hercules host's: `127.0.0.1` is the machine Hercules
 runs on, not MVS, and the ports are opened there. Anyone who can reach
-the control port can queue and list transfers.
+the control port can queue, list and change every transfer, whoever
+queued it; set `CONTROLPORT=0` unless you need it.
 
 ## 7. The procedure
 
@@ -145,8 +151,10 @@ spool and the authority to create data sets under `INPREFIX` and
 Start it with `S OFTPD` (or `S OFTPD,S='MY.SPOOL'`). The console shows
 `OFTP000I` with the version, `OFTP004I` (step 4), `OFTP014I` with the Odette ID and the number
 of partners enabled, `OFTP001I OFTPD READY`, `OFTP051I LISTENING ON PORT
-3305, SOCKET n` and `OFTP053I CONTROL PORT 3306 (NO SECURITY), SOCKET n`. A partner entry with
-an error is reported with `OFTP010W` and disabled; the others still work.
+3305, SOCKET n`, `OFTP053I CONTROL PORT 3306 (NO SECURITY), SOCKET n` and
+`OFTP039I CROSS MEMORY ACTIVE ON SVC 237, SUBSYSTEM OFT1`. A partner entry
+with an error is reported with `OFTP010W` and disabled; the others still
+work.
 
 The operator commands are listed at the top of the procedure: `F OFTPD,D P`
 (partners), `D Q` (the spool), `D S` (sessions), `F OFTPD,CALL name`,
@@ -173,8 +181,21 @@ link list or in the logon procedure's `STEPLIB`, as in the `TSO` step of
 `OFTPBAT`.
 
 The commands are `SEND`, `LIST`, `SHOW`, `DELETE`, `HOLD`, `RELEASE`,
-`RETRY`, `CALL` and `PARTNERS`. `HOST(...)` and `PORT(...)` name the
-control port when OFTPD does not listen on 127.0.0.1 port 3306.
+`RETRY`, `CALL` and `PARTNERS`. `OFTP` needs no authorization of its own:
+it reaches OFTPD through OFTPD's SVC, and OFTPD reads the userid of the
+job or TSO session itself.
+
+A transfer belongs to the userid that queued it. That userid sees and
+changes it; so does a userid named in `ADMIN=`, which sees and changes
+every transfer, including the received ones, which belong to nobody.
+Anyone else gets `not your transfer` (RC 8). `LIST` shows an
+administrator everything, and `LIST MINE` only their own. `CALL` is for
+an administrator only.
+
+`HOST(...)` and `PORT(...)` send the command to the TCP control port
+instead (127.0.0.1 and 3306 for whichever is left out). It is for
+development: it has no security, believes the userid `OFTP` sends with
+the command, and lets everyone do everything.
 
 ## 9. The ISPF dialog
 
@@ -194,8 +215,12 @@ SELECT CMD(OFTPI) NEWAPPL(OFTP)
 
 for example as an entry in a menu panel: a line for the option in the
 body, and `O,'CMD(OFTPI) NEWAPPL(OFTP)'` in its `TRANS` (replace `O` with
-the option you choose). The dialog keeps the control port's host and port
-in your ISPF profile; set them once under its Monitor option.
+the option you choose). The dialog reaches OFTPD the way `OFTP` does,
+with the same rules: through the SVC, or through the control port when a
+host is set under its Monitor option, which keeps host and port in your
+ISPF profile. A profile from a release before the SVC holds
+`127.0.0.1`; clear the host there to use the SVC. Reading the partner
+member again after option 4 is for an administrator.
 
 ## Removing it
 

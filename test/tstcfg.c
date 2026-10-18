@@ -1,4 +1,5 @@
 /* TSTCFG - OFTPPRM and OFTPPTN parsing */
+#include <stdio.h>
 #include <string.h>
 
 #include <mbtcheck.h>
@@ -68,6 +69,34 @@ main(void)
     CHECK_EQ(oftp_cfg_line(&c, 0, "SVC=0", 13, count, NULL), 1,
              "SVC=0 refused, not a silent off");
     CHECK_EQ(c.svc, 237, "a refused SVC leaves the number alone");
+
+    /* ADMIN= takes one id each time and the list grows: a comma
+    ** separates keywords here, so it cannot separate ids
+    */
+    CHECK_EQ(c.nadmin, 0, "no ADMIN= by default");
+    CHECK_EQ(oftp_cfg_admin(&c, "IBMUSER"), 0, "and nobody is an administrator");
+    CHECK_EQ(oftp_cfg_line(&c, 0, "ADMIN=ibmuser ADMIN=OPER1", 14, count, NULL),
+             0, "two ADMIN= on one line");
+    CHECK_EQ(oftp_cfg_line(&c, 0, "ADMIN=OPER1", 15, count, NULL), 0,
+             "an id named again is accepted");
+    CHECK_EQ(c.nadmin, 2, "and kept once");
+    CHECK_EQ(oftp_cfg_admin(&c, "IBMUSER"), 1, "an ADMIN= id, upper-cased");
+    CHECK_EQ(oftp_cfg_admin(&c, "OPER1"), 1, "the second one");
+    CHECK_EQ(oftp_cfg_admin(&c, "OPER"), 0, "a prefix is not the id");
+    CHECK_EQ(oftp_cfg_admin(&c, ""), 0, "no userid is never an administrator");
+    CHECK_EQ(oftp_cfg_line(&c, 0, "ADMIN=TOOLONGID", 16, count, NULL), 1,
+             "an id over 8 characters refused");
+    CHECK_EQ(oftp_cfg_line(&c, 0, "ADMIN=", 17, count, NULL), 1,
+             "an empty ADMIN= refused");
+    for (i = 0; i < OFTP_MAXADM - 2; i++) {
+        char l[20];
+
+        snprintf(l, sizeof(l), "ADMIN=ADM%d", i);
+        oftp_cfg_line(&c, 0, l, 18, count, NULL);
+    }
+    CHECK_EQ(c.nadmin, OFTP_MAXADM, "the list full");
+    CHECK_EQ(oftp_cfg_line(&c, 0, "ADMIN=ONEMORE", 19, count, NULL), 1,
+             "one more than OFTP_MAXADM refused");
 
     msgs = 0;
     for (i = 0; ptn[i]; i++)
