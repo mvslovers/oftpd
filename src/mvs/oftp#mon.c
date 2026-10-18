@@ -610,6 +610,19 @@ f_erp_recv(void *ctx, const OFTP_PEER *peer, char code, const OFTP_ERPCMD *e)
         if (code == OFTP_EERP) {
             r.state = SPL_DELIVERED;
             settext(&r, "delivered, EERP received");
+            /* DISP=DELETE: the partner has confirmed, now and never
+            ** earlier; checked for ALTER when it was queued */
+            if (r.disp == 'D' && r.relay != 'Y') {
+                if (remove(r.local) == 0) {
+                    settext(&r, "delivered, EERP received, data set deleted");
+                    oftp_mon_msg("OFTP215I %.8s %s DELETED (DISP=DELETE)",
+                                 r.key, r.local);
+                } else {
+                    settext(&r, "delivered, EERP received, data set NOT deleted");
+                    oftp_mon_msg("OFTP216W %.8s %s NOT DELETED (DISP=DELETE)",
+                                 r.key, r.local);
+                }
+            }
         } else {
             r.state = SPL_REJECTED;
             r.reas = e->reas;
@@ -1246,7 +1259,7 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
     OFTP_SPREC r;
     OFTP_PARTNER *p;
     char partner[16], dsn[60], vfn[40], fmt[4], xl[4], user[12];
-    char hold[4], reply[100];
+    char hold[4], disp[8], reply[100];
     int empty;
     char *lp;
     struct tm *tm;
@@ -1259,6 +1272,17 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
     kw(line, "XLATE", xl, sizeof(xl));
     kw(line, "USER", user, sizeof(user));
     kw(line, "HOLD", hold, sizeof(hold));
+    kw(line, "DISP", disp, sizeof(disp));
+    if (disp[0] && strcmp(disp, "KEEP") != 0 && strcmp(disp, "DELETE") != 0) {
+        ctl_put(o, "508 DISP is KEEP or DELETE");
+        return;
+    }
+    /* deleting needs a caller whose authority can be checked */
+    if (disp[0] == 'D' && !o->svc) {
+        ctl_put(o, "510 DISP=DELETE only over the SVC: the control port"
+                " knows nobody");
+        return;
+    }
     if ((p = oftp_cfg_find(&m->cfg, partner)) == NULL) {
         ctl_put(o, "501 unknown or disabled partner");
         return;
@@ -1284,6 +1308,10 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
             *e = '\0';
         snprintf(r.member, sizeof(r.member), "%s", lp + 1);
     }
+    if (disp[0] == 'D' && r.member[0]) {
+        ctl_put(o, "510 DISP=DELETE takes a whole data set, not a member");
+        return;
+    }
     if (!oftp_dsn_valid(dsn)) {
         ctl_put(o, "502 data set not found");
         return;
@@ -1296,7 +1324,8 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
     if (o->svc) {
         char why[90];
 
-        if (oftp_sec_may_read(o->user, dsn, why, sizeof(why)) != 0) {
+        if (oftp_sec_may_read(o->user, dsn, disp[0] == 'D', why,
+                              sizeof(why)) != 0) {
             snprintf(reply, sizeof(reply), "509 not authorized: %s", why);
             ctl_put(o, reply);
             oftp_mon_msg("OFTP238W SEND OF %s REFUSED: %s", dsn, why);
@@ -1351,6 +1380,7 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
     snprintf(r.user, sizeof(r.user), "%s", user);
     strcpy(r.dsn, vfn);
     strcpy(r.local, dsn);
+    r.disp = disp[0] == 'D' ? 'D' : 0;
     if (r.dest[0] == '\0')
         strcpy(r.dest, p->peer.code);
     strcpy(r.orig, p->peer.ourcode);
@@ -1459,8 +1489,9 @@ ctl_show(OFTP_MON *m, CTLOUT *o, const char *line)
     snprintf(out, sizeof(out), "100 virtual file %s %s %s, format %c, LRECL %u",
              r.dsn, r.date, r.time, r.fmt ? r.fmt : '-', r.lrecl);
     ctl_put(o, out);
-    snprintf(out, sizeof(out), "100 data set %s%s%s%s", r.local,
-             r.member[0] ? "(" : "", r.member, r.member[0] ? ")" : "");
+    snprintf(out, sizeof(out), "100 data set %s%s%s%s%s", r.local,
+             r.member[0] ? "(" : "", r.member, r.member[0] ? ")" : "",
+             r.disp == 'D' ? ", deleted once the EERP is in" : "");
     ctl_put(o, out);
     snprintf(out, sizeof(out), "100 from %s to %s, %lu records, %u attempts",
              r.orig, r.dest, r.recs, r.attempts);
@@ -1474,7 +1505,6 @@ ctl_show(OFTP_MON *m, CTLOUT *o, const char *line)
     ctl_put(o, "200 end");
 }
 
-/* DELETE, HOLD, RELEASE, RETRY of one transfer */
 /* HOLD or RELEASE of every send to partner (all for "*") whose name
 ** matches vfn ("" any, "ABC*" a prefix), of those o may change -- o NULL
 ** is the operator, who may change all. HOLD takes QUEUED and WAITING,
@@ -1524,6 +1554,8 @@ bulk(OFTP_MON *m, const CTLOUT *o, int hold, const char *partner,
     return 0;
 }
 
+/* DELETE, HOLD, RELEASE, RETRY of one transfer; HOLD and RELEASE with
+** PARTNER= instead of KEY= go to bulk() */
 static void
 ctl_change(OFTP_MON *m, CTLOUT *o, const char *verb, const char *line)
 {

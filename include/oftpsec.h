@@ -15,11 +15,12 @@
 
 #include <stddef.h>
 
-/* 0: may read dsn (a member's library counts). 1: may not, and why says
-** so for the caller and the console; also for a caller without a userid
+/* 0: may read dsn (a member's library counts) -- or, with alter set,
+** may delete it (ALTER, for DISP=DELETE). 1: may not, and why says so
+** for the caller and the console; also for a caller without a userid
 ** on a system that has a security product.
 */
-extern int oftp_sec_may_read(const char *user, const char *dsn,
+extern int oftp_sec_may_read(const char *user, const char *dsn, int alter,
                              char *why, size_t cap)     asm("OFTPSECR");
 
 #endif /* OFTPSEC_H */

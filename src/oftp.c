@@ -1,7 +1,7 @@
 /* OFTP - TSO command and batch utility, a client of the monitor
 **
 **   OFTP SEND PARTNER(name) DSN(data.set[(member)]) [VFN(name)]
-**             [FORMAT(T)] [XLATE] [HOLD] [USER(text)]
+**             [FORMAT(T)] [XLATE] [HOLD] [USER(text)] [DISP(DELETE)]
 **   OFTP LIST [PARTNER(name)] [STATUS(state)] [MINE]
 **   OFTP SHOW key           OFTP DELETE key
 **   OFTP HOLD key           OFTP RELEASE key        OFTP RETRY key

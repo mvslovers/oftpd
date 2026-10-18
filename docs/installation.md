@@ -197,6 +197,11 @@ may change. `OFTP` needs no authorization of its own:
 it reaches OFTPD through OFTPD's SVC, and OFTPD reads the userid of the
 job or TSO session itself.
 
+`SEND ... DISP(DELETE)` deletes the data set once the partner has
+confirmed it with its EERP, never earlier; a refusal (NERP) keeps it.
+It needs the authority to delete the data set (ALTER), takes a whole
+data set and not a member, and is not offered over the control port.
+
 `SEND` checks your authority, not OFTPD's: OFTPD asks the security
 product (RAKF) whether your userid may read the data set, and refuses
 with `not authorized` (RC 8) when it may not -- an administrator

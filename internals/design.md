@@ -155,9 +155,13 @@ Grouped by purpose; field widths are fixed in the header file, not here.
 - **Outcome**: the partner's OFTP reason code (SFNA/EFNA/ESID/NERP) and
   text **as received**, kept apart from our own local error code. Mixing
   the two in one field makes "who refused" unanswerable afterwards.
-- **Disposition** (sends): `KEEP` the source (MVP), *later* `DELETE` once
-  the EERP has arrived (never earlier) and `COPY` (a snapshot taken when
-  the send is queued, so the source may change afterwards).
+- **Disposition** (sends): `KEEP` the source (the default), `DELETE` once
+  the EERP has arrived, never earlier (built 2026-10-18: `DISP=DELETE`,
+  over the SVC only, never for a member, the caller checked for ALTER
+  when it is queued; a NERP keeps the source), and *later* `COPY` (a
+  snapshot taken when the send is queued, so the source may change
+  afterwards). rvs also renamed the source when queueing a DELETE; OFTPD
+  does not, so a source changed before the EERP is deleted as it is.
 - **Restart**: last confirmed position (records for F/V, 1K blocks for
   U/T) and whatever is needed to resume the local data set at that point
   (3.5).
