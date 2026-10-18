@@ -167,12 +167,24 @@ the MVP (a spool LIST is a VSAM read, not a scan of anything large).
 
 | Item | Size |
 |---|---|
-| anchor header | about 64 bytes |
+| anchor header | 64 bytes |
 | slot | 64 header + 256 request + 2048 reply = 2368 bytes |
 | pool | 4 slots = 9472 bytes |
-| `OFTPSVC` | under 2 KB, to be measured |
+| anchor + pool, one GETMAIN | 9536 bytes (`sizeof(OFTP_ANCHOR)`, asserted at compile time) |
+| `OFTPSVC` | **1144 bytes**, measured on m38x 2026-10-18 (`OFTP030I`) |
 
-So about **12 KB of key-0 CSA**, held while OFTPD runs. Four slots because
+So about **10.7 KB of key-0 CSA**, held while OFTPD runs -- two
+subpool-241 GETMAINs, the anchor's and `__loadhi`'s.
+
+Each carries an 8-byte prefix *below* the returned address: libc370's
+`getmain()` returns `block + 8` and `freemain()` reads the subpool and
+the length back from there (`src/mvs/storage/getmain.c:89`). So
+`freemain(lpa)` is the right teardown for a `__loadhi` module -- `lpa`
+is the pointer `getmain()` returned -- and the addresses observed on
+m38x fit exactly: module at `00A90608` + X'478' = `00A90A80`, anchor at
+`00A90A88`, the eight bytes between them being the anchor's prefix.
+`freemain()` also zeroes the block before the FREEMAIN, which is one
+more key-0 store. Four slots because
 requests are short and a full pool only answers `421`; the reply area at
 2 KB holds about 25 `LIST` lines, the rest comes by resume. Both are
 constants in one header; change them there.
@@ -545,6 +557,60 @@ the routine is written for a type-3 entry holding none. Only byte +4 is
 written, `X'C0'`: `SVCTYPE3` in the top three bits with `svcapf` off,
 because reaching the routine from an unauthorized caller is the whole
 point. Bytes +5 to +7 stay as found and come back from `svc_saved`.
+
+### The first run on MVS, m38x, 2026-10-18
+
+The install works and the first stop abended. Both halves are worth
+keeping, because the second is what the recovery design was for.
+
+| | |
+|---|---|
+| Read 1, before anything (`JOB00635`) | SVC 237 at `0101C8` = `0000CCC8 80000000`; modal EP `0000CCC8` shared by **40** of slots 200-255 |
+| `S OFTPD` | `OFTP000I oftpd 0.1.0-dev (2740462)`, `OFTP004I AUTHORIZED BY SVC`, `OFTP031I SVC 237 ENTRY FOUND 0000CCC8 80000000`, `OFTP030I … ANCHOR=00A90A88 MODULE=00A90608 (1144 BYTES), NOT ACTIVE` |
+| Read 2 (`JOB00637`) | `00A90608 C0000000`; modal EP now shared by **39** -- the one missing is 237 |
+| `P OFTPD` | `OFTP002I`, then `OFTP098E OFTPD ABEND, 2 SOCKETS CLOSED, SVC RESTORED`, `IEF450I … ABEND S0C4`. **No `OFTP032I`.** |
+| Read 3 (`JOB00638`) | `0000CCC8 80000000`, **40** slots again, byte-identical to read 1 |
+
+Three things that settle questions this file had open:
+
+- **The entry point is read the same from both sides.** `OFTP031I`'s
+  eight bytes equal the read-only job taken before the test, and the
+  modal count moving 40 → 39 → 40 says exactly one slot left the free
+  set and came back. That is why the message exists: the install and
+  the measurement are not the same party.
+- **Authorization is SVC 244 all the way.** `AUTHORIZED BY SVC` on a
+  stand whose library is not APF, and `__super(PSWKEY0)` then reached
+  key 0 and wrote the table. No `IEAAPF00` entry, no IPL.
+- **The invalid-SVC entry is a type-2 entry**, `0000CCC8 80000000`:
+  byte +4 is X'80', and the `svclock` at +6 is zero, which is what the
+  free test requires.
+
+**The abend: a key-8 store into key-0 CSA.** `oftp_svc_stop()` cleared
+`OFTP_ANC_ACTIVE` as its first act, with no `__super` bracket, and the
+anchor is key-0 CSA while OFTPD runs key 8. The identical store inside
+`oftp_svc_restore()` has the bracket -- which is why the recovery path
+ran to completion and read 3 came back clean. **The one step whose
+absence costs an IPL survived its own stop path abending**, because it
+is the first act of `oftp_mon_abend()` and not something the stop path
+reaches on its way through.
+
+Fixed in `c138465`, and the drain's read of `inflight` now takes the
+bracket too: subpool 241 is *meant* to be non-fetch-protected, which
+would make a key-8 read legal, but nothing has measured that here and
+the cost of being wrong is another abend and another stand slot. **That
+question is still open and piece two needs it answered**, because the
+slot thread reads slots from key 8 continuously.
+
+No dump was read: the procedure allocates none and the ESTAE
+percolates with `SDWACWT`, so no symptom dump reached the console. The
+evidence is the absent `OFTP032I`, the S0C4, and that this was the only
+unbracketed store into CSA in the program. The proof is the next stop,
+which has to print `OFTP032I` and end `OFTP003I`.
+
+What the abend left on the stand is the documented behaviour of section
+6 and not extra damage: the anchor and the module, about 10.4 KB of
+CSA, stay until the next IPL. It is also the reason the first run
+belonged on the experiment stand.
 
 Still to come: the slot thread, the wake ECB, the SSCT, the liveness
 check and the sweep, then the probe `test/mvs/tstsvc.c`. None of it can
