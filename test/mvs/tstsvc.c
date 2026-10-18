@@ -174,6 +174,37 @@ main(int argc, char **argv)
     printf("    LIST: %d rows in %d piece(s) of %u bytes\n",
            rows, rounds + 1, (unsigned)sizeof(small));
 
+    /* 5b. **The paging path, forced.** Step 5 exercises it only when
+    ** the spool has enough rows, and on a fresh system it has none --
+    ** which is how a green run can leave the most intricate code
+    ** here untouched. STATUS is a fixed five 1xx rows and ~300 bytes,
+    ** so into the smallest buffer the transport takes it MUST come in
+    ** pieces. The rows then have to add up to exactly what the
+    ** single-shot answer gave: a resume index that is off by one
+    ** loses a row or repeats one, and both look like a working
+    ** answer.
+    */
+    rounds = 0;
+    rows   = 0;
+    next   = 0;
+    do {
+        unsigned was = next;
+
+        memset(small, 0, sizeof(small));
+        len = 0;
+        rc = oftp_svc_call("STATUS", small, sizeof(small), next, &len, &next);
+        if (rc != OFTP_SVC_OK && rc != OFTP_SVC_MORE)
+            break;
+        rows += count_lines(small, len, '1');
+        if (rc == OFTP_SVC_MORE && next <= was)
+            break;
+    } while (rc == OFTP_SVC_MORE && ++rounds < 20);
+
+    CHECK_EQ(rc, OFTP_SVC_OK, "STATUS in pieces ends with a complete one");
+    CHECK(rounds >= 1, "STATUS into a 256-byte buffer really did page");
+    CHECK_EQ(rows, 5, "the pieces carry every row exactly once");
+    printf("    STATUS paged: %d rows in %d piece(s)\n", rows, rounds + 1);
+
     /* 6. An unknown request is answered, not dropped: the transport
     ** has to carry a refusal as reliably as an answer.
     */

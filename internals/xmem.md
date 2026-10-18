@@ -1101,3 +1101,136 @@ without waking it leaves a task that cannot even be cancelled.
   sits -- but it is an hour of diagnosis if it is not written down.
 - `CONTROLPORT` still defaults on. Turning it off is the transition
   step (section 7) and deliberately not part of this piece.
+
+## 12. Measured: both halves, in a throwaway container (2026-10-18)
+
+Run in a disposable MVS/CE instance on the mvsdev Docker host
+(`mvsce-target`, image `ghcr.io/mvslovers/mvsce-builder`
+`sha256:8b826905…`, Hercules `a742398074`), not on a shared stand.
+Instance `t6b7813`, torn down afterwards. OFTPD build `2af8b3f`.
+
+**Everything below is MVS/CE.** TK5 is unverified for all of it, and
+the storage-key granularity is *not* settled by this run -- see below.
+
+### What had to be learnt before anything could be measured
+
+**APF needs the library AND `AC(1)` on the module, and a test module
+is `AC(0)`.** `SYS2.LINKLIB` is in `IEAAPF00` as `SYS2.LINKLIB MVS000`
+and the data set really is on `MVS000` -- both halves of the pairing
+checked, because an entry whose volume does not match authorizes
+nothing. TSTPROT run from there still answered `__isauth() == 0`. The
+missing half was the link attribute; mbt takes `ac` on a `[test.*]`
+just as on a `[module.*]`. Its own guard is what caught this: the job
+fails when it is not authorized rather than measuring nothing.
+
+### #15: a key-8 fetch of subpool 241 is legal, a store is not
+
+| Probed | key 8 answers |
+|---|---|
+| ordinary key-8 heap (the control) | **CC 0** store+fetch |
+| `getmain(9536, 241)` at `00A90A88` | **CC 1** fetch only |
+| `__loadhi(OFTPSVC)` at `009F6008` | **CC 1** fetch only |
+
+The control answering CC 0 is what makes the other two readable; a
+control that does not invalidates the run.
+
+So **the client in `oftp#svcc.c` is allowed to read the anchor**, and
+the assumption piece two shipped on is now a measurement. A key-8
+*store* is refused, which is the other half one would want: an
+unauthorized caller cannot corrupt the anchor. The brackets on
+OFTPD's side can come off the read path if that is ever worth doing;
+nothing requires it, and they cost one MODESET per wake-up.
+
+### The granularity is NOT settled, and the first answer was an artefact
+
+The scan looks for a storage-key boundary at an odd 2 K, which 4 K
+keys cannot produce. **Its first run reported "no 2K-only boundary"
+and that was a property of my grid, not of the machine**: the scan
+started at `base - 32K` with `base` an arbitrary `getmain()` address,
+so every probe sat at that address modulo 2048 -- `0x288` -- and the
+test for `0x800` could not be true for any input whatsoever. The
+assertion above it passed while this was so. Fixed by aligning the
+grid to the step.
+
+Aligned, the transitions are clean and all 4 K aligned:
+
+```
+00A8D000  1 fetch only -> 2 no access
+00A90000  2 no access  -> 1 fetch only
+00A93000  1 fetch only -> 3 unavailable
+```
+
+**That still settles nothing**, and the test now says so instead of
+concluding 4 K. MVS hands out storage in pages, so it never creates a
+boundary at an odd 2 K even on hardware whose keys are 2 K: the
+absence is what *both* candidates give. A positive would have been
+decisive; an absence is not. Settling it needs `SSK` on one half of a
+page and `ISK` on the other, which no design currently needs --
+`REPMAX` is 2048 and the two-ended `TPROT` check is sound under
+either value.
+
+### #16: the transport carries a request, 18/18
+
+The SVC table entry, read three times by a **second party** (a BREXX
+`STORAGE()` job walking `CVT` → `CVTABEND` → `SCVTSVCT` → `+237*8`),
+each reading agreeing with OFTPD's own message:
+
+| When | `SVC 237` | OFTPD said |
+|---|---|---|
+| before the start | `0000CCC8 80000000` | `OFTP031I … FOUND 0000CCC8 80000000` |
+| transport active | `00A90608 C0000000` | `OFTP030I … MODULE=00A90608` |
+| after `P OFTPD` | `0000CCC8 80000000` | `OFTP032I … RESTORED` |
+
+`C0` at +4 is SVCTYPE3 with `svcapf` off, as `reserve()` writes it.
+SVC 235, 236, 238 and 239 were untouched throughout.
+
+The console, start to end, with **no sweep message of any kind** --
+no `OFTP060W`, `061W`, `064W` or `065E`:
+
+```
+OFTP000I oftpd 0.1.0-dev (2af8b3f) STARTING
+OFTP004I AUTHORIZED BY LIBRARY
+OFTP031I SVC 237 ENTRY FOUND 0000CCC8 80000000
+OFTP030I CROSS MEMORY ON SVC 237, ANCHOR=00A90A88 MODULE=00A90608 (1144 BYTES), NOT ACTIVE
+OFTP039I CROSS MEMORY ACTIVE ON SVC 237, SUBSYSTEM OFT1
+OFTP001I OFTPD READY
+OFTP002I OFTPD STOPPING
+OFTP032I SVC 237 RESTORED, ENTRY READS 0000CCC8 80000000
+OFTP003I OFTPD ENDED
+```
+
+What the client job showed, from a **STEPLIB that is not
+APF-authorized** -- the property the whole transport exists for, and
+now asserted by the job itself rather than assumed:
+
+- `STATUS` round-trips: 304 bytes, 5 rows, ending `200 status`.
+- A reply buffer under `REPMIN` is refused without the SVC being
+  issued at all.
+- A request carrying `OWNER=` is still answered, with the keyword
+  substituted.
+- An unknown request comes back as `500`, so the transport carries a
+  refusal as reliably as an answer.
+- **Paging works and every row crosses exactly once**: `STATUS` into
+  a 256-byte buffer came back as **5 rows in 2 pieces**. This had to
+  be forced -- `LIST` on a fresh spool returns 0 rows, so the first
+  green run left the resume logic, the most intricate part of piece
+  two, completely untouched. A test that pages only when the system
+  happens to hold data is not a test of paging.
+- **Negative control after the stop**: the same job now fails at
+  "subsystem OFT1 is installed". The SSCT really is unchained at
+  stop, and discovery really does go through it.
+
+### What this run does not show
+
+- **TK5.** MVS/CE only, including the `00CCC8` invalid-SVC entry point.
+- **The granularity**, as above.
+- **An abend with slots in flight.** The sweep never ran, so its state
+  table is still unexercised: no slot was ever CLAIMED or COPYOUT when
+  a sweep looked. That needs a deliberately faulting caller.
+- **Two userids.** `OWNER=` substitution was exercised but nothing
+  reads the resulting userid back, so "a second user sees only its
+  own transfers" is still untested (`LIST OWNER=` from two ids).
+- The deploy put OFTPD and OFTPSVC in `SYS2.LINKLIB`, which is in the
+  linklist, so the modules had linklist reach. Harmless in a throwaway
+  and **not a recipe for a stand**, where they belong in the product's
+  own library.

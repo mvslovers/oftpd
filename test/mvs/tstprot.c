@@ -128,13 +128,27 @@ ccname(int cc)
 static int
 scan(const char *base, int *odd2k)
 {
-    const char *p;
+    const char *p, *from;
     int         prev, cc, n = 0;
 
+    /* **The grid must be aligned to SCAN_STEP, and the first version
+    ** was not.** It started at `base - SCAN_HALF` with base an
+    ** arbitrary getmain() address, so every probe sat at that address
+    ** modulo 2048 -- 0x288 on the first run in the container -- and
+    ** the 2K-only test below could not be true for any input
+    ** whatsoever. It duly reported "no 2K-only boundary seen", which
+    ** was a property of the grid and not of the machine, and the
+    ** assertion above it passed while it did so.
+    **
+    ** Aligned, a transition between two neighbouring probes puts the
+    ** key boundary exactly at the later one, because a key can only
+    ** change on a multiple of 2048 whichever size holds.
+    */
     *odd2k = 0;
-    prev = tprot(base - SCAN_HALF, 8);
-    for (p = base - SCAN_HALF + SCAN_STEP; p <= base + SCAN_HALF;
-         p += SCAN_STEP) {
+    from = (const char *)((unsigned)base & ~(unsigned)(SCAN_STEP - 1));
+    from -= SCAN_HALF;
+    prev = tprot(from, 8);
+    for (p = from + SCAN_STEP; p <= from + 2 * SCAN_HALF; p += SCAN_STEP) {
         cc = tprot(p, 8);
         if (cc != prev) {
             int odd = (((unsigned)p & 0xFFF) == 0x800);
@@ -263,8 +277,10 @@ main(int argc, char **argv)
     ** stays inside that -- this says whether the tighter bound is the
     ** real one).
     */
-    printf("  scanning %08X +/- %dK in %d-byte steps for key 8:\n",
-           (unsigned)(csa != NULL ? csa : heap), SCAN_HALF / 1024, SCAN_STEP);
+    printf("  scanning %08X +/- %dK in %d-byte steps for key 8"
+           " (grid aligned to %d):\n",
+           (unsigned)(csa != NULL ? csa : heap), SCAN_HALF / 1024,
+           SCAN_STEP, SCAN_STEP);
     if (__super(PSWKEY0, &savekey) == 0) {
         trans = scan((const char *)(csa != NULL ? csa : heap), &odd2k);
         __prob(savekey, NULL);
@@ -276,12 +292,24 @@ main(int argc, char **argv)
     CHECK(trans > 0, "the scan found at least one key transition");
     printf("  %d transition(s), %d of them on a 2K-but-not-4K boundary\n",
            trans, odd2k);
-    if (trans > 0)
-        printf("    => storage keys cover %s\n",
-               odd2k > 0 ? "2 K (a 2K-only boundary exists)"
-                         : "4 K as far as this window shows"
-                           " (no 2K-only boundary seen -- weaker evidence"
-                           " than a positive one)");
+    /* A positive is decisive, an absence is not, and the asymmetry
+    ** is the whole of what this scan can say. MVS hands out storage
+    ** in pages, so it never creates a boundary at an odd 2 K even on
+    ** hardware whose keys are 2 K -- an empty result is therefore
+    ** consistent with BOTH candidates and settles neither. Saying
+    ** "keys cover 4 K" here would be reading the absence as evidence.
+    */
+    if (trans > 0) {
+        if (odd2k > 0)
+            printf("    => storage keys cover 2 K: a boundary at an odd"
+                   " 2 K exists, which 4 K keys cannot produce\n");
+        else
+            printf("    => NOT SETTLED. No boundary at an odd 2 K in this"
+                   " window, which is what 4 K keys give AND what 2 K keys"
+                   " give when MVS only ever allocates in pages. This scan"
+                   " cannot separate them; SSK on one half of a page and"
+                   " ISK on the other would.\n");
+    }
 
     if (__super(PSWKEY0, &savekey) == 0) {
         if (lpa != NULL)

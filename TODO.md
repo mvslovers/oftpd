@@ -65,11 +65,18 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   authorized; libc370's `ssct_find()` reads the same CSA chain in its
   caller's key with no MODESET, which is the evidence -- one library's
   source, not a measurement.
-  **What is left of #16 is one run**: `test/mvs/tstsvc.jcl` against a
-  stand with OFTPD up and `SVC=` set. Approved for m38x
-  (maintainer, 2026-10-18); MBT owns the PROC/PARMLIB writes and the
-  reset, and nothing from here touches that stand.
-  **#15 has its program too** (`test/mvs/tstprot.c`, `tstprot.jcl`):
+  **Both are measured** (2026-10-18, `internals/xmem.md` section 12),
+  in a throwaway MVS/CE container and not on a stand: #16 end to end
+  18/18 from a STEPLIB that is not APF-authorized, with the SVC entry
+  read three times by a second party and agreeing with OFTPD's own
+  messages each time; #15 answering **CC 1 for a key-8 access to
+  subpool 241** -- fetch legal, store refused -- against a key-8 heap
+  control at CC 0. Paging had to be forced to be tested at all
+  (`LIST` on a fresh spool is 0 rows); forced, 5 rows came across in
+  2 pieces, each exactly once. **MVS/CE only; TK5 unverified**, the
+  sweep's state table is still unexercised, and the storage-key
+  granularity is explicitly NOT settled.
+  **#15 is answered** (`test/mvs/tstprot.c`, `tstprot.jcl`):
   `TPROT` against our own `getmain(n, 241)` and `__loadhi()`, with
   ordinary key-8 heap as the control and a scan for a 2K-but-not-4K
   key boundary. It needs **no OFTPD** but it does need an
