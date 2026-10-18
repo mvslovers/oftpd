@@ -237,6 +237,11 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   EERP arrives (design 3.2). Measured between two MVS/CE containers; the
   NERP case (source kept) and an ALTER refusal are read, not run. Later:
   `DISP=COPY`, and rvs's rename of the source at queue time.
+- ~~Earliest start and a sending window~~ (rvs `STRTDATE`/`STRTTIME`/
+  `SENDWIN`): measured between two MVS/CE containers (a send due at 17:03
+  was called at 17:03:02, not before); `TSTSCH` 32/32. libc370#392
+  (`mktime()` ignores the zone) is worked around. Later from rvs: a
+  deadline (`ENDDATE`/`ENDTIME`) and `ERRJOB`.
 - Log to a SYSOUT data set instead of every line by WTO; a log-only
   message class (design 8).
 - `docs/`: a configuration guide beside `docs/installation.md`.

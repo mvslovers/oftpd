@@ -217,6 +217,12 @@ QUEUED --> ACTIVE --> SENT ------> DELIVERED     (EERP received)
   rvs: per-send `MAXRETRY`, a deadline (`ENDDATE`/`ENDTIME`) and a job
   when either fires (`ERRJOB`, with post-processing). An abend during a transfer leaves it `HELD`,
   not `WAITING`, so a failure that repeats does not loop.
+- **When a send may start** (2026-10-18, after rvs `STRTDATE`, `STRTTIME`,
+  `SENDWIN`): `tstart` (not before) and `winfrom`/`winto` (a daily
+  window) in the record; `send_due()` honours both, for the first attempt
+  and every retry. The rules are portable (`src/oftp#sch.c`, `TSTSCH`).
+  libc370's `mktime()` reads a `struct tm` as UTC (libc370#392), so the
+  start is computed as now plus a difference of two `mktime()` results.
 - An explicit `RETRY` verb resends a `SENT` file (lost EERP) — knowingly,
   because the partner then sees the same virtual file twice.
 

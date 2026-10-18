@@ -25,6 +25,7 @@
 #include "oftpdsf.h"
 #include "oftpdsn.h"
 #include "oftpmon.h"
+#include "oftpsch.h"
 #include "oftpsec.h"
 #include "oftpnet.h"
 #include "oftpsess.h"
@@ -72,9 +73,23 @@ settext(OFTP_SPREC *r, const char *text)
 static int
 send_due(const OFTP_SPREC *r, long now)
 {
-    return r->dir == SPL_SEND
-           && (r->state == SPL_QUEUED
-               || (r->state == SPL_WAITING && r->tnext <= now));
+    if (r->dir != SPL_SEND
+        || !(r->state == SPL_QUEUED
+             || (r->state == SPL_WAITING && r->tnext <= now)))
+        return 0;
+    /* STRTDATE/STRTTIME and SENDWIN (oftpsch.h): a retry waits for them
+    ** as well as the first attempt */
+    if (r->tstart > now)
+        return 0;
+    if (r->winfrom || r->winto) {
+        time_t tt = (time_t)now;
+        struct tm tm;
+
+        localtime_r(&tt, &tm);
+        return oftp_sch_inwin(r->winfrom, r->winto,
+                              (unsigned)(tm.tm_hour * 60 + tm.tm_min));
+    }
+    return 1;
 }
 
 /* Whether a session is sending the EERP or NERP of key: under lock(m)
@@ -1259,7 +1274,7 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
     OFTP_SPREC r;
     OFTP_PARTNER *p;
     char partner[16], dsn[60], vfn[40], fmt[4], xl[4], user[12];
-    char hold[4], disp[8], reply[100];
+    char hold[4], disp[8], reply[100], sdate[8], stime[8], swin[16];
     int empty;
     char *lp;
     struct tm *tm;
@@ -1273,6 +1288,9 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
     kw(line, "USER", user, sizeof(user));
     kw(line, "HOLD", hold, sizeof(hold));
     kw(line, "DISP", disp, sizeof(disp));
+    kw(line, "STRTDATE", sdate, sizeof(sdate));
+    kw(line, "STRTTIME", stime, sizeof(stime));
+    kw(line, "SENDWIN", swin, sizeof(swin));
     if (disp[0] && strcmp(disp, "KEEP") != 0 && strcmp(disp, "DELETE") != 0) {
         ctl_put(o, "508 DISP is KEEP or DELETE");
         return;
@@ -1288,6 +1306,19 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
         return;
     }
     memset(&r, 0, sizeof(r));
+    {
+        struct tm nt;
+
+        localtime_r(&now, &nt);
+        if (oftp_sch_start(sdate, stime, &nt, (long)now, &r.tstart) != 0) {
+            ctl_put(o, "508 STRTDATE is *, *+n or ddd; STRTTIME is hh:mm");
+            return;
+        }
+        if (swin[0] && oftp_sch_window(swin, &r.winfrom, &r.winto) != 0) {
+            ctl_put(o, "508 SENDWIN is hh:mm-hh:mm");
+            return;
+        }
+    }
     /* a partner behind another: the session goes to that one */
     if (p->via[0]) {
         OFTP_PARTNER *v = oftp_cfg_find(&m->cfg, p->via);
@@ -1496,6 +1527,25 @@ ctl_show(OFTP_MON *m, CTLOUT *o, const char *line)
     snprintf(out, sizeof(out), "100 from %s to %s, %lu records, %u attempts",
              r.orig, r.dest, r.recs, r.attempts);
     ctl_put(o, out);
+    if (r.tstart || r.winfrom || r.winto) {
+        char nb[40] = "", wn[32] = "";
+
+        if (r.tstart) {
+            time_t tt = (time_t)r.tstart;
+            struct tm tm;
+
+            localtime_r(&tt, &tm);
+            snprintf(nb, sizeof(nb), "not before %04d-%02d-%02d %02d:%02d",
+                     tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+                     tm.tm_hour, tm.tm_min);
+        }
+        if (r.winfrom || r.winto)
+            snprintf(wn, sizeof(wn), "%sonly %02u:%02u-%02u:%02u",
+                     nb[0] ? ", " : "", r.winfrom / 60U, r.winfrom % 60U,
+                     r.winto / 60U, r.winto % 60U);
+        snprintf(out, sizeof(out), "100 start %s%s", nb, wn);
+        ctl_put(o, out);
+    }
     if (r.reas)
         snprintf(out, sizeof(out), "100 reason %02d (%s): %s", r.reas,
                  r.reasby == 'P' ? "partner" : "local", r.text);
