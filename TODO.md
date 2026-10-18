@@ -122,10 +122,9 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   (2026-10-18): OFTPD authorized through SVC 244 from a library not in
   `IEAAPF00`, SVC 237 taken and given back (read by a second party),
   two RAKF userids (HERC01 in `ADMIN=`, HERC02 not), paging, `TSTSVC`
-  34/34. Open from it:
-  - **A TK5 stand** with `SVC=237` (m38r or m38b): the first run of the
-    transport on a stand at all. Needs a confirmed slot. The dialog has
-    not run on TK5 at all.
+  34/34; then on the stand m38b as a test instance beside its OFTPD
+  (`TSTSVC` 20/20, SVC 237 back to `00017068` at the end). Open from it:
+  - The dialog has not run on TK5 at all.
   - **`SEND` reads the data set with OFTPD's authority**, not the
     caller's: an ordinary user can send what they could not read. Same
     as over TCP, but now visible. `RACINIT`/`RACHECK` for the caller is

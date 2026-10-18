@@ -1257,7 +1257,8 @@ now asserted by the job itself rather than assumed:
 mvslovers/oftpd#22. `OFTP` and the dialog use the transport; OFTPD
 decides what the caller may do. Measured in two throwaway MVS/CE
 containers on mvsdev, one after the other, then in a TK5 container
-(the batch utility and `TSTSVC`, not the dialog), and not on a stand.
+(the batch utility and `TSTSVC`, not the dialog), and last on the TK5
+stand m38b as a test instance.
 
 ### What changed
 
@@ -1445,11 +1446,56 @@ TK5's.
 read `HERC01.OFTP.TESTA` itself (IEBGENER as HERC02, JOB00052, CC 0), so
 sending it shows nothing.
 
+### TK5 stand m38b
+
+The first run of the transport on a stand, 2026-10-18 about 22:01-22:06
+MVS time, in a slot from the MBT session (`internals/m38-changes.md`).
+A test instance beside the stand's own OFTPD, which belongs to the test
+network and was left running and untouched. The instance had names of its
+own: PROC `OFTPDT`, `SYS2.PARMLIB(OFTPPRMT)` and `(OFTPPTNT)`, all absent
+before; the libraries `HERC01.OFTPDT.LOAD` and `HERC01.OFTPT.LOAD`, not
+in `IEAAPF00`; spool `HERC01.OFTPDT.SPOOL`; `PORT=3337 CONTROLPORT=0
+SVC=237 ADMIN=HERC01`.
+
+| When | `SVC 237` | Read by | OFTPD said |
+|---|---|---|---|
+| before | `00017068 80000000` | JOB02714 | `OFTP031I … FOUND 00017068 80000000` |
+| active | `00B5B608 C0000000` | JOB02720 | `OFTP030I … MODULE=00B5B608`, `OFTP039I` |
+| after `P OFTPDT` | `00017068 80000000` | JOB02725 | `OFTP032I … RESTORED, ENTRY READS 00017068 80000000` |
+
+The reader also counts the most frequent entry point of 200-255:
+`00017068` 37 of 56 before and after, 36 while 237 was taken. The 19
+numbers in use are the ones listed for m38b in section 3; 235, 236, 238
+and 239 stayed `00017068 80000000`.
+
+STC00109: `OFTP004I AUTHORIZED BY SVC`. Client job JOB02721 (HERC01,
+one step per command, all CC 0):
+- `SEND … HOLD` gave T0000001;
+- `SEND … HOLD OWNER(OTHER)` gave T0000002, and `SHOW` names its owner as
+  HERC01;
+- `LIST` and `LIST MINE` each listed 2 transfers;
+- `PARTNERS` answered;
+- `DELETE T0000002` worked, and `LIST` then listed 1.
+
+`TSTSVC` JOB02724 passed **20/20**. That is fewer checks than the
+container's 34 because the spool held one transfer, so `LIST` paged in
+fewer pieces. The forced paging of `STATUS` into 256 bytes is among
+the 20. The negative control JOB02726 ended `LIST` CC 12, `OFTP010E`. The
+#12 dump was there too: `SYSUDUMP` 14,060 lines, `S30A`, PSW `075C2000
+00F1BB0C`.
+
+Removed afterwards (OFTPDEL JOB02727, IDCAMS CC 0): the three members,
+the cluster, the test data and both libraries; the job outputs were
+purged. `D A,L` showed the stand's OFTPD only. The clean stop frees
+module, slot pool and anchor, and no `CSA RETAINED` message appeared,
+so no CSA should be left; that was not checked with a CSA map. Left
+on the stand: `HERC01.OFTPD.V0R1M0D.TESTLIB` from `mbt test --mvs`.
+
 ### What this does not show
 
-- **A TK5 stand** (m38r, m38b). The container is TK5 as shipped plus the
-  products installed with SMP, but it is not a stand, and the dialog was
-  not run on TK5 at all.
+- **The dialog on TK5**, in the container or on a stand.
+- **Two RAKF userids on a stand**: m38b ran HERC01 only. The container
+  covered HERC02.
 - **A caller without an ACEE**, which owns nothing by this rule.
 - **`SEND` reads the data set with OFTPD's authority, not the
   caller's.** With a real caller identity this is now visible: an
