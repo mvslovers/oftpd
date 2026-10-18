@@ -22,9 +22,17 @@
 //* with the volume it actually sits on -- a library that is present
 //* but on a different volume is not authorized, and the job will say
 //* so through its first check rather than abending.
+//*
+//* IT IS NOT THE TESTLIB. The library `mbt test --mvs` deploys to is
+//* not in IEAAPF00, by construction, so TSTPROT run from there fails
+//* its own first check every single time: a correct guard and no
+//* measurement. Copy the module into an authorized library for this
+//* one job. The opposite holds for TSTSVC, which must run from the
+//* TESTLIB precisely because it is unauthorized -- the two jobs want
+//* opposite libraries and each one fails loudly in the other's.
 //* ------------------------------------------------------------------
 //RUN      EXEC PGM=TSTPROT,PARM='RUN'
-//STEPLIB  DD  DISP=SHR,DSN=IBMUSER.OFTPD.V0R1M0D.TESTLIB
+//STEPLIB  DD  DISP=SHR,DSN=SYS2.LINKLIB
 //SYSPRINT DD  SYSOUT=*
 //STDOUT   DD  SYSOUT=*
 //STDERR   DD  SYSOUT=*

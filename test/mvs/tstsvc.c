@@ -17,6 +17,7 @@
 #include <string.h>
 
 #include <mbtcheck.h>
+#include <mvs/apf.h>
 #include <mvs/subsys.h>
 
 #include "oftpsvc.h"
@@ -75,6 +76,23 @@ main(int argc, char **argv)
         printf("  SKIP: needs a running OFTPD with SVC= and PARM='RUN'"
                " (test/mvs/tstsvc.jcl)\n");
         return 0;
+    }
+
+    /* 0. **This job must NOT be authorized**, and until now nothing
+    ** here said so. The whole claim of the transport is that an
+    ** ordinary program reaches OFTPD without any authority of its
+    ** own; run from an APF library, every assertion below would still
+    ** pass and would have demonstrated nothing. So an authorized run
+    ** is a FAILURE of the test, not a convenience -- and the failure
+    ** text has to say that the fix is to move the STEPLIB, never to
+    ** authorize it.
+    */
+    CHECK_EQ(__isauth(), 0, "the client job is NOT APF-authorized");
+    if (__isauth()) {
+        printf("    (this STEPLIB is authorized, so this run proves"
+               " nothing about an unauthorized caller -- move the job to"
+               " a library that is not in IEAAPF00; do NOT authorize it)\n");
+        return mbt_test_summary("TSTSVC");
     }
 
     /* 1. Discovery. A failure here says OFTPD is not running, or is

@@ -21,8 +21,16 @@
 ** asks "would a key-8 access be permitted here", without being in
 ** key 8 itself.
 **
-** Gated on PARM='RUN' (test/mvs/tstprot.jcl). It writes nothing --
-** no data sets, no system members, no console commands. It needs no
+** Gated on PARM='RUN' (test/mvs/tstprot.jcl). **It does not run from
+** the TESTLIB**: the library `mbt test --mvs` deploys to is not in
+** IEAAPF00, so this job run from there fails its own first check
+** every time -- a correct guard and no measurement. It needs a copy
+** in an authorized library. TSTSVC is the exact opposite and must
+** stay unauthorized; the two want opposite libraries, and each fails
+** loudly in the other's rather than passing and proving nothing.
+**
+** It writes nothing -- no data sets, no system members, no console
+** commands. It needs no
 ** OFTPD either; if one is running it probes that anchor as well, as a
 ** confirmation on the object the client will really read.
 */
