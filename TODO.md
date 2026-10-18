@@ -152,8 +152,11 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   confirmed once; with `SESSIONS=1` the collision resolves as before.
   `MAXSESS` reached keeps the silent close. Open: a session ending while
   it holds a claim is read, not measured.
-- A file over about 750 KB between two OFTPDs ends EFNA 12: the SFID
-  carries no size, the receiver allocates `TRK(5,3)` -- **#21**.
+- ~~A file over about 750 KB between two OFTPDs ends EFNA 12~~ (#21):
+  the SFID now carries the tracks used at the volume's track length, and
+  a size of 0 gets `TRK(15,15)` instead of `TRK(5,3)`. Measured in two
+  MVS/CE containers: 64 000 records (5 MB) delivered with the EERP and
+  identical; `TSTDSF` 40/40. A file from mendelson is not checked.
 - The control port answers one of several requests that arrive at once:
   of four parallel `RELEASE`s one got `200` (containers, 2026-10-18).
 - `F OFTPD,D P`: name the `VIA` partner instead of `-:3305`.

@@ -32,7 +32,8 @@ typedef struct oftp_dsopt {
 
 /* Opens dsn ("A.B.C" or "A.B(MEM)") for sending. fmt 0 takes the format
 ** from the RECFM (F, V or U); 'T' sends text. Fills sfid->fmt, lrecl and
-** fsiz.
+** fsiz: the tracks used at the volume's track length in 1K blocks, an
+** estimate on the high side; 0 for a member or when the VTOC cannot tell.
 */
 extern int  oftp_dsf_open_out(const char *dsn, char fmt, int xlate,
                               OFTP_SFIDCMD *sfid, OFTP_DSF **f)
