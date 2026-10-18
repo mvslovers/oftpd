@@ -70,10 +70,43 @@ main(int argc, char **argv)
     sp = oftp_spl_open("OFTPSPL", why, sizeof(why));
     CHECK(sp != NULL, "reopen");
     if (sp != NULL) {
+        unsigned cnt = 99;
+        static const char st[6] = { SPL_DELIVERED, SPL_CONFIRMED, SPL_HELD,
+                                    SPL_REJECTED, SPL_SENT, SPL_FAILED };
+        static const long tm[6] = { 100, 100, 100, 100, 100, 5000 };
+
         memset(&r, 0, sizeof(r));
         r.dir = SPL_RECV;
         CHECK(oftp_spl_add(sp, &r) == 0 && memcmp(r.key, "T0000004", 8) == 0,
               "the next key is T0000004");
+
+        /* housekeeping: T0000002 (SENT) and T0000003 (QUEUED) stay,
+        ** T0000004 (state 0, a receive just added) stays; of six more,
+        ** the finished ones older than 1000 go, HELD, SENT and the
+        ** young FAILED one stay
+        */
+        for (i = 0; i < 6; i++) {
+            memset(&r, 0, sizeof(r));
+            r.dir = SPL_SEND;
+            r.state = st[i];
+            r.tqueued = tm[i];
+            oftp_spl_add(sp, &r);
+        }
+        CHECK_EQ(oftp_spl_purge(sp, 1000, &cnt), 0, "purge");
+        CHECK_EQ(cnt, 3, "three finished and old: DELIVERED, CONFIRMED, REJECTED");
+        n = 0;
+        last[0] = '\0';
+        while (oftp_spl_next(sp, last, &g) == 0) {
+            memcpy(last, g.key, 8);
+            CHECK(!oftp_spl_purgeable(&g, 1000), "nothing purgeable left");
+            n++;
+        }
+        CHECK_EQ(n, 6, "six left: T2, T3, T4, HELD, SENT, the young FAILED");
+        CHECK_EQ(oftp_spl_purge(sp, 1000, &cnt), 0, "purge again");
+        CHECK_EQ(cnt, 0, "and nothing more goes");
+        memset(&r, 0, sizeof(r));
+        CHECK(oftp_spl_add(sp, &r) == 0 && memcmp(r.key, "T0000011", 8) == 0,
+              "numbering goes on after a purge: T0000011");
         oftp_spl_close(sp);
     }
     return mbt_test_summary("TSTSPL");

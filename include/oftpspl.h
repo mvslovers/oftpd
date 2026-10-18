@@ -103,6 +103,25 @@ extern int  oftp_spl_del(OFTP_SPOOL *sp, const char *key) asm("OFTPSPDL");
 extern int  oftp_spl_next(OFTP_SPOOL *sp, const char *key, OFTP_SPREC *rec)
                                                         asm("OFTPSPNX");
 
+/* Housekeeping (KEEPDAYS= in OFTPPRM). Deletes every transfer that
+** oftp_spl_purgeable() says may go, in one request of the spool thread,
+** so nothing changes a record between the look and the delete (a RETRY
+** of a finished send, say). The data sets are never touched. *n gets the
+** number deleted; 0, or ERROR with *n those deleted before it.
+*/
+extern int  oftp_spl_purge(OFTP_SPOOL *sp, long before, unsigned *n)
+                                                        asm("OFTPSPPG");
+
+/* The rule, portable (src/oftp#prg.c): finished means DELIVERED,
+** CONFIRMED, REJECTED or FAILED; changed is the latest of tqueued, tlast
+** and tdone; purgeable is a finished transfer ('T' key) changed before
+** `before`.
+*/
+extern int  oftp_spl_finished(const OFTP_SPREC *r)      asm("OFTPSPFI");
+extern long oftp_spl_changed(const OFTP_SPREC *r)       asm("OFTPSPCH");
+extern int  oftp_spl_purgeable(const OFTP_SPREC *r, long before)
+                                                        asm("OFTPSPPB");
+
 #define OFTP_SPL_NOTFOUND   (-1)
 #define OFTP_SPL_ERROR      (-2)
 

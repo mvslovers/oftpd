@@ -27,13 +27,15 @@
 /* the struct must fit the fixed record */
 typedef char sprec_fits[sizeof(OFTP_SPREC) <= OFTP_SPLRECL ? 1 : -1];
 
-enum { OP_ADD, OP_GET, OP_PUT, OP_DEL, OP_NEXT, OP_STOP };
+enum { OP_ADD, OP_GET, OP_PUT, OP_DEL, OP_NEXT, OP_PURGE, OP_STOP };
 
 typedef struct spl_req {
     struct spl_req *next;
     int         op;
     char        key[8];
     OFTP_SPREC *rec;
+    long        before;                 /* OP_PURGE                      */
+    unsigned    count;                  /* OP_PURGE: records deleted     */
     int         rc;
     ECB         done;
 } SPL_REQ;
@@ -136,6 +138,32 @@ do_next(OFTP_SPOOL *sp, const char *key, OFTP_SPREC *rec)
     return 0;
 }
 
+/* Walks every transfer and deletes the ones oftp_spl_purgeable() lets
+** go. Each delete is a fresh keyed read and an ERASE, and the walk goes
+** on from the key just seen, so a deleted record never moves it back.
+*/
+static int
+do_purge(OFTP_SPOOL *sp, long before, unsigned *count, OFTP_SPREC *rec)
+{
+    char last[8];
+    int rc;
+
+    *count = 0;
+    last[0] = '\0';
+    while ((rc = do_next(sp, last, rec)) == 0) {
+        memcpy(last, rec->key, 8);
+        if (!oftp_spl_purgeable(rec, before))
+            continue;
+        if (read_key(sp, rec->key) != 0
+            || vsdelete(sp->vs, sp->buf, OFTP_SPLRECL) != 0) {
+            vsclear(sp->vs);
+            return OFTP_SPL_ERROR;
+        }
+        (*count)++;
+    }
+    return rc == OFTP_SPL_NOTFOUND ? 0 : rc;
+}
+
 static void
 serve(OFTP_SPOOL *sp, SPL_REQ *r)
 {
@@ -166,6 +194,9 @@ serve(OFTP_SPOOL *sp, SPL_REQ *r)
         break;
     case OP_NEXT:
         r->rc = do_next(sp, r->key, r->rec);
+        break;
+    case OP_PURGE:
+        r->rc = do_purge(sp, r->before, &r->count, r->rec);
         break;
     default:
         r->rc = 0;
@@ -210,6 +241,22 @@ spool_thread(void *arg1, void *arg2)
     return 0;
 }
 
+/* Queues r for the spool thread and waits until it is served */
+static int
+enqueue(OFTP_SPOOL *sp, SPL_REQ *r)
+{
+    lock(sp, 0);
+    if (sp->tail)
+        sp->tail->next = r;
+    else
+        sp->head = r;
+    sp->tail = r;
+    unlock(sp, 0);
+    ecb_post(&sp->work, 0);
+    ecb_wait(&r->done);
+    return r->rc;
+}
+
 static int
 request(OFTP_SPOOL *sp, int op, const char *key, OFTP_SPREC *rec)
 {
@@ -220,16 +267,7 @@ request(OFTP_SPOOL *sp, int op, const char *key, OFTP_SPREC *rec)
     if (key != NULL)
         memcpy(r.key, key, key[0] ? 8 : 1);
     r.rec = rec;
-    lock(sp, 0);
-    if (sp->tail)
-        sp->tail->next = &r;
-    else
-        sp->head = &r;
-    sp->tail = &r;
-    unlock(sp, 0);
-    ecb_post(&sp->work, 0);
-    ecb_wait(&r.done);
-    return r.rc;
+    return enqueue(sp, &r);
 }
 
 /* Opens for update; a cluster never loaded first gets its control record
@@ -383,4 +421,19 @@ int
 oftp_spl_next(OFTP_SPOOL *sp, const char *key, OFTP_SPREC *rec)
 {
     return request(sp, OP_NEXT, key, rec);
+}
+
+int
+oftp_spl_purge(OFTP_SPOOL *sp, long before, unsigned *n)
+{
+    SPL_REQ r;
+    OFTP_SPREC rec;
+
+    memset(&r, 0, sizeof(r));
+    r.op = OP_PURGE;
+    r.before = before;
+    r.rec = &rec;                       /* the walk's work record */
+    enqueue(sp, &r);
+    *n = r.count;
+    return r.rc;
 }

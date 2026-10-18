@@ -231,6 +231,30 @@ INTERRUPTED
 - `INTERRUPTED` receives that are not resumed within a configurable time
   are cleaned up (data set deleted, record marked).
 
+### 3.3.1 Housekeeping
+
+From rvsMVS's cleanup job, which deletes finished entries after a number
+of days and leaves pending ones alone (2026-10-18). A transfer is
+**finished** when nothing more happens to it by itself: `DELIVERED`,
+`CONFIRMED`, `REJECTED`, `FAILED`. `HELD`, `WAITING`, `SENT` and
+`RECEIVED` are not, whatever their age. Its age is its **last change**,
+the latest of the queue, attempt and end times, because not every way to
+an end sets the end time.
+
+- `KEEPDAYS=n` in OFTPPRM (default 7, 0 = for ever): the scheduler deletes
+  finished transfers older than that once a day, the first time at its
+  first tick after the start.
+- `PURGE [DAYS=n]` (utility, administrators only) and `F OFTPD,PURGE [n]`
+  do it now; `DAYS=0` takes every finished transfer.
+- The scan and every delete are **one request** of the spool thread
+  (`oftp_spl_purge()`), so a `RETRY` of a finished send cannot slip in
+  between the look and the delete. The rule itself is portable
+  (`src/oftp#prg.c`) and host-tested.
+- Only spool records go; data sets, received or sent, are never touched.
+
+Later, from rvs: a purge by partner, name or time range, and a backup of
+the spool (a REPRO job in samplib).
+
 ### 3.4 Concurrency
 
 *Proposed*: **one spool server thread owns both VSAM handles**. Session and

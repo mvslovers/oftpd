@@ -1068,6 +1068,27 @@ unreached(OFTP_MON *m, int i, int others)
     }
 }
 
+/* Deletes the finished transfers last changed more than days days ago
+** (KEEPDAYS=, PURGE). Returns the number, or -1 when the spool failed;
+** the console says either way, naming who asked.
+*/
+static int
+purge(OFTP_MON *m, int days, const char *who)
+{
+    unsigned n = 0;
+    long before = (long)time(NULL) - (long)days * 86400L;
+
+    if (oftp_spl_purge(m->spool, before, &n) != 0) {
+        oftp_mon_msg("OFTP236E SPOOL HOUSEKEEPING FAILED AFTER %u, BY %s",
+                     n, who);
+        return -1;
+    }
+    if (n > 0 || strcmp(who, "KEEPDAYS") != 0)
+        oftp_mon_msg("OFTP235I %u FINISHED TRANSFERS OLDER THAN %d DAYS"
+                     " DELETED BY %s", n, days, who);
+    return (int)n;
+}
+
 static int
 sched_thread(void *arg1, void *arg2)
 {
@@ -1092,6 +1113,11 @@ sched_thread(void *arg1, void *arg2)
         if (m->stop)
             break;
         reap(m->ssess);
+        /* housekeeping once a day, the first time at the first tick */
+        if (m->cfg.keepdays > 0 && now - m->tpurge >= 86400L) {
+            m->tpurge = now;
+            purge(m, m->cfg.keepdays, "KEEPDAYS");
+        }
         due(m, sends, erps);
         /* Another session to a partner, up to SESSIONS, while more files
         ** wait than our calls not yet under way will take: each of those
@@ -1581,6 +1607,43 @@ ctl_call(OFTP_MON *m, CTLOUT *o, const char *line)
 }
 
 /* One request, whatever carried it: line in, lines out through o */
+/* PURGE [DAYS=n]: housekeeping now, administrators only. Without DAYS
+** it is KEEPDAYS; DAYS=0 takes every finished transfer, however young.
+*/
+static void
+ctl_purge(OFTP_MON *m, CTLOUT *o, const char *line)
+{
+    char d[8], out[80];
+    char *end;
+    long days;
+    int n;
+
+    if (!o->admin) {
+        ctl_put(o, "507 needs ADMIN= in OFTPPRM");
+        return;
+    }
+    kw(line, "DAYS", d, sizeof(d));
+    if (d[0] == '\0') {
+        if (m->cfg.keepdays == 0) {
+            ctl_put(o, "508 KEEPDAYS=0 keeps everything: say DAYS=n");
+            return;
+        }
+        days = m->cfg.keepdays;
+    } else {
+        days = strtol(d, &end, 10);
+        if (*end != '\0' || days < 0 || days > 9999) {
+            ctl_put(o, "508 DAYS must be 0 to 9999");
+            return;
+        }
+    }
+    if ((n = purge(m, (int)days, ctl_by(o))) < 0) {
+        ctl_put(o, "451 spool not available");
+        return;
+    }
+    snprintf(out, sizeof(out), "200 %d finished transfers deleted", n);
+    ctl_put(o, out);
+}
+
 static void
 ctl_request(OFTP_MON *m, CTLOUT *o, char *line)
 {
@@ -1614,6 +1677,8 @@ ctl_request(OFTP_MON *m, CTLOUT *o, char *line)
         ctl_partners(m, o);
     else if (strncmp(line, "STATUS", 6) == 0)
         ctl_status(m, o);
+    else if (strncmp(line, "PURGE", 5) == 0)
+        ctl_purge(m, o, line);
     else if (strncmp(line, "REFRESH", 7) == 0) {
         char out[80];
         int on;
@@ -2243,6 +2308,17 @@ oftp_mon_command(OFTP_MON *m, const char *cmd)
     } else if (strcmp(verb, "REFRESH") == 0) {
         if (oftp_mon_refresh(m) < 0)
             oftp_mon_msg("OFTP017E DD OFTPPTN CANNOT BE READ");
+    } else if (strcmp(verb, "PURGE") == 0) {
+        /* F OFTPD,PURGE [days]: without a number, KEEPDAYS */
+        char *end;
+        long days = arg[0] ? strtol(arg, &end, 10) : m->cfg.keepdays;
+
+        if (arg[0] && (*end != '\0' || days < 0 || days > 9999))
+            oftp_mon_msg("OFTP122E PURGE: DAYS MUST BE 0-9999, NOT %s", arg);
+        else if (!arg[0] && days == 0)
+            oftp_mon_msg("OFTP122E PURGE NEEDS DAYS: KEEPDAYS=0 KEEPS EVERYTHING");
+        else
+            purge(m, (int)days, "OPERATOR");
     } else
         oftp_mon_msg("OFTP199E UNKNOWN COMMAND: %s", cmd);
 }

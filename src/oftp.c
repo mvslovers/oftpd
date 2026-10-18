@@ -6,6 +6,8 @@
 **   OFTP SHOW key           OFTP DELETE key
 **   OFTP HOLD key           OFTP RELEASE key        OFTP RETRY key
 **   OFTP CALL partner       OFTP PARTNERS
+**   OFTP PURGE [DAYS(n)]    finished transfers older than n days (default
+**                           KEEPDAYS in OFTPPRM); administrators only
 **
 ** OFTPD is reached through its cross-memory SVC (SVC= in OFTPPRM).
 ** HOST(address) PORT(n) go to its TCP control port instead -- 127.0.0.1
@@ -86,6 +88,7 @@ static const char *const verbs[][2] = {
     { "SEND", "" },     { "LIST", "" },       { "SHOW", "KEY" },
     { "DELETE", "KEY" }, { "HOLD", "KEY" },   { "RELEASE", "KEY" },
     { "RETRY", "KEY" },  { "CALL", "PARTNER" }, { "PARTNERS", "" },
+    { "PURGE", "DAYS" },
 };
 
 /* One command: argv[0] the verb. Returns its RC. */
@@ -254,7 +257,7 @@ main(int argc, char **argv)
         }
         if (cmds == 0) {
             fprintf(out, "OFTP001E NO COMMAND IN PARM OR SYSIN. "
-                    "OFTP SEND|LIST|SHOW|DELETE|HOLD|RELEASE|RETRY|CALL|PARTNERS\n");
+                    "OFTP SEND|LIST|SHOW|DELETE|HOLD|RELEASE|RETRY|CALL|PARTNERS|PURGE\n");
             rc = 8;
         }
     }

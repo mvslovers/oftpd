@@ -33,6 +33,7 @@ oftp_cfg_defaults(OFTP_CONFIG *c)
     c->ublksize = 6144;
     c->retry = 300;
     c->maxretry = 10;
+    c->keepdays = 7;
 }
 
 /* A decimal number in lo..hi, or -1 */
@@ -128,6 +129,8 @@ monitor_kw(OFTP_CONFIG *c, const char *k, const char *v)
         return (n = num(v, 10, 86400)) < 0 ? -1 : (c->retry = (int)n, 0);
     if (strcmp(k, "MAXRETRY") == 0)
         return (n = num(v, 0, 255)) < 0 ? -1 : (c->maxretry = (int)n, 0);
+    if (strcmp(k, "KEEPDAYS") == 0)
+        return (n = num(v, 0, 9999)) < 0 ? -1 : (c->keepdays = (int)n, 0);
     if (strcmp(k, "RELAY") == 0)
         return (n = yesno(v)) < 0 ? -1 : (c->relay = (int)n, 0);
     if (strcmp(k, "ADMIN") == 0)

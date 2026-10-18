@@ -106,8 +106,11 @@ releases will need it.
 
 OFTPD keeps every transfer in a VSAM KSDS, its spool. Copy
 `OFTPD.SAMPLIB(OFTPSPL)`, edit the cluster name and a volume with VSAM
-space owned by your catalog, and submit it once. Finished transfers stay
-in the spool until they are deleted, so size it for that.
+space owned by your catalog, and submit it once. A finished transfer --
+delivered, confirmed, rejected or failed -- stays in the spool for
+`KEEPDAYS` days after its last change (7 by default); OFTPD deletes the
+older ones once a day. Size the spool for what arrives and leaves in that
+time. Only spool entries are deleted, never data sets.
 
 The spool belongs to OFTPD alone: the utilities and the dialog never open
 it, they ask OFTPD.
@@ -124,7 +127,8 @@ them. Each member describes its keywords at the top.
   (`CONTROLPORT`, 3306), and the prefixes for received files
   (`INPREFIX`, `TMPPREFIX`). A received file is stored as
   `INPREFIX.<virtual file name>`. `RELAY=Y` makes this system a node that
-  passes files on to its partners.
+  passes files on to its partners. `KEEPDAYS` is how long finished
+  transfers stay in the spool (section 5; `0` keeps them for ever).
 - `OFTPPTN0`: one `PARTNER=` entry per partner, with its Odette ID, the
   passwords both ways, and `HOST`/`PORT` if this system is to call it. A
   partner reached through another one gets `VIA=name` instead of a host.
@@ -158,7 +162,9 @@ work.
 
 The operator commands are listed at the top of the procedure: `F OFTPD,D P`
 (partners), `D Q` (the spool), `D S` (sessions), `F OFTPD,CALL name`,
-`F OFTPD,REFRESH` (read the partner member again) and `P OFTPD`.
+`F OFTPD,REFRESH` (read the partner member again), `F OFTPD,PURGE [days]`
+(delete finished transfers older than that now; `KEEPDAYS` without a
+number) and `P OFTPD`.
 
 ## 8. The OFTP utility
 
@@ -181,7 +187,7 @@ link list or in the logon procedure's `STEPLIB`, as in the `TSO` step of
 `OFTPBAT`.
 
 The commands are `SEND`, `LIST`, `SHOW`, `DELETE`, `HOLD`, `RELEASE`,
-`RETRY`, `CALL` and `PARTNERS`. `OFTP` needs no authorization of its own:
+`RETRY`, `CALL`, `PARTNERS` and `PURGE [DAYS(n)]`. `OFTP` needs no authorization of its own:
 it reaches OFTPD through OFTPD's SVC, and OFTPD reads the userid of the
 job or TSO session itself.
 
@@ -189,8 +195,9 @@ A transfer belongs to the userid that queued it. That userid sees and
 changes it; so does a userid named in `ADMIN=`, which sees and changes
 every transfer, including the received ones, which belong to nobody.
 Anyone else gets `not your transfer` (RC 8). `LIST` shows an
-administrator everything, and `LIST MINE` only their own. `CALL` is for
-an administrator only.
+administrator everything, and `LIST MINE` only their own. `CALL` and
+`PURGE` are for an administrator only; `PURGE DAYS(0)` deletes every
+finished transfer, however recent.
 
 `HOST(...)` and `PORT(...)` send the command to the TCP control port
 instead (127.0.0.1 and 3306 for whichever is left out). It is for

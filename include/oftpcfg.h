@@ -10,7 +10,7 @@
 **
 **   OFTPPRM:  ODETTEID= PORT= CONTROLPORT= SVC= INPREFIX= TMPPREFIX=
 **             MAXSESS= SDEB= CREDIT= TIMEOUT= TLRECL= UBLKSIZE= UNIT=
-**             VOLSER= RETRY= MAXRETRY= RELAY= ADMIN=
+**             VOLSER= RETRY= MAXRETRY= RELAY= ADMIN= KEEPDAYS=
 **   OFTPPTN:  PARTNER= ODETTEID= PASSWORD= OURPASSWORD= OURID= HOST=
 **             PORT= LEVEL= SDEB= CREDIT= MODE= COMPRESS= ENABLED= CALL=
 **             ADDRESS= XLATE= VIA= SESSIONS=
@@ -25,6 +25,11 @@
 ** up to OFTP_MAXADM. Anyone else sees and changes only the transfers
 ** they queued. The TCP control port knows no caller and is not affected
 ** (internals/xmem.md section 7).
+**
+** KEEPDAYS=n (0-9999, default 7) is how long a finished transfer --
+** delivered, confirmed, rejected or failed -- stays in the spool after its
+** last change; the monitor deletes older ones once a day, and PURGE does
+** it on request. 0 keeps them for ever. Data sets are never deleted.
 **
 ** VIA=name makes a partner one that is reached through another: files for
 ** it go in sessions with name, addressed to its Odette ID (SFIDDEST). It
@@ -80,6 +85,7 @@ typedef struct oftp_config {
     char        volser[7];
     int         retry;                  /* seconds before a retry        */
     int         maxretry;               /* attempts per send, 0 no limit */
+    int         keepdays;               /* finished transfers, 0 for ever */
     int         relay;                  /* RELAY=Y: act as a node        */
     char        admin[OFTP_MAXADM][9];  /* ADMIN=: may do everything     */
     int         nadmin;
