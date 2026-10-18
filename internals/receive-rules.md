@@ -111,8 +111,9 @@ internal reader. rvs's symbols, which rvs users will know, all with `?`:
   system. The member is the installation's, named by a rule in parmlib,
   so whoever may change parmlib already decides what runs; OFTPD checks
   nothing more. (Decision 6.3.)
-- rvs's EERP waits for nothing: the EERP is about the file having
-  arrived, not about the job. Proposed the same.
+- The EERP does not wait for the job: it says the file arrived, not
+  that it was processed. Proposed so; that rvs did the same is inferred,
+  the User Manual does not tie the two together.
 
 *Later*, from rvs: `JOB=` after a send (A.2 #31), `ERRJOB=` when a send
 fails for good, and a job when the submit itself fails.
