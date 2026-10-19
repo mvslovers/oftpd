@@ -1684,3 +1684,64 @@ The third row is the control: the same OFTPD with only the routine
 from `main` reproduces the discarded answer, a `SEND` queued while its
 job ended RC 12.
 
+
+## 16. A cancelled batch caller, told apart by its job (2026-10-19, #36)
+
+Section 15 case 3 found a batch caller cancelled while parked holding
+its slot for the sweep's 300 s: its address space is the initiator's
+and outlives the job, so the ASCB alone says "alive". #36 measured what
+common storage offers instead -- no field identifies a job uniquely,
+`ASCBJBNI` (ASCB+X'AC') points at `CHKEY` of the job's own CSCB while a
+job runs and is 0 between jobs, and a job of the same name resubmitted
+into the same initiator gets the same CSCB, name and step -- and the
+maintainer chose to use what there is (option 1 there).
+
+**What changed.** `OFTPSVC` records at claim `ASCBJBNI` (`SLJBNI`,
++X'38') and 16 bytes from the CSCB: `CHKEY` and `CHSTEP`, 56 bytes on
+(`SLJOB`, +X'40'). The slot grew to 2384 bytes, the request text and
+the reply moved by 16, the routine's request-header EQUs are relative
+to `SLREQ` now, and the anchor is version 2 (`OFTP_ANC_VER`; the
+request block stays 1). `caller_gone()` in `oftp#svc.c` compares: no
+ASCB or another at the ASID, `ASCBJBNI` 0 or another CSCB, another
+jobname or step -- gone. The CSCB is read only while `ASCBJBNI` still
+points at it. It decides in three places:
+
+- **take**: a gone caller's request is not carried out; the slot is
+  freed, `OFTP066W ... THE OWNER OF SLOT n IS GONE, REQUEST NOT CARRIED
+  OUT`;
+- **answer**: as before, `OFTP064W ... ANSWER DISCARDED`;
+- **sweep**: a DONE slot whose caller is gone is freed at once,
+  `OFTP067W CROSS MEMORY FREED SLOTS X'nn', THEIR CALLER IS GONE`; the
+  300 s stay for what `caller_gone()` cannot see.
+
+**And a second fault, found by measuring the first.** The ECB of a
+cancelled caller's slot still names that caller's SVRB, and a job
+resubmitted into the same initiator can get an SVRB at the same
+address. OFTPD's POST of the dead caller's ECB then ended the live
+caller's wait while its own slot was still PENDING; the routine called
+that a protocol error, and the job ended RC 8 although its own request
+was carried out (`OFTP230I T0000002 QUEUED`, then `OFTP064W` for its
+slot). The routine now waits again until its own ECB is posted. The
+first version of that re-issued the WAIT on an ECB still carrying its
+wait bit, and every try ended S301 (five of five); the ECB goes back to
+0 by `CS` against the value it holds first, so a POST landing in
+between is seen.
+
+**Measured** in a throwaway MVS/CE container with the `SLOW=n` debug
+build, slot fields read with Hercules' `v`:
+
+| Run | Result |
+|---|---|
+| `OFTPB` (`SEND`) parked behind `LIST SLOW(30)`, `C OFTPB`, initiator idle after | slot showed `jbni 00FE1740 job OFTPB S01`; `ASCBJBNI` 0 after the cancel; `OFTP066W`, the `SEND` not carried out (`0 transfers`), slot free, `inflight` 0 |
+| as above, a new `OFTPB` submitted 2 s after the cancel, landing on another CSCB (`00FE1690` -> `00FE17C0`) | old: `OFTP066W`, not carried out; new: CC 0, its own `SEND` queued |
+| the same, landing on the same CSCB (five tries, `R6`-`R10`) | old: carried out (`R*.OLD QUEUED`) -- the case #36 said would not be told apart; new: CC 0 with its own answer every time, despite the POST meant for the old slot; old slot freed by `OFTP067W` one second after the new job ended; `inflight` 0 |
+| the same before the re-wait (`R1`-`R5` with the first version, and the run before it) | first version: S301 five of five; without it: the new job RC 8, its `SEND` queued and its answer discarded |
+| `TSTSVC` | 31/31 (more `LIST` pieces: 23 transfers in the spool) |
+| `LIST SLOW(60)` + two `LIST`s, `P OFTPD` | all three CC 12, `OFTPD stopped before carrying out the request`; entry restored |
+
+**Left open.** A cancelled job's request is still carried out when a
+job of the same name gets the same CSCB in the same initiator before
+the slot is served. #36 option 2 (the routine checks, at the next claim
+from that address space, whether the recorded caller's TCB is still on
+its TCB chain) would close that. TK5 and a cancelled TSO user are not
+measured.
