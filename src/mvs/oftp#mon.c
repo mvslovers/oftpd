@@ -2022,6 +2022,23 @@ svc_thread(void *arg1, void *arg2)
             o.cap    = j.cap;
             o.skip   = j.resume;
             svc_line(m, &j, line, sizeof(line), &o.o);
+#ifdef OFTP_DEBUG_SLOW
+            /* Test builds only (-DOFTP_DEBUG_SLOW), never shipped: a
+            ** request carrying SLOW=n holds the slot thread n seconds
+            ** before it is served, so that other callers stay parked
+            ** behind it (#34). A stop cuts the wait short.
+            */
+            {
+                const char *sl = strstr(line, "SLOW=");
+                int k, secs = sl != NULL ? atoi(sl + 5) : 0;
+
+                for (k = 0; k < secs && !m->stop && !m->svcstop; k++) {
+                    ECB e = 0;
+
+                    ecb_timed_wait(&e, 100, 0);
+                }
+            }
+#endif
             ctl_request(m, &o.o, line);
             /* A single line longer than the caller's whole buffer
             ** would answer MORE for ever and the client would ask
