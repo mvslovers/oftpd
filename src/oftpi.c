@@ -6,10 +6,9 @@
 ** module in the ISPLLIB one: ISPLINK is loaded from there
 ** (src/mvs/oftp#isp.c).
 **
-** Everything the dialog does is a request to OFTPD, as the OFTP utility's
-** is: through the cross-memory SVC, or through the TCP control port when
-** a host is set (option 5; development only, no security). Host, port
-** and the partner member's name are kept in the user's ISPF profile.
+** Everything the dialog does is a request to OFTPD through its
+** cross-memory SVC, as the OFTP utility's is. The partner member's name
+** is kept in the user's ISPF profile.
 */
 #include <stddef.h>
 #include <stdio.h>
@@ -21,7 +20,7 @@
 
 /* The dialog variables, each a blank-padded field ISPF reads and writes */
 typedef struct vars {
-    char oftopt[1], oftmsg[128], ofthost[60], oftport[5];
+    char oftopt[1], oftmsg[128];
     char oftptn[8], oftdsn[54], oftvfn[26], oftfmt[1], oftxlt[1];
     char ofthld[1], oftusr[8];
     char oftfptn[8], oftfst[10], oftfmin[1];
@@ -30,15 +29,11 @@ typedef struct vars {
     char l[6][128];
     char oftcdsn[54];
     char oftscrw[4];
-    char oftvia[60];
 } VARS;
 
 typedef struct dlg {
     OFTP_ISP    isp;
     VARS        v;
-    char        me[9];
-    char        host[61];
-    int         port;
 } DLG;
 
 #define PUT(d, f, s)    oftp_isp_put((d)->v.f, (int)sizeof((d)->v.f), (s))
@@ -49,8 +44,8 @@ define(DLG *d)
 {
     static const struct { const char *name; size_t off, len; } tab[] = {
 #define V(n, f) { n, offsetof(VARS, f), sizeof(((VARS *)0)->f) }
-        V("OFTOPT", oftopt), V("OFTMSG", oftmsg), V("OFTHOST", ofthost),
-        V("OFTPORT", oftport), V("OFTPTN", oftptn), V("OFTDSN", oftdsn),
+        V("OFTOPT", oftopt), V("OFTMSG", oftmsg),
+        V("OFTPTN", oftptn), V("OFTDSN", oftdsn),
         V("OFTVFN", oftvfn), V("OFTFMT", oftfmt), V("OFTXLT", oftxlt),
         V("OFTHLD", ofthld), V("OFTUSR", oftusr), V("OFTFPTN", oftfptn),
         V("OFTFST", oftfst), V("OFTFMIN", oftfmin), V("OS", os),
@@ -59,7 +54,6 @@ define(DLG *d)
         V("PL", pl), V("PH", ph), V("OFTL1", l[0]), V("OFTL2", l[1]),
         V("OFTL3", l[2]), V("OFTL4", l[3]), V("OFTL5", l[4]),
         V("OFTL6", l[5]), V("OFTCDSN", oftcdsn), V("OFTSCRW", oftscrw),
-        V("OFTVIA", oftvia),
 #undef V
     };
     unsigned i;
@@ -72,26 +66,12 @@ define(DLG *d)
     return 0;
 }
 
-/* How OFTPD is reached, for the panels: no host is the SVC */
-static void
-via(DLG *d)
-{
-    char t[80];
-
-    if (d->host[0])
-        snprintf(t, sizeof(t), "control port %s port %d", d->host, d->port);
-    else
-        snprintf(t, sizeof(t), "cross memory (SVC)");
-    PUT(d, oftvia, t);
-}
-
 /* A request to OFTPD; the final answer goes into OFTMSG */
 static int
 ask(DLG *d, const char *req, OFTP_CLILINE line, void *ctx)
 {
     char final[200];
-    int rc = oftp_cli_request(d->host, d->port, req, line, ctx, final,
-                              sizeof(final));
+    int rc = oftp_cli_request(req, line, ctx, final, sizeof(final));
 
     PUT(d, oftmsg, final);
     return rc;
@@ -157,9 +137,7 @@ send(DLG *d)
         if (hd[0] == 'Y')
             n += (size_t)snprintf(req + n, sizeof(req) - n, " HOLD=Y");
         if (usr[0])
-            n += (size_t)snprintf(req + n, sizeof(req) - n, " USER=%s", usr);
-        if (d->me[0])
-            snprintf(req + n, sizeof(req) - n, " OWNER=%s", d->me);
+            snprintf(req + n, sizeof(req) - n, " USER=%s", usr);
         ask(d, req, NULL, NULL);
     }
 }
@@ -239,9 +217,8 @@ transfers(DLG *d)
             n += (size_t)snprintf(req + n, sizeof(req) - n, " PARTNER=%s", fp);
         if (fs[0])
             n += (size_t)snprintf(req + n, sizeof(req) - n, " STATUS=%s", fs);
-        /* MINE=Y for the SVC, OWNER= for the control port */
-        if (fm[0] == 'Y' && d->me[0])
-            snprintf(req + n, sizeof(req) - n, " MINE=Y OWNER=%s", d->me);
+        if (fm[0] == 'Y')
+            snprintf(req + n, sizeof(req) - n, " MINE=Y");
 
         oftp_isp_exec("TBCREATE OFTPTRN NAMES(OS OK OD OT OP OV ON) "
                       "NOWRITE REPLACE");
@@ -378,8 +355,6 @@ configure(DLG *d)
 static void
 monitor(DLG *d)
 {
-    char host[61], port[6];
-
     PUT(d, oftmsg, "");
     for (;;) {
         memset(d->v.l, ' ', sizeof(d->v.l));
@@ -387,12 +362,6 @@ monitor(DLG *d)
             PUT(d, oftmsg, "");
         if (oftp_isp_exec("DISPLAY PANEL(OFTPMON)") != 0)
             return;
-        GET(d, ofthost, host);
-        GET(d, oftport, port);
-        snprintf(d->host, sizeof(d->host), "%s", host);
-        d->port = port[0] ? atoi(port) : 3306;
-        via(d);
-        oftp_isp_exec("VPUT (OFTHOST OFTPORT) PROFILE");
     }
 }
 
@@ -400,7 +369,7 @@ int
 main(void)
 {
     DLG *d;
-    char opt[2], host[61], port[6], dsn[55];
+    char opt[2], dsn[55];
 
     if ((d = calloc(1, sizeof(*d))) == NULL)
         return 8;
@@ -414,21 +383,10 @@ main(void)
         free(d);
         return 8;
     }
-    oftp_cli_whoami(d->me);
-    oftp_isp_exec("VGET (OFTHOST OFTPORT OFTCDSN) PROFILE");
-    GET(d, ofthost, host);
-    GET(d, oftport, port);
+    oftp_isp_exec("VGET (OFTCDSN) PROFILE");
     GET(d, oftcdsn, dsn);
-    /* no host is the SVC; a profile from before it keeps its host, and
-    ** option 5 clears it
-    */
-    if (port[0] == '\0')
-        PUT(d, oftport, strcpy(port, "3306"));
     if (dsn[0] == '\0')
         PUT(d, oftcdsn, "SYS2.PARMLIB(OFTPPTN0)");
-    snprintf(d->host, sizeof(d->host), "%s", host);
-    d->port = atoi(port);
-    via(d);
 
     for (;;) {
         PUT(d, oftopt, "");

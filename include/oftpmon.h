@@ -1,7 +1,7 @@
 #ifndef OFTPMON_H
 #define OFTPMON_H
 
-/* oftpmon.h - the monitor: sessions, listener, scheduler, control port,
+/* oftpmon.h - the monitor: sessions, listener, scheduler, requests,
 ** console (src/mvs/oftp#mon.c). internals/design.md 2.
 */
 
@@ -20,7 +20,6 @@ typedef struct oftp_mon {
     OFTP_SPOOL *spool;
     volatile int stop;                  /* 1: P OFTPD received           */
     int         lsock;                  /* OFTP listener                 */
-    int         csock;                  /* control port listener         */
     volatile int nsess;
     volatile char busy[OFTP_MAXPTN];    /* sessions with the partner now */
     volatile char calling[OFTP_MAXPTN]; /* of them, our calls that have
@@ -30,7 +29,7 @@ typedef struct oftp_mon {
     unsigned    counter;                /* time counter of virtual files */
     long        tpurge;                 /* last housekeeping (KEEPDAYS=) */
     ECB         wake;                   /* wakes the scheduler           */
-    CTHDTASK   *t_listen, *t_sched, *t_ctl;
+    CTHDTASK   *t_listen, *t_sched;
     /* the session subtasks, one array per task that attaches them: only
     ** the attaching task may DETACH, so each reaps its own (#3)
     */
@@ -47,7 +46,6 @@ typedef struct oftp_mon {
     ** run: a claim is given back with the session, abend or not.
     */
     char        erpheld[OFTP_MAXSESS][8];
-    volatile int cconn;                 /* the control-port request      */
     /* The cross-memory transport (internals/xmem.md, src/mvs/oftp#svc.c).
     ** It lives here and nowhere else: OFTPD is AC(1) and reentrant, so
     ** the ESTAE has to reach this state through the monitor block.
@@ -89,7 +87,7 @@ typedef struct oftp_mon {
 /* Console and log: one line, already carrying its message id */
 extern void oftp_mon_msg(const char *fmt, ...)          asm("OFTPMMSG");
 
-/* Starts listener, scheduler and control port; 0 or -1 */
+/* Starts listener and scheduler; 0 or -1 */
 extern int  oftp_mon_start(OFTP_MON *m)                 asm("OFTPMSTR");
 /* Stops them and waits for the sessions to end */
 extern void oftp_mon_stop(OFTP_MON *m)                  asm("OFTPMSTP");
@@ -107,7 +105,8 @@ extern void oftp_mon_recover(OFTP_MON *m)               asm("OFTPMREC");
 ** oftp_svc_start() installs it: the CSA anchor, OFTPSVC loaded into
 ** CSA, the anchor address patched into it and the SVC entry reserved.
 ** 0 when the transport is installed, -1 when it is not -- OFTPD runs
-** on with TCP either way, and every refusal says why.
+** on either way, for its partners and the operator but with no way in
+** for the utilities, and every refusal says why.
 **
 ** oftp_svc_stop() gives the entry back, reads it back to prove it, and
 ** frees the CSA only when that read and the drain both agree.
@@ -156,7 +155,7 @@ extern void oftp_svc_sweep(OFTP_MON *m)                 asm("OFTPSSWP");
 
 /* The slot thread itself lives with the request handlers, because
 ** that is all it does: take a request out of a slot, run the same
-** ctl_* handlers the TCP control port runs, write the answer back.
+** ctl_* handlers every request goes through, write the answer back.
 **
 ** oftp_mon_svc_start() starts it and then turns the transport on, in
 ** that order. Call it only after oftp_svc_start() returned 0.

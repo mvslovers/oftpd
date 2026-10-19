@@ -16,18 +16,7 @@
 +   @OFTL5
 +
 +
-%  Reached by +@OFTVIA
-+    Host blank: cross memory (SVC). A host: the TCP control port, for
-+    development only. Kept in your ISPF profile.
-+    Host ===>_OFTHOST                                                  +
-+    Port ===>_OFTPORT+
-+
-+
 !OFTMSG
 +
 +  Enter looks again, END returns.
-)INIT
-  .CURSOR = OFTHOST
-)PROC
-  VER (&OFTPORT,NUM)
 )END

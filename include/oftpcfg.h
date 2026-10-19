@@ -8,7 +8,7 @@
 ** '*' in column 1 starts a comment line. In the partner member, PARTNER=
 ** opens a new entry and the keywords after it belong to that entry.
 **
-**   OFTPPRM:  ODETTEID= PORT= CONTROLPORT= SVC= INPREFIX= TMPPREFIX=
+**   OFTPPRM:  ODETTEID= PORT= SVC= INPREFIX= TMPPREFIX=
 **             MAXSESS= SDEB= CREDIT= TIMEOUT= TLRECL= UBLKSIZE= UNIT=
 **             VOLSER= RETRY= MAXRETRY= RELAY= ADMIN= KEEPDAYS=
 **   OFTPPTN:  PARTNER= ODETTEID= PASSWORD= OURPASSWORD= OURID= HOST=
@@ -21,10 +21,9 @@
 ** opens another session to it, up to the limit (internals/design.md 6.1).
 **
 ** ADMIN=id names a userid that may see and change every transfer, and
-** CALL and REFRESH, over the cross-memory transport; one ADMIN= per id,
-** up to OFTP_MAXADM. Anyone else sees and changes only the transfers
-** they queued. The TCP control port knows no caller and is not affected
-** (internals/xmem.md section 7).
+** CALL and REFRESH; one ADMIN= per id, up to OFTP_MAXADM. Anyone else
+** sees and changes only the transfers they queued (internals/xmem.md
+** section 13).
 **
 ** KEEPDAYS=n (0-9999, default 7) is how long a finished transfer --
 ** delivered, confirmed, rejected or failed -- stays in the spool after its
@@ -64,7 +63,6 @@ typedef struct oftp_partner {
 typedef struct oftp_config {
     char        odetteid[OFTP_IDLEN + 1];
     int         port;
-    int         ctlport;
     /* SVC=nnn: the installation SVC the cross-memory transport reserves
     ** while OFTPD runs, 200-255. 0 means no transport, and that is the
     ** default on purpose -- two products each picking "a free one" at

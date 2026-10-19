@@ -34,12 +34,4 @@ typedef struct oftp_netx {
 
 extern void oftp_net_xport(OFTP_NETX *nx, OFTP_XPORT *x) asm("OFTPNXPT");
 
-/* A line-oriented helper for the control port: sends text + CR LF
-** translated to ASCII; reads one line (without CR LF), translated back.
-** readline returns its length, or -1 at the end or on timeout.
-*/
-extern int  oftp_net_puts(int s, const char *text)       asm("OFTPNPUT");
-extern int  oftp_net_gets(int s, char *buf, int cap, int secs)
-                                                         asm("OFTPNGET");
-
 #endif /* OFTPNET_H */

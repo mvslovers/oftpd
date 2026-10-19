@@ -1,5 +1,5 @@
-/* oftp#mon.c - the monitor: sessions, listener, scheduler, control port
-** and console commands (MVS only)
+/* oftp#mon.c - the monitor: sessions, listener, scheduler, the requests
+** of the utilities and console commands (MVS only)
 **
 ** Every session runs in a thread of its own. Its file callbacks go to
 ** the spool (one record per transfer) and to the data set layer; the
@@ -1194,23 +1194,19 @@ sched_thread(void *arg1, void *arg2)
     return 0;
 }
 
-/* ---- control port ------------------------------------------------ */
+/* ---- requests ---------------------------------------------------- */
 
-/* Where a request's answer goes: the lines are the same whichever
-** transport carried the request (internals/design.md 7): a socket for
-** the TCP control port, a slot for the cross-memory one later.
+/* Where a request's answer goes (internals/design.md 7). The handlers
+** write lines; the slot thread's put_slot() gathers them into the
+** caller's reply area.
 */
 typedef struct ctlout CTLOUT;
 struct ctlout {
     void      (*put)(CTLOUT *o, const char *line);
-    int         sock;                   /* the TCP transport's socket    */
-    /* Who asks. Over the SVC the userid is the caller's ACEE, read by
-    ** the routine and never by the client, and ADMIN= decides what it
-    ** may do. The TCP port knows nobody: it takes OWNER= from the line
-    ** and may do everything, as it always has -- the development port
-    ** without security (CLAUDE.md), off by default from 0.2.0.
+    /* Who asks: the userid of the caller's ACEE, read by the SVC
+    ** routine and never by the client, and ADMIN= decides what it may
+    ** do.
     */
-    int         svc;                    /* 1: the userid is real         */
     int         admin;                  /* may see and change everything */
     char        user[9];                /* "" when nobody is known       */
 };
@@ -1229,8 +1225,6 @@ ctl_may(const CTLOUT *o, const OFTP_SPREC *r)
 static const char *
 ctl_by(const CTLOUT *o)
 {
-    if (!o->svc)
-        return "CONTROL PORT";
     return o->user[0] ? o->user : "A CALLER WITHOUT USERID";
 }
 
@@ -1238,12 +1232,6 @@ static void
 ctl_put(CTLOUT *o, const char *line)
 {
     o->put(o, line);
-}
-
-static void
-put_sock(CTLOUT *o, const char *line)
-{
-    oftp_net_puts(o->sock, line);
 }
 
 /* KEYWORD=VALUE from a request line, or "" */
@@ -1295,12 +1283,6 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
         ctl_put(o, "508 DISP is KEEP or DELETE");
         return;
     }
-    /* deleting needs a caller whose authority can be checked */
-    if (disp[0] == 'D' && !o->svc) {
-        ctl_put(o, "510 DISP=DELETE only over the SVC: the control port"
-                " knows nobody");
-        return;
-    }
     if ((p = oftp_cfg_find(&m->cfg, partner)) == NULL) {
         ctl_put(o, "501 unknown or disabled partner");
         return;
@@ -1347,12 +1329,12 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
         ctl_put(o, "502 data set not found");
         return;
     }
-    /* Over the SVC the caller is known, so the caller's authority
-    ** decides, not OFTPD's, which reads the file later (oftpsec.h).
-    ** Before the existence check: a data set the caller may not read
-    ** answers the same whether it exists or not.
+    /* The caller's authority decides, not OFTPD's, which reads the
+    ** file later (oftpsec.h). Before the existence check: a data set
+    ** the caller may not read answers the same whether it exists or
+    ** not.
     */
-    if (o->svc) {
+    {
         char why[90];
 
         if (oftp_sec_may_read(o->user, dsn, disp[0] == 'D', why,
@@ -1471,10 +1453,9 @@ ctl_list(OFTP_MON *m, CTLOUT *o, const char *line)
     kw(line, "STATUS", status, sizeof(status));
     kw(line, "MINE", mine, sizeof(mine));
     /* Only one's own: asked for with MINE=Y, and all there is for
-    ** anyone but an administrator. Over TCP an OWNER= has always meant
-    ** the same, and a client of 0.1.0 still sends just that.
+    ** anyone but an administrator
     */
-    own = mine[0] == 'Y' || !o->admin || (!o->svc && o->user[0]);
+    own = mine[0] == 'Y' || !o->admin;
     last[0] = '\0';
     while (oftp_spl_next(m->spool, last, &r) == 0) {
         memcpy(last, r.key, 8);
@@ -1750,8 +1731,8 @@ ctl_status(OFTP_MON *m, CTLOUT *o)
     for (i = 0; i < m->cfg.nptn; i++)
         if (m->cfg.ptn[i].enabled)
             on++;
-    snprintf(out, sizeof(out), "100 Odette ID %s, OFTP port %d, control port %d",
-             m->cfg.odetteid, m->cfg.port, m->cfg.ctlport);
+    snprintf(out, sizeof(out), "100 Odette ID %s, OFTP port %d, SVC %d",
+             m->cfg.odetteid, m->cfg.port, m->cfg.svc);
     ctl_put(o, out);
     snprintf(out, sizeof(out), "100 sessions %d of %d, partners %d of %d enabled",
              m->nsess, m->cfg.maxsess, on, m->cfg.nptn);
@@ -1839,11 +1820,6 @@ ctl_request(OFTP_MON *m, CTLOUT *o, char *line)
     for (c = line; *c; c++)
         if (*c >= 'a' && *c <= 'z')
             *c = (char)(*c - 'a' + 'A');
-    /* the TCP port believes what the line says; see CTLOUT */
-    if (!o->svc) {
-        kw(line, "OWNER", o->user, sizeof(o->user));
-        o->admin = 1;
-    }
     if (strncmp(line, "SEND ", 5) == 0)
         ctl_send(m, o, line);
     else if (strncmp(line, "LIST", 4) == 0)
@@ -1883,41 +1859,6 @@ ctl_request(OFTP_MON *m, CTLOUT *o, char *line)
     }
     else
         ctl_put(o, "500 unknown request");
-}
-
-static int
-ctl_thread(void *arg1, void *arg2)
-{
-    OFTP_MON *m = arg1;
-    char ip[16], line[256];
-    CTLOUT o;
-
-    (void)arg2;
-    memset(&o, 0, sizeof(o));
-    o.put = put_sock;
-    while (!m->stop) {
-        int s, n;
-
-        /* a dialog waits for every answer: look for the next request
-        ** every 0.1 s, and at once after one
-        */
-        if ((s = oftp_net_accept(m->csock, ip, sizeof(ip))) < 0) {
-            ECB e = 0;
-
-            ecb_timed_wait(&e, 10, 0);
-            continue;
-        }
-        /* one request per connection; no security during development */
-        m->cconn = s;
-        o.sock = s;
-        oftp_net_puts(s, "220 OFTPD control port");
-        n = oftp_net_gets(s, line, sizeof(line), 30);
-        if (n > 0)
-            ctl_request(m, &o, line);
-        m->cconn = 0;
-        oftp_net_close(s);
-    }
-    return 0;
 }
 
 /* ---- the cross-memory slot thread -------------------------------- */
@@ -1990,10 +1931,8 @@ put_slot(CTLOUT *co, const char *line)
 ** **The caller's own OWNER= is dropped, and the userid the routine
 ** read out of the caller's ACEE goes to the handlers beside the line,
 ** never in it** -- that is the property the whole transport exists
-** for. The TCP control port takes OWNER= from whoever connects, which
-** is why it has no security at all; here the request block has no
-** field a client could have put a userid in, and a line that names
-** one is answered as if it did not.
+** for: the request block has no field a client could have put a
+** userid in, and a line that names one is answered as if it did not.
 **
 ** What the userid may do is ADMIN='s to say (ctl_may()): an
 ** administrator sees and changes every transfer, anyone else only
@@ -2048,7 +1987,6 @@ svc_line(OFTP_MON *m, const OFTP_SVCJOB *j, char *out, size_t cap,
         ;
     memcpy(who->user, j->user, (size_t)n);
     who->user[n] = '\0';
-    who->svc   = 1;
     who->admin = oftp_cfg_admin(&m->cfg, who->user);
 }
 
@@ -2080,7 +2018,6 @@ svc_thread(void *arg1, void *arg2)
                 continue;
             memset(&o, 0, sizeof(o));
             o.o.put  = put_slot;
-            o.o.sock = -1;      /* no socket; a stray write fails     */
             o.buf    = buf;
             o.cap    = j.cap;
             o.skip   = j.resume;
@@ -2259,19 +2196,8 @@ oftp_mon_start(OFTP_MON *m)
     }
     oftp_mon_msg("OFTP051I LISTENING ON PORT %d, SOCKET %d", m->cfg.port,
                  m->lsock);
-    m->csock = -1;
-    if (m->cfg.ctlport > 0) {
-        if ((m->csock = oftp_net_listen(m->cfg.ctlport, &err)) < 0)
-            oftp_mon_msg("OFTP052W CONTROL PORT %d NOT OPEN, ERRNO %d",
-                         m->cfg.ctlport, err);
-        else
-            oftp_mon_msg("OFTP053I CONTROL PORT %d (NO SECURITY), SOCKET %d",
-                         m->cfg.ctlport, m->csock);
-    }
     m->t_listen = cthread_create_ex(listen_thread, m, NULL, 32 * 1024);
     m->t_sched = cthread_create_ex(sched_thread, m, NULL, 32 * 1024);
-    if (m->csock >= 0)
-        m->t_ctl = cthread_create_ex(ctl_thread, m, NULL, 32 * 1024);
     return m->t_listen && m->t_sched ? 0 : -1;
 }
 
@@ -2293,7 +2219,6 @@ oftp_mon_stop(OFTP_MON *m)
     ecb_post(&m->wake, 0);
     join(&m->t_listen);
     join(&m->t_sched);
-    join(&m->t_ctl);
     /* Normally already gone: oftp_mon_svc_stop() runs ahead of
     ** oftp_svc_stop() so the anchor is not freed under the thread.
     ** This is the net for a path that skipped it -- join() takes a
@@ -2308,8 +2233,6 @@ oftp_mon_stop(OFTP_MON *m)
     */
     oftp_net_close(m->lsock);
     m->lsock = -1;
-    oftp_net_close(m->csock);
-    m->csock = -1;
     for (i = 0; m->nsess > 0 && i < 60; i++) {
         ECB e = 0;
 
@@ -2343,16 +2266,6 @@ oftp_mon_abend(OFTP_MON *m)
     if (m->lsock > 0) {
         oftp_net_close(m->lsock);
         m->lsock = -1;
-        n++;
-    }
-    if (m->csock > 0) {
-        oftp_net_close(m->csock);
-        m->csock = -1;
-        n++;
-    }
-    if ((sk = m->cconn) > 0) {
-        m->cconn = 0;
-        oftp_net_close(sk);
         n++;
     }
     for (i = 0; i < OFTP_MAXSESS; i++)

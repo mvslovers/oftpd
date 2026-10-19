@@ -41,7 +41,11 @@ the host's, so every OFTPD needs ports of its own on 192.168.0.233
 | MAC1 | Mac 192.168.0.23 | `O0000000000MAC1` (MENDEL, `O01791824860109`, until 2026-10-14) | 3305 | - |
 
 The utility and the dialog take the control port with `PORT(3316)` and
-so on; the dialog keeps it in the user's profile.
+so on; the dialog keeps it in the user's profile. That is 0.1.0, which
+the stands run: the control port is removed on `main` (#32, 2026-10-19),
+so a stand moving to a later build needs `SVC=237` in its `OFTPPRM0` and
+`CONTROLPORT=` taken out (OFTPD warns about it with `OFTP010W`), and the
+utility and the dialog then reach OFTPD only through the SVC.
 
 Passwords: a node sends its own name (`OURPASSWORD=<own name>`) and
 expects the partner's (`PASSWORD=<partner name>`), MAC1 included (it

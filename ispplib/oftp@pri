@@ -21,16 +21,13 @@
 %  4  {Configure  +Edit the partner member
 +                  OFTPD reads it again when the edit ends
 +
-%  5  {Monitor    +OFTPD: Odette ID, ports, sessions, spool
-+                  and how this dialog reaches it
+%  5  {Monitor    +OFTPD: Odette ID, port, SVC, sessions
++                  and the spool
 +
 %  X  {Exit
 +
 +
 !OFTMSG
-+
-%  OFTPD reached by +@OFTVIA
-+                    kept in your ISPF profile, option 5 changes it
 +
 +
 +  Enter an option, END or X to leave.

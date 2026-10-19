@@ -354,9 +354,9 @@ reserve(OFTP_MON *m, unsigned n, void *epa)
 }
 
 /* Start: mirror check, anchor, module, patch, slot. 0 when the
-** transport is installed, -1 when it is not -- OFTPD runs on with TCP
-** either way, so every exit says why and none of them stops the
-** monitor.
+** transport is installed, -1 when it is not -- OFTPD runs on for its
+** partners and the operator either way, so every exit says why and
+** none of them stops the monitor.
 */
 int
 oftp_svc_start(OFTP_MON *m)
