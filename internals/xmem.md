@@ -1739,9 +1739,40 @@ build, slot fields read with Hercules' `v`:
 | `TSTSVC` | 31/31 (more `LIST` pieces: 23 transfers in the spool) |
 | `LIST SLOW(60)` + two `LIST`s, `P OFTPD` | all three CC 12, `OFTPD stopped before carrying out the request`; entry restored |
 
-**Left open.** A cancelled job's request is still carried out when a
-job of the same name gets the same CSCB in the same initiator before
-the slot is served. #36 option 2 (the routine checks, at the next claim
-from that address space, whether the recorded caller's TCB is still on
-its TCB chain) would close that. TK5 and a cancelled TSO user are not
-measured.
+**Left open then:** a cancelled job's request was still carried out
+when a job of the same name got the same CSCB in the same initiator
+before the slot was served. Closed the same day, below.
+
+### The JES job id and the claim sequence (option 2)
+
+Option 2 in #36 named the caller's TCB. It was not used: a TCB address
+is as reusable as the CSCB's, which is what the CSCB measurement
+showed, and nothing about a TCB at the same address says it is another
+task's. What is unique per job is its JES job id, `SSIBJBID` (TCB+X'B4'
+-> JSCB, +X'13C' -> SSIB, +X'0C'), private storage the routine can read
+because it runs in the caller's address space. It records it in the
+slot (`SLJOBID`, +X'50') and numbers the claim from a 24-bit sequence
+in the anchor (`ANCCLAIM`, +X'34'; `SLCLAIM`, +X'3C'). One address
+space runs one job at a time, so `caller_gone()` reads **a later claim
+from the same ASCB under another job id** as the end of the earlier
+claim's job.
+
+Nothing writes into another caller's slot. A routine that marked other
+slots "gone" could hit one that was freed and claimed again in
+between, and that caller would never be served; reading instead, the
+worst a slot caught mid-claim can do is fail to say "gone". The
+routine clears the fields, stores the id, takes the number with `CS`
+and stores it last; OFTPD reads the number first and skips 0, which is
+a claim being made. Slot 2400 bytes, anchor version 3, `OFTPSVC` 1280.
+
+| Run | Result |
+|---|---|
+| cancel and resubmit `OFTPB` into the same initiator, five tries (`Q1`-`Q5`) and a sixth with the slots read during it | old and new slot: same ASID `0004`, same CSCB `00FE0118`, `OFTPB S01` -- only the job id (`JOB 39`, `JOB 40`) and the claim (17, 18) differ; every time `OFTP066W` for the old slot and no `Q*.OLD` queued, the new job CC 0 with its own `SEND`; `inflight` 0 after |
+| a job whose two steps each `SEND`, then `LIST` | CC 0, both queued: one job id across its steps |
+| `TSTSVC` | 26/26 |
+| `LIST SLOW(30)` + `LIST`, `P OFTPD` | both CC 12, `OFTPD stopped before carrying out the request` |
+
+**Left open:** the request of a caller cancelled before any later claim
+from its address space, while a job of the same name holds the same
+CSCB, is still carried out -- the next claim is what reveals it. TK5
+and a cancelled TSO user are not measured.
