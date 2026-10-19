@@ -21,6 +21,7 @@ from `OFTPD.DEV.LINKLIB`. The spool keeps its name `IBMUSER.OFTP370.SPOOL`
 | `SYSGEN.ISPF.PLIB(ISPMOREB)` | 2026-10-12 | **backup** of `ISPMORE` before the change below, byte for byte (3760 bytes) | delete after restoring |
 | `SYS2.PROCLIB(OFTPDB1)`, `SYS1.CMDPROC(ISPFBK1)`, `SYS2.PARMLIB(OFTPPTNB)` | 2026-10-13 | **backup** of `OFTPD`, `ISPF` and `OFTPPTN0` before the rename (2480, 2160, 800 bytes), byte for byte, read back | copy over the member to go back to `OFTP370.DEV.LINKLIB` and the old partners; delete when no longer needed |
 | `SYS2.PROCLIB(OFTPDB2)` | 2026-10-14 | **backup** of `OFTPD` before its spool default changed (2480 bytes), byte for byte, read back | copy over `OFTPD`; delete when no longer needed |
+| `SYS2.PROCLIB(OFTPDB19)`, `SYS2.PARMLIB(OFTPPR19)` | 2026-10-19 | **backup** of `OFTPD` and `OFTPPRM0` before the move to SVC 237 (2480, 480 bytes), binary, read back byte-identical | copy `OFTPPR19` over `OFTPPRM0`; delete when no longer needed |
 | `SYS1.CMDPROC(ISPFBAK)` | 2026-10-12 | **backup** of the `ISPF` CLIST before the change below, byte for byte (2080 bytes) | delete after restoring |
 
 ## Changed members
@@ -31,6 +32,7 @@ from `OFTPD.DEV.LINKLIB`. The spool keeps its name `IBMUSER.OFTP370.SPOOL`
 | `SYS1.CMDPROC(ISPF)` | 2026-10-12 | `OFTP370.DEV.LINKLIB` appended to the `ISPLLIB` allocation (a continuation line), so the dialog module `OFTPI` and ISPLINK resolve from the ISPLLIB concatenation; since 2026-10-13 `OFTPD.DEV.LINKLIB` | copy `ISPFBAK` over `ISPF` (binary) |
 | `SYS2.PROCLIB(OFTPD)` | 2026-10-14 | the spool default `S='OFTP.SPOOL'` became `S='IBMUSER.OFTP370.SPOOL'`, so a plain `S OFTPD` finds dev1's spool | copy `OFTPDB2` over `OFTPD` |
 | `SYS2.PROCLIB(OFTPD)` | 2026-10-13 | `STEPLIB` `OFTP370.DEV.LINKLIB` -> `OFTPD.DEV.LINKLIB` | copy `OFTPDB1` over it (or delete the member, see above) |
+| `SYS2.PARMLIB(OFTPPRM0)` | 2026-10-19 | `PORT=3305 CONTROLPORT=3306` became `PORT=3305 SVC=237`: the control port is gone from `main` (#32), and the utilities reach OFTPD through SVC 237 | copy `OFTPPR19` over it, and run a build from before #32 |
 | `SYS2.PARMLIB(OFTPPTN0)` | 2026-10-13 | the four test-network partners M38L, M38B (direct), M38X, M38R (`VIA=`) appended, `internals/testnet.md` | copy `OFTPPTNB` over it |
 
 Why the CLIST and not `SYSGEN.ISPF.LLIB`: copying `OFTPI` into the ISPF
@@ -203,3 +205,24 @@ otherwise `S30A`, PSW `075C2000 00F18ACE` (STC00676, 00690, 00693,
 STC00772, 00781 and 00782 the abending TCB is a subtask of the job step
 TCB (`JST` and `OTC` both point to it). Which thread it is has not been
 looked at.
+
+2026-10-19, in a block slot from the MBT session, about 11:17 MVS time:
+dev1 on `main` (`7a9d9a9`, libc370 2.21.0) over SVC 237. Before, dev1
+ran `2253a7a` on libc370 2.17.0, whose `rename()` cut a new name at 32
+characters: a file from M38X as `IBMUSER.OFTPIN.M38X.SVC.TO.DEV1.F`
+(33) failed with `OFTP221E ... NOT RENAMED` and `EFNA 12`
+(`internals/m38-changes.md`). SVC 237 read before (JOB02461) `0000CCC8
+80000000`, 40 of 56; `P OFTPD` (STC00813), `mbt deploy`, which left the
+library at 98% of 180 tracks, so `mbt deploy --reallocate` while OFTPD
+was down (22% afterwards). **The reallocation deleted the library**, and
+its members were not listed before; afterwards it holds OFTP, OFTPD,
+OFTPI and OFTPSVC, which is what `mbt deploy` puts there. `OFTPPRM0` as
+in the table, read back identical; the PROC unchanged. `S OFTPD` ->
+**STC00814**: `OFTP000I oftpd 0.1.0-dev (7a9d9a9)`, `OFTP004I AUTHORIZED
+BY SVC`, `8 OF 8 PARTNERS ENABLED`, `OFTP031I ... FOUND 0000CCC8
+80000000`, `OFTP039I CROSS MEMORY ACTIVE ON SVC 237`. SVC 237 active
+(JOB02465) `00A904C8 C0000000`, 39 of 56; `OFTP` check JOB02466 CC 0,
+8 partners. The ISPF dialog loads `OFTPI` from the same library, so it
+reaches OFTPD through the SVC as well; not tried in this slot. In the
+network retest (`m38-changes.md`) the 33-character name arrived, and a
+41-character one too.
