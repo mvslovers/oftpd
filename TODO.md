@@ -265,7 +265,7 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   allocated, because libc370's `try()` retries without `SDWAFREE` and
   nobody frees the SDWA (measured 2026-10-19 in a container: 0 with the
   bit set; the 6 KB of dev1 were the largest-block probe, not a loss).
-  The fix is libc370's, ticket there. Then: raise the libc370 floor,
+  The fix is libc370's (mvslovers/libc370#640). Then: raise the libc370 floor,
   measure once more with `D M` (`OFTP103I`, debug builds only), and
   remove the `OFTP103I`/`D MH` instrument with that change.
 
