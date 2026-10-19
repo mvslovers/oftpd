@@ -1563,3 +1563,82 @@ IEBGENER control.
 Not shown: a caller without an ACEE, and a system without a security
 product -- both are read off the code.
 
+
+## 15. The failure cases, measured (2026-10-19, #34)
+
+Throwaway MVS/CE containers, the build of #33 (`293706f`) and, for the
+cases that need a parked caller, a test build with `-DOFTP_DEBUG_SLOW`:
+a request carrying `SLOW=n` holds the slot thread n seconds before it
+is served, and a stop cuts the wait short and leaves that request and
+every one behind it unserved (`src/mvs/oftp#mon.c`, never shipped).
+Five initiators for class A (`$SI4-6`), so that five clients run at
+once.
+
+**Instruments, both independent of OFTPD.** The SVC table entry is read
+by Hercules' `r` over its web console: CVT at X'10', SCVT at CVT+X'C8',
+SVC table at SCVT+X'84', SVC 237 at +237*8. The anchor and its slots
+are read with Hercules' `v` at the address `OFTP030I` gives: `inflight`
++X'1C', `full` +X'24', `served` +X'28', slot i's state at
++X'40'+i*X'940'. The image carries no BREXX.
+
+**1. A second `S OFTPD`.** A plain second start waits at allocation for
+the spool (`IEF863I`, `IEF099I WAITING FOR DATA SETS`), before any OFTPD
+code runs. One with its own spool and port (`M=OFTPPRM1,S=...`) and
+also `SVC=237` says `OFTP033E SVC 237 NOT FREE (EP 00A6F5C8 LOCK 00,
+UNUSED EP 0000CCC8), NO CROSS MEMORY` and runs on without the
+transport. Requests went to the first, and its `P` left the entry
+alone: no `OFTP032I`, the table still held the first one's routine.
+The first's `P` restored it; a fresh `S`/`P` took it and gave it back
+again.
+
+**2. `P OFTPD` with clients parked.** One `LIST SLOW(120)` and two
+plain `LIST`s behind it, three slots PENDING. `P OFTPD`: all three jobs
+ended within the second, CC 12, `OFTP010E OFTPD not reached: not
+running, or without SVC=`; the stop took two seconds, and SVC 237 read
+back free. The text is not quite right for them: their request had
+arrived, and the routine cannot tell its caller "stopped" from "not
+there" because both are `OFTP_SVC_DOWN`.
+
+**3. A client cancelled while parked.** `C OFTPB` while its `LIST` was
+PENDING behind a `SLOW(30)`: S222. Its slot was answered when the slot
+thread reached it and went to DONE, because the owner's address space
+is the initiator's and outlives the job; `inflight` stayed at 1, the
+cancelled caller's. 300 seconds after the answer `OFTP061W CROSS MEMORY
+FREED SLOTS X'02' UNCOLLECTED FOR 300 SECONDS`, and `inflight` went to
+0. **So each batch caller cancelled while parked takes one of the four
+slots for five minutes**; four of them within five minutes leave the
+pool full. A cancelled TSO user, whose address space goes away, is the
+liveness check's case and is not measured.
+
+**4. A full pool.** `LIST SLOW(40)` and three `LIST`s: four slots
+PENDING, `inflight` 4. A fifth `LIST` got CC 4, `OFTPD busy, try again`
+(`OFTP_SVC_BUSY`; not `421`, which #1's plan said), and `full` went to
+1. When the slow one ended, the other three each got one complete
+answer, `served` 4, every slot FREE, `inflight` 0.
+
+**5. A caller faulting inside the routine.** It cannot be provoked from
+a caller any more: `TPRNG` (section 6) turns a pointer the caller may
+not store into into a return code. `TSTSVC` step 7 measures that: a
+reply buffer in low core, eight times (twice the pool), each refused
+with `OFTP_SVC_BADREQ` and nothing written, then `STATUS` answered and
+`inflight` 0 -- 24/24. The window left, a second task freeing the
+storage between the `TPROT` and the `MVCK`, was not provoked. The sweep
+was exercised instead by writing the states a fault would leave into
+the anchor with Hercules' `v ...=`:
+
+| Written | Swept | `inflight` after |
+|---|---|---|
+| slot 3 CLAIMED, `inflight` 1 | `OFTP060W ... SLOTS X'08' ...` within 5 s | 0 |
+| slot 2 COPYOUT, `inflight` 1 | `OFTP060W ... SLOTS X'04' ...` within 4 s | 0 |
+| slot 1 CLAIMED, `inflight` left at 0 | `OFTP060W ... SLOTS X'02' ...` | 0, not X'FFFFFFFF' |
+
+A CLAIMED slot with `inflight` 1 written just before `P OFTPD`, so that
+the sweep had no time: `OFTP032I SVC 237 RESTORED` first, ten seconds
+later `OFTP037W CROSS MEMORY DRAIN TIMED OUT, 1 IN FLIGHT, CSA
+RETAINED`, `OFTP003I`. The next `S OFTPD` built a new anchor at another
+address, took the entry, served a `LIST` and gave the entry back at its
+stop; the old anchor and module stay in CSA until the IPL, as section 6
+says.
+
+Not covered: TK5, a cancelled TSO user, and the race between `TPROT`
+and `MVCK`.
