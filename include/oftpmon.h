@@ -82,6 +82,9 @@ typedef struct oftp_mon {
     */
     unsigned     sw_claimed[OFTP_SVC_NSLOT];
     unsigned     sw_copyout[OFTP_SVC_NSLOT];
+#ifdef OFTP_DEBUG_ABEND
+    void        *dbghold;               /* D MH: 100 KB held, #13        */
+#endif
 } OFTP_MON;
 
 /* Console and log: one line, already carrying its message id */
