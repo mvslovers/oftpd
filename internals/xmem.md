@@ -1649,3 +1649,38 @@ says.
 
 Not covered: TK5, a cancelled TSO user, and the race between `TPROT`
 and `MVCK`.
+
+### The stop's answers, corrected (same day)
+
+Case 2 left one thing wrong, and looking at it found a second. The
+routine tested `ACTIVE` before the slot state when it woke. A stop
+clears `ACTIVE` first and joins the slot thread after, so:
+
+- a slot the thread never took is posted STOP, and its caller was told
+  `OFTP_SVC_DOWN`, "not reached", although its request had arrived;
+- a request the thread **was serving** was carried out and answered
+  DONE, and its caller, waking to `ACTIVE` off, was told "not reached"
+  as well.
+
+The routine now reads the state first. DONE delivers the answer
+whatever `ACTIVE` says (the anchor stays while the caller is in
+flight); STOP returns the new `OFTP_SVC_STOPPED` (20), which the client
+prints as `OFTPD stopped before carrying out the request`, RC 12;
+another state with `ACTIVE` off is still `OFTP_SVC_DOWN` (`WAKEDOWN`).
+`OFTPSVC` grows from 1144 to 1152 bytes. The debug build gained
+`LATE=n`: hold a request n seconds whatever happens, then serve it.
+
+Measured in a throwaway MVS/CE container, the anchor read with
+Hercules' `v`:
+
+| Run | Routine | Result |
+|---|---|---|
+| `LIST SLOW(60)` + two `LIST`s, three slots PENDING, `P OFTPD` | new | all three CC 12, `OFTPD stopped before carrying out the request`; entry restored |
+| `SEND ... HOLD LATE(15)` + a `LIST` behind it, `P OFTPD` during the hold | new | anchor `flags 00000000` while both were still in flight; then `OFTP230I T0000001 QUEUED`, the `SEND` job CC 0 with `T0000001 queued and held`, the `LIST` CC 0 showing it |
+| the same `SEND ... LATE(15)`, `P OFTPD` during the hold | **from `main`**, OFTPD unchanged | `OFTP230I T0000002 QUEUED` on the console, and the job CC 12 `OFTPD not reached: not running, or without SVC=` |
+| `TSTSVC` | new | 24/24; SVC 237 restored at the stop |
+
+The third row is the control: the same OFTPD with only the routine
+from `main` reproduces the discarded answer, a `SEND` queued while its
+job ended RC 12.
+
