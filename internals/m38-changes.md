@@ -211,3 +211,45 @@ SVC 237 read before, while active and after (JOB02714, 02720, 02725):
 (mvsMF DELETE, then only OFTPD/OFTPPRM0/OFTPPTN0 left in the lists) and
 the data sets (OFTPDEL JOB02727, CC 0); the job outputs JOB02714-02727
 and STC00109 were purged. Left: `HERC01.OFTPD.V0R1M0D.TESTLIB`.
+
+## m38x: OFTPD from main over SVC 237, 2026-10-19, about 14:33-15:05 MVS time
+
+Slot from the MBT session, after the host outage of the same day. The
+stand was in its 2026-10-14 state (MBT's read and ours): STEPLIB
+`OFTPD.LINKLIB` only, `PORT=3325 CONTROLPORT=3326`, OFTPD running.
+
+Backed up first, binary and as text, kept off the stand and compared
+with each other: `SYS2.PROCLIB(OFTPD)` 2480 bytes, `SYS2.PARMLIB(OFTPPRM0)`
+400, `(OFTPPTN0)` 560 (unchanged).
+
+| What | Result |
+|---|---|
+| SVC 237 before (`JOB00645`, BREXX `STORAGE()`) | `0000CCC8 80000000`; modal EP `0000CCC8` in 40 of 200-255, 235-239 all free -- as on 2026-10-18 |
+| `mbt deploy --reallocate` | `OFTPD.DEV.LINKLIB` deleted and allocated again on WORK00, 160 tracks, 25% used; OFTP, OFTPD, OFTPI, OFTPSVC |
+| `SYS2.PROCLIB(OFTPD)` | `OFTPD.DEV.LINKLIB` ahead of `OFTPD.LINKLIB` in the STEPLIB; read back identical |
+| `SYS2.PARMLIB(OFTPPRM0)` | `PORT=3325 CONTROLPORT=3326` became `PORT=3325 SVC=237`; read back identical |
+| `P OFTPD` | STC00611, `OFTP003I`, 0 sessions before |
+| `S OFTPD` | **STC00612**: `OFTP000I oftpd 0.1.0-dev (7a9d9a9)`, `OFTP004I AUTHORIZED BY SVC`, `OFTP031I SVC 237 ENTRY FOUND 0000CCC8 80000000`, `OFTP030I ... MODULE=00A904C8 (1280 BYTES)`, `OFTP039I CROSS MEMORY ACTIVE ON SVC 237, SUBSYSTEM OFT1` |
+| SVC 237 active (`JOB00648`) | `00A904C8 C0000000`, modal EP in 39 of 56 |
+| `OFTP` batch from the DEV library (`JOB00649`, CC 0) | `PARTNERS` (5), two `SEND`s to DEV1 (T0000010 F, T0000011 T), `LIST MINE` (7); `JOB00650` `LIST`, `JOB00651` `SHOW` |
+
+`JOB00643` and `JOB00644` were the same SVC reader with a broken
+instream DD (`/*` in column 1 ends `DD *`; `DD DATA,DLM=@@` and a
+`STDOUT` DD are what BREXX needs) and printed nothing.
+
+**The file to DEV1 did not arrive.** DEV1 is reached via M38L. m38x sent
+both files to m38l (`OFTP211I ... SENT`), m38l received them (its
+T0000021/22 `RECV CONFIRMED`) and passed them on, and dev1 refused both
+on the first attempt with reason 12, no retry (m38l T0000019/20
+`REJECTED`, "refused by the partner, reason 12"). m38l then sent the
+NERP 12 back, and T0000010/11 on m38x are `REJECTED`. Nothing
+`IBMUSER.OFTPIN.M38X.SVC.*` exists on dev1. The cause on dev1 is not
+read yet: its console messages do not reach the Hercules log.
+
+**The lasting state: m38x runs a DEV build ahead of the SMP level.**
+`OFTPD.LINKLIB` still holds TOFT010; the STEPLIB's first library wins.
+
+Undo: write the two backed-up members back (the STEPLIB line
+`//STEPLIB  DD  DISP=SHR,DSN=OFTPD.LINKLIB` alone, and
+`PORT=3325 CONTROLPORT=3326`), then `P OFTPD` and `S OFTPD`; the stop
+gives SVC 237 back (`OFTP032I`). `OFTPD.DEV.LINKLIB` can stay or go.
