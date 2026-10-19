@@ -37,9 +37,10 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   four, `internals/m38-changes.md`; burned in the workspace SMP table
   since 2026-10-19). **Before 0.2.0 is cut: `LIST CDS/ACDS
   SYSMOD(TOFT020)` on m38l, m38x, m38b and m38r, with job numbers** --
-  `TOFT020` is not checked on any stand yet. Each stand also needs
-  `SVC=237` in its `OFTPPRM0` and `CONTROLPORT=` removed before it runs
-  a build from `main`.
+  `TOFT020` is not checked on any stand yet. ~~Each stand on `main`
+  with `SVC=237`~~ -- done 2026-10-19 on all five, a DEV build ahead of
+  TOFT010 on the M38 stands, network retest passed
+  (`internals/m38-changes.md`).
 - **Cross-memory transport** (#1, `internals/xmem.md`, a private SVC):
   SVC 237, free on all five stands (measured 2026-10-14); the ESTAE is
   in (d5b8bdc, measured with a CANCEL on dev1), #2 too; the handlers

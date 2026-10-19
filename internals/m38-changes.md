@@ -244,15 +244,17 @@ on the first attempt with reason 12, no retry (m38l T0000019/20
 `REJECTED`, "refused by the partner, reason 12"). m38l then sent the
 NERP 12 back, and T0000010/11 on m38x are `REJECTED`. Nothing
 `IBMUSER.OFTPIN.M38X.SVC.*` and no `IBMUSER.OFTPTMP.*` exists on dev1
-(MBT, read only). The cause is **inferred, not read**: dev1's console
-messages reach neither the Hercules log nor STC00813's JESMSGLG. dev1
+(MBT, read only). The cause, first inferred by MBT and then read on dev1's console by
+the maintainer: `OFTP221E M38L: IBMUSER.OFTPTMP.T0000157 NOT RENAMED TO
+IBMUSER.OFTPIN.M38X.SVC.TO.DEV1.F`, then `EFNA 12`, the same for
+T0000158 (dev1's console messages reach neither the Hercules log nor
+STC00813's JESMSGLG). dev1
 runs `2253a7a`, built on libc370 2.17.0, whose `rename()` writes the
 `ALTER ... NEWNAME()` past column 72 (fixed in 2.18.1, libc370#590).
 The final name `IBMUSER.OFTPIN.M38X.SVC.TO.DEV1.F` has 33 characters;
 cut at 32 it ends in a dot, the ALTER fails, and `OFTP221E` answers
-reason 12 without retry -- all of which fits. The test that would show
-it is the same send under a name of at most 31 characters, or dev1 on a
-build with libc370 2.18.1 or later; both write on dev1.
+reason 12 without retry. Gone with dev1 on `main` (below, the
+retest): the same name arrived.
 
 **The lasting state: m38x runs a DEV build ahead of the SMP level.**
 `OFTPD.LINKLIB` still holds TOFT010; the STEPLIB's first library wins.
@@ -261,3 +263,70 @@ Undo: write the two backed-up members back (the STEPLIB line
 `//STEPLIB  DD  DISP=SHR,DSN=OFTPD.LINKLIB` alone, and
 `PORT=3325 CONTROLPORT=3326`), then `P OFTPD` and `S OFTPD`; the stop
 gives SVC 237 back (`OFTP032I`). `OFTPD.DEV.LINKLIB` can stay or go.
+
+## All five on main over SVC 237, and the retest, 2026-10-19
+
+A block slot from the MBT session for dev1, m38l, m38b and m38r, one
+after the other, then the network retest; m38x was done earlier the
+same day (above). The build is `7a9d9a9`, linked with libc370 2.21.0
+(the module carries no libc370 level; the long names below are the
+proof of 2.18.1 or later). dev1 is in `internals/dev1-changes.md`.
+
+**Backups on each stand**, besides the local copies: the original
+`SYS2.PROCLIB(OFTPD)` as `(OFTPDB19)` and `SYS2.PARMLIB(OFTPPRM0)` as
+`(OFTPPR19)`, new names on all five, written binary and read back
+byte-identical (PROC 2480 bytes everywhere, OFTPPRM0 400, dev1 480).
+
+On m38l, m38b and m38r: `OFTPD.DEV.LINKLIB` allocated by `mbt deploy`
+(m38l WORK00, m38b and m38r TSO001, 160 tracks each), the STEPLIB with
+the DEV library ahead of `OFTPD.LINKLIB`, `PORT=33n5 SVC=237` in place
+of `PORT=33n5 CONTROLPORT=33n6`; both members read back identical.
+
+| Stand | SVC 237 before | OFTPD | SVC 237 active | `OFTP` check |
+|---|---|---|---|---|
+| m38l | JOB01795 `0000CCC8 80000000`, 40/56 | STC00879 | JOB01797 `00A904C8 C0000000`, 39/56 | JOB01798 CC 0 |
+| m38b | JOB02728 `00017068 80000000`, 37/56 | STC00132 | JOB02730 `009D60C0 C0000000`, 36/56 | JOB02731 CC 0 |
+| m38r | JOB00917 `00017068 80000000`, 37/56 | STC00113 | JOB00919 `009D60F0 C0000000`, 36/56 | JOB00920 CC 0 |
+
+STC00132 and STC00113 showed `OFTP000I oftpd 0.1.0-dev (7a9d9a9)`,
+`OFTP004I AUTHORIZED BY SVC`, `OFTP031I ... FOUND 00017068 80000000`,
+`OFTP039I`. On m38l the banner was not seen: `S OFTPD` was given while
+the old STC00878 was still stopping, so the new one waited for the
+spool (`IEF861I`/`IEF099I`) and got it in the same second STC00878
+ended; its console lines did not come back. That it runs `main` rests
+on SVC 237 being taken (0.1.0 takes none) and the `OFTP` check over it.
+On the TK5 stands the old OFTPD's output was printed and purged at its
+end (`$HASP150 ... 13,189 LINES`, the #12 SYSUDUMP).
+
+**m38r, the TK5 reference stand, is a development stand now**: a DEV
+build sits ahead of its SMP level, so it no longer shows what an
+installation from the release does, until it is backed out. The same
+holds for m38l, m38b and m38x.
+
+### The retest
+
+Seven sends, one job per sending stand (all CC 0), the received names
+up to 41 characters (a virtual file name has at most 26). All seven
+`DELIVERED` with the EERP back (LIST JOB00653 m38x, 02468 dev1, 00922
+m38r, 02733 m38b, 01800 m38l), and every received data set identical to
+its source (compared as text; the check tells a different source and a
+missing data set apart).
+
+| Job | From | To | Path | Received as |
+|---|---|---|---|---|
+| m38x JOB00652 | M38X | DEV1 | via M38L | `IBMUSER.OFTPIN.M38X.SVC.TO.DEV1.F` and `.T` (33) -- the name that failed before |
+| m38x JOB00652 | M38X | M38B | M38L, DEV1 | `OFTPD.IN.M38X.SVC.TO.M38B.LONG.NAME` (35) |
+| dev1 JOB02467 | DEV1 | M38X | via M38L | `OFTPD.IN.DEV1.SVC.TO.M38X.F` and `.T` |
+| m38r JOB00921 | M38R | DEV1 | via M38B | `IBMUSER.OFTPIN.M38R.SVC.TO.DEV1.LONG.NAME` (41) |
+| m38b JOB02732 | M38B | M38L | via DEV1 | `OFTPD.IN.M38B.SVC.TO.M38L.F` |
+| m38l JOB01799 | M38L | M38R | DEV1, M38B | `OFTPD.IN.M38L.SVC.TO.M38R.HOP3` |
+
+Now running: dev1 STC00814, m38l STC00879, m38x STC00612, m38b STC00132,
+m38r STC00113, all `7a9d9a9`, SVC 237 active, no control port.
+
+Undo, per stand: copy `OFTPDB19` over `SYS2.PROCLIB(OFTPD)` and
+`OFTPPR19` over `SYS2.PARMLIB(OFTPPRM0)`, `P OFTPD`, `S OFTPD`; the
+stop gives SVC 237 back (`OFTP032I`). Then the TOFT010 level runs again
+(dev1: the PROC is unchanged, the old OFTPD level is gone, see
+`dev1-changes.md`). The test files `*.OFTPIN.*.SVC.*` and
+`OFTPD.IN.*.SVC.*` can be deleted.
