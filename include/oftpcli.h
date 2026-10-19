@@ -5,31 +5,22 @@
 ** src/oftp#rep.c)
 **
 ** OFTPD answers a request with lines "1xx text" and ends with one final
-** line "2xx/4xx/5xx text", whichever transport carried it. Two do:
-**
-** - The cross-memory SVC (internals/xmem.md), when no host is given.
-**   The caller's userid is OFTPD's to read, not the caller's to say.
-** - The TCP control port, one request per connection after a 220
-**   greeting, when a host is given. During development; it has no
-**   security and believes OWNER= (CLAUDE.md).
-**
-** There is no fallback from one to the other: a caller that relies on
-** its identity being real must not land on the port without knowing.
-** Used by the OFTP utility and the ISPF dialog.
+** line "2xx/4xx/5xx text". The request travels by the cross-memory SVC
+** (internals/xmem.md); the caller's userid is OFTPD's to read, not the
+** caller's to say. Used by the OFTP utility and the ISPF dialog.
 */
 
 /* Called for each 1xx line, text without the code */
 typedef void (*OFTP_CLILINE)(void *ctx, const char *text);
 
-/* Sends req and collects the answer: over the SVC when host is NULL or
-** "", else to host and port. final[cap] gets the final line's text.
+/* Sends req over the SVC and collects the answer. final[cap] gets the
+** final line's text.
 ** Returns the return code the utility documents:
 **   0 done, 4 warning or refused for now, 8 error in the request,
 **   12 severe (unknown partner, OFTPD not reached or not answering).
 */
-extern int  oftp_cli_request(const char *host, int port, const char *req,
-                             OFTP_CLILINE line, void *ctx, char *final,
-                             int cap)                   asm("OFTPCLRQ");
+extern int  oftp_cli_request(const char *req, OFTP_CLILINE line, void *ctx,
+                             char *final, int cap)      asm("OFTPCLRQ");
 
 /* The return code for one final line (the table in oftp#rep.c) */
 extern int  oftp_cli_rc(const char *line)               asm("OFTPCLRC");
@@ -44,8 +35,5 @@ extern int  oftp_cli_rc(const char *line)               asm("OFTPCLRC");
 extern int  oftp_cli_piece(const char *buf, unsigned len, OFTP_CLILINE line,
                            void *ctx, char *final, int cap)
                                                         asm("OFTPCLPC");
-
-/* The userid of this address space's ACEE into user[9], "" if none */
-extern void oftp_cli_whoami(char *user)                 asm("OFTPCLWH");
 
 #endif /* OFTPCLI_H */

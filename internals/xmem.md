@@ -364,6 +364,21 @@ OFTPD delays one `OFTP LIST` -- so the MVP does without, and adds it
 
 ## 7. Transition
 
+**Finished on 2026-10-19** (#32): the TCP control port is removed, client
+and server, and `CONTROLPORT=` is an unknown keyword (`OFTP010W`). The
+SVC is the only way in; `oftp_cli_request()` has no host any more.
+Measured in a throwaway MVS/CE container the same day, with a member
+that still said `PORT=3305 CONTROLPORT=3306 SVC=237`: `OFTP010W OFTPPRM:
+line 2: unknown keyword CONTROLPORT`, then `OFTP039I CROSS MEMORY ACTIVE
+ON SVC 237` and `OFTP001I OFTPD READY`; nothing listened on 3306
+(connection refused, 3305 answered). Twelve `OFTP` steps in one batch
+job, all CC 0 (SEND with HOLD and with `DISP(DELETE)`, LIST, LIST MINE,
+SHOW, HOLD by partner, RELEASE and HOLD by key, PARTNERS, DELETE, and a
+LIST still carrying `HOST(127.0.0.1) PORT(3306)`, which OFTPD now passes
+over); `TSTSVC` 20/20; at `P OFTPD`, `OFTP032I SVC 237 RESTORED, ENTRY
+READS 0000CCC8 80000000`. The dialog was not run. What follows is how
+the transition went, kept as it was written.
+
 - Client: `oftp_cli_request()` with no host goes through the SVC, with a
   host through TCP, and never falls back from one to the other: a caller
   relying on its identity being real must not land on the port unnoticed.

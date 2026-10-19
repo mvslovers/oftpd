@@ -6,8 +6,7 @@ TSO and batch, and an ISPF dialog. It speaks OFTP 2.0 without its security
 features, and OFTP 1.4 and 1.3, over plain TCP/IP. It is meant for
 hobbyist and test systems, not for production use: there is no TLS and
 no certificate. The utilities reach the monitor through an SVC of its
-own, so the monitor knows who is asking; a TCP control port without any
-security is there as well, for development.
+own, so the monitor knows who is asking.
 
 This package installs it through SMP 4, the SMP that comes with MVS 3.8j.
 
@@ -123,8 +122,7 @@ them. Each member describes its keywords at the top.
 - `OFTPPRM0`: this system's Odette ID (`ODETTEID`, required), the OFTP
   port (`PORT`, 3305), the SVC the utilities reach OFTPD through
   (`SVC=237`; without it they find no OFTPD), the userids that may manage
-  every transfer (`ADMIN=`, one per userid), the control port
-  (`CONTROLPORT`, 3306), and the prefixes for received files
+  every transfer (`ADMIN=`, one per userid), and the prefixes for received files
   (`INPREFIX`, `TMPPREFIX`). A received file is stored as
   `INPREFIX.<virtual file name>`. `RELAY=Y` makes this system a node that
   passes files on to its partners. `KEEPDAYS` is how long finished
@@ -137,9 +135,12 @@ them. Each member describes its keywords at the top.
   other side's limit is refused and made again after a short pause.
 
 The sockets are the Hercules host's: `127.0.0.1` is the machine Hercules
-runs on, not MVS, and the ports are opened there. Anyone who can reach
-the control port can queue, list and change every transfer, whoever
-queued it; set `CONTROLPORT=0` unless you need it.
+runs on, not MVS, and the OFTP port is opened there.
+
+Coming from 0.1.0: the TCP control port is gone. Remove `CONTROLPORT=`
+from `OFTPPRM0` (OFTPD reports it as an unknown keyword with `OFTP010W`)
+and add `SVC=237`, without which the utilities and the dialog cannot
+reach OFTPD at all.
 
 ## 7. The procedure
 
@@ -155,8 +156,7 @@ spool and the authority to create data sets under `INPREFIX` and
 Start it with `S OFTPD` (or `S OFTPD,S='MY.SPOOL'`). The console shows
 `OFTP000I` with the version, `OFTP004I` (step 4), `OFTP014I` with the Odette ID and the number
 of partners enabled, `OFTP001I OFTPD READY`, `OFTP051I LISTENING ON PORT
-3305, SOCKET n`, `OFTP053I CONTROL PORT 3306 (NO SECURITY), SOCKET n` and
-`OFTP039I CROSS MEMORY ACTIVE ON SVC 237, SUBSYSTEM OFT1`. A partner entry
+3305, SOCKET n` and `OFTP039I CROSS MEMORY ACTIVE ON SVC 237, SUBSYSTEM OFT1`. A partner entry
 with an error is reported with `OFTP010W` and disabled; the others still
 work.
 
@@ -205,8 +205,8 @@ stopped by the end of its window. `SHOW` prints both.
 
 `SEND ... DISP(DELETE)` deletes the data set once the partner has
 confirmed it with its EERP, never earlier; a refusal (NERP) keeps it.
-It needs the authority to delete the data set (ALTER), takes a whole
-data set and not a member, and is not offered over the control port.
+It needs the authority to delete the data set (ALTER) and takes a whole
+data set, not a member.
 
 `SEND` checks your authority, not OFTPD's: OFTPD asks the security
 product (RAKF) whether your userid may read the data set, and refuses
@@ -221,11 +221,6 @@ Anyone else gets `not your transfer` (RC 8). `LIST` shows an
 administrator everything, and `LIST MINE` only their own. `CALL` and
 `PURGE` are for an administrator only; `PURGE DAYS(0)` deletes every
 finished transfer, however recent.
-
-`HOST(...)` and `PORT(...)` send the command to the TCP control port
-instead (127.0.0.1 and 3306 for whichever is left out). It is for
-development: it has no security, believes the userid `OFTP` sends with
-the command, and lets everyone do everything.
 
 ## 9. The ISPF dialog
 
@@ -246,11 +241,8 @@ SELECT CMD(OFTPI) NEWAPPL(OFTP)
 for example as an entry in a menu panel: a line for the option in the
 body, and `O,'CMD(OFTPI) NEWAPPL(OFTP)'` in its `TRANS` (replace `O` with
 the option you choose). The dialog reaches OFTPD the way `OFTP` does,
-with the same rules: through the SVC, or through the control port when a
-host is set under its Monitor option, which keeps host and port in your
-ISPF profile. A profile from a release before the SVC holds
-`127.0.0.1`; clear the host there to use the SVC. Reading the partner
-member again after option 4 is for an administrator.
+through the SVC and with the same rules. Reading the partner member
+again after option 4 is for an administrator.
 
 ## Removing it
 

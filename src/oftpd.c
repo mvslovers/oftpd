@@ -105,7 +105,6 @@ main(int argc, char **argv)
         return 8;
     }
     memcpy(m->eye, "OFTPMON ", 8);
-    m->csock = -1;
     if ((stae = estae(ESTAE_CREATE, recover, m) == 0) == 0)
         oftp_mon_msg("OFTP006W NO ABEND RECOVERY (ESTAE FAILED)");
     oftp_cfg_defaults(&m->cfg);
@@ -137,7 +136,8 @@ main(int argc, char **argv)
         goto out;
     }
     /* The transport last, after the monitor is up: it reports its own
-    ** outcome and OFTPD runs on with TCP when it does not install.
+    ** outcome, and OFTPD runs on for its partners and the operator when
+    ** it does not install.
     **
     ** The install's return code IS tested now, because what follows
     ** turns the thing on -- the slot thread first, then the SSCT and

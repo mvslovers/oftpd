@@ -1,4 +1,4 @@
-/* oftp#net.c - TCP for the monitor and the utility (MVS only) */
+/* oftp#net.c - TCP for the monitor (MVS only) */
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
@@ -14,9 +14,6 @@
 
 #include "oftpfld.h"
 #include "oftpnet.h"
-#include "oftpxlt.h"
-
-#define WIRE_LF     0x0A
 
 int
 oftp_net_listen(int port, int *err)
@@ -172,45 +169,4 @@ oftp_net_xport(OFTP_NETX *nx, OFTP_XPORT *x)
     x->ctx = nx;
     x->send = x_send;
     x->recv = x_recv;
-}
-
-int
-oftp_net_puts(int s, const char *text)
-{
-    unsigned char buf[600];
-    unsigned n = 0;
-
-    while (*text && n < sizeof(buf) - 2)
-        buf[n++] = OFTP_L2W(*text++);
-    buf[n++] = OFTP_WIRE_CR;
-    buf[n++] = WIRE_LF;
-    return send(s, buf, (int)n, 0) == (int)n ? 0 : -1;
-}
-
-int
-oftp_net_gets(int s, char *buf, int cap, int secs)
-{
-    int n = 0;
-
-    for (;;) {
-        unsigned char c;
-        int rc;
-
-        if (wait_read(s, secs, NULL) != 0)
-            return -1;
-        rc = recv(s, &c, 1, 0);
-        if (rc == 0)
-            return n > 0 ? n : -1;
-        if (rc < 0) {
-            if (errno == EWOULDBLOCK)
-                continue;
-            return -1;
-        }
-        if (c == WIRE_LF)
-            break;
-        if (c != OFTP_WIRE_CR && n < cap - 1)
-            buf[n++] = OFTP_W2L(c);
-    }
-    buf[n] = '\0';
-    return n;
 }

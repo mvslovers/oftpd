@@ -97,10 +97,8 @@ oftp_svc_call(const char *req, char *reply, unsigned cap, unsigned resume,
     if (n == 0 || n > OFTP_SVC_REQMAX)
         return OFTP_SVC_BADREQ;
 
-    /* Discovery. Every one of these answers "OFTPD is not running",
-    ** which is the same answer the TCP control port gives when it
-    ** does not accept -- the caller is not meant to tell the two
-    ** apart (xmem.md section 7).
+    /* Discovery. Every one of these answers "OFTPD is not running":
+    ** the caller is not meant to tell them apart (xmem.md section 7).
     */
     if ((ssct = ssct_find(OFTP_SVC_SSNAME)) == NULL)
         return OFTP_SVC_DOWN;

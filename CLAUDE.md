@@ -32,15 +32,17 @@ module carry the same name, as FTPD's do.
 - **The monitor is the sole owner** of the spool (a VSAM KSDS, one record per
   transfer, also holding the restart state) and of the partner table. The
   utilities never touch them; they ask the monitor.
-- **Utilities reach the monitor by cross-memory — that is the target** —
-  because only there is the caller's identity real. **During development
-  they use a TCP control port without security.** Both carry the same
-  requests; keep the request layer transport-neutral and never treat a TCP
-  caller as authenticated. (The sockets are the Hercules host's, so
-  "loopback" is the PC, not MVS.) The client side lives in the shared code,
-  so `OFTP`, batch and later ISPF dialogs (libc370 `mvs/ispf.h`) are all
-  the same kind of client. The operator uses MODIFY/STOP on the started
-  task.
+- **Utilities reach the monitor by cross-memory, through OFTPD's own SVC**
+  (`internals/xmem.md`), because only there is the caller's identity real.
+  The TCP control port they used during development was removed on
+  2026-10-19 (#32): it had no security, and a second way in would be one
+  where nobody is known. Keep the request layer transport-neutral all the
+  same (the handlers write through an output function), so another
+  transport -- an HTTP API, say -- can be added without touching them; it
+  must bring a real identity with it. (The sockets are the Hercules
+  host's, so "loopback" is the PC, not MVS.) `OFTP`, batch and the ISPF
+  dialog are all the same kind of client. The operator uses MODIFY/STOP
+  on the started task.
 
 ## Build
 

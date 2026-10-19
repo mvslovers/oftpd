@@ -24,7 +24,9 @@ MVP does not block it; what the MVP leaves out is marked *later* there.
 - Unsigned EERP, sent and received; the spool tracks it.
 - The spool KSDS (section 3), owned by OFTPD.
 - Partners in a parmlib member read at startup (section 4).
-- `OFTP SEND` and `OFTP LIST` over the TCP control port, no security.
+- `OFTP SEND` and `OFTP LIST` (then over a TCP control port without
+  security; over OFTPD's SVC since 2026-10-18, the port removed on
+  2026-10-19, section 7).
 - `F OFTPD,D ...`, `F OFTPD,CALL`, `P OFTPD`.
 
 **Partners behind a partner** (*decided* 2026-10-12, stage 1 of routing):
@@ -72,15 +74,15 @@ beyond one hop, cross-memory transport.
 
 ```
             TSO / batch / ISPF                        partners
-         OFTP ...      (later) dialogs           (OFTP 1.3 / 1.4 / 2.0)
+         OFTP ...       ISPF dialog              (OFTP 1.3 / 1.4 / 2.0)
                \          /                               |
-          control port (loopback TCP)               port 3305 (TCP)
+          SVC 237 (cross memory)                    port 3305 (TCP)
                   \    /                                  |
    +-----------------------------------------------------------------+
    | OFTPD (started task, APF, AC(1))                                |
    |                                                                 |
    |  main task ---- CIB polling (MODIFY / STOP), startup, shutdown  |
-   |  control listener --> control workers                           |
+   |  slot thread ------> request handlers (SVC callers)             |
    |  OFTP listener ----> session workers (inbound)  \               |
    |  scheduler --------> session workers (outbound) -+-> spool      |
    |                                                  |   server     |
@@ -118,7 +120,7 @@ Threads:
 | spool server | the only thread that issues VSAM requests (section 3.4) |
 
 Configuration (`DD:OFTPPRM`, `key=value` like ftpd): local Odette ID, OFTP
-port, control port, data set names of spool and partner table, `MAXSESS`,
+port, the SVC number, data set names of spool and partner table, `MAXSESS`,
 timers, default SDEB and credit, inbound data set naming defaults, trace
 level.
 
@@ -496,25 +498,28 @@ EERPs while the first still ran, which ended with nothing to send. Not covered b
 a trial: a session that ends, or abends, while it holds a claim. That
 path is the session's cleanup, read, not measured.
 
-## 7. The control port
+## 7. How the utilities reach OFTPD
 
 *Decided* (2026-10-12): **the target is cross-memory** (an SVC or subsystem
 interface, like ufsd's), because only there does OFTPD see the caller's
-real identity. **During development the transport is TCP**, with no
-security: it is the cheaper start and lets a PC drive the monitor in
-tests. Both carry the same requests and answers; only the transport
-underneath changes. So the request layer must not depend on TCP (no
-reliance on stream properties, no per-connection state beyond the
-request), and nothing may assume that a TCP caller is trustworthy.
+real identity. During development the transport was a TCP control port
+with no security, the cheaper start, which let a PC drive the monitor in
+tests. Both carried the same requests and answers, so the request layer
+does not depend on the transport: the handlers write lines through an
+output function, and keep no per-caller state beyond the request.
 
 *Decided* (2026-10-14): the cross-memory transport is **a private SVC**
 that OFTPD installs at start, not the subsystem interface, because an
 SSI caller must be authorized and the utilities are not. The design is
 in `internals/xmem.md`.
 
-Note: the sockets are the Hercules host's (DYN75), so "loopback" is the
-PC running Hercules, not MVS. Any process on that PC can reach the port.
-Acceptable for development, not for anything else.
+*Decided* (2026-10-19, #32): **the control port is removed**, code and
+documentation. Its sockets were the Hercules host's (DYN75), so any
+process on the PC running Hercules could queue, list and change every
+transfer, and a `SEND` over it read the data set with OFTPD's authority.
+Another transport -- an HTTP API, say -- can be added beside the SVC
+through the same output function, and it has to bring a real identity
+with it.
 
 Proposed protocol: line-based text, one request per line, numbered
 responses in the FTP manner (`2xx` done, `4xx` try later, `5xx` refused),
@@ -525,18 +530,14 @@ ADD|CHANGE|DELETE|LIST`, `STATUS`.
 ### 7.1 Who is asking
 
 OFTPD acts on the requester's behalf: it reads the data set to be sent and
-lets the requester see and change their transfers. Over TCP, **OFTPD
-cannot tell who is calling** — a connection carries no identity. That is
-why cross-memory is the target (7, above): there the caller's ACEE is
-real.
+lets the requester see and change their transfers. Over the SVC the
+caller's ACEE is real: the routine reads the userid, and the client
+cannot say one (`internals/xmem.md` section 13). The control port could
+not tell who was calling and believed the userid the client sent, which
+is why it is gone (7, above).
 
-Until then the client sends its userid and OFTPD believes it. That is a
-development shortcut, not a security model, and the TCP transport is not
-to be offered as one.
-
-**Built for the SVC** (2026-10-18, `src/mvs/oftp#sec.c`, measured in
-`internals/xmem.md` section 14); the TCP port, which knows nobody, is
-not checked. **The check itself** was planned for both transports: OFTPD builds an ACEE
+**Built** (2026-10-18, `src/mvs/oftp#sec.c`, measured in
+`internals/xmem.md` section 14). **The check itself**: OFTPD builds an ACEE
 for the requester's userid without a password (RACINIT, possible because
 OFTPD is APF) and checks READ on the data set to be sent — and for
 post-processing, on the job library. Under RAKF a missing profile means
@@ -546,8 +547,7 @@ replace the check *later*; whatever is shipped **refuses by default**.
 
 **With OFTPD down, nothing can be queued.** That is intended: OFTPD is
 the only writer of the spool. If it bites, a drop data set that OFTPD
-reads at startup can be added later. A password check over TCP (RACINIT) can be added if
-the TCP transport ever has to live longer than planned.
+reads at startup can be added later.
 
 ### 7.2 Utilities
 
@@ -595,7 +595,7 @@ next file boundary), **cancel** (now; the transfer goes to `WAITING`) and
 
 **Messages**: `OFTPnnnnS`, S one of `I W E` and `P` for messages that go
 to the log only and never to the console. Number ranges per component
-(monitor, session, spool, control port, utility). Every session message
+(monitor, session, spool, requests, utility). Every session message
 starts with the partner name, so a log of several sessions can be read.
 The log is a SYSOUT data set; the console sees only what an operator must
 act on.
@@ -604,7 +604,8 @@ act on.
 
 1. Codec and session engine on the host (tests against the RFC examples),
    then OFTPD with spool, partner table, inbound and outbound sessions,
-   control port and `OFTP`; interop with mendelson OFTP2 CE at level 5.
+   a TCP control port (removed 2026-10-19) and `OFTP`; interop with
+   mendelson OFTP2 CE at level 5.
 2. Buffer compression, receiver-side restart, post-processing, levels 4
    and 2 against a 1.x peer.
 3. Cross-memory transport for the utilities (the target, section 7).
@@ -620,8 +621,8 @@ act on.
 - ~~Q5~~ Received data sets under the virtual file name (5.2); patterns
   later.
 - ~~Q6~~ Post-processing: JCL submit and exit, later (5.3).
-- ~~Q7~~ Control port identity: *decided* — cross-memory is the target,
-  TCP without security during development (section 7).
+- ~~Q7~~ Who is asking: *decided* — cross-memory through OFTPD's SVC,
+  the control port removed (section 7).
 - **Q8** (*later*) Virtual local Odette IDs (several per installation);
   the MVP has one.
 

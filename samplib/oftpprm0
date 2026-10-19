@@ -5,9 +5,6 @@
 *
 * ODETTEID     this installation's Odette ID (required)
 * PORT         OFTP port for calls from partners          (3305)
-* CONTROLPORT  TCP port for OFTP HOST(...) PORT(...), 0 = none (3306)
-*              for development: NO SECURITY, anyone who can reach
-*              this port can queue, list and change any transfer
 * INPREFIX     received files are INPREFIX.<virtual name>  (OFTP.IN)
 * TMPPREFIX    files while being received                  (OFTP.TMP)
 * MAXSESS      sessions at a time                          (4)
@@ -50,5 +47,5 @@
 * ADMIN=IBMUSER
 *
 ODETTEID=O0000000000MYMVS
-PORT=3305 CONTROLPORT=3306 SVC=237
+PORT=3305 SVC=237
 INPREFIX=OFTP.IN TMPPREFIX=OFTP.TMP

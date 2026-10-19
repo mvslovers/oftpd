@@ -23,7 +23,7 @@ main(void)
 {
     static const char *prm[] = {
         "* monitor",
-        "ODETTEID=o0013000000mvs1 PORT=3305 CONTROLPORT=3306",
+        "ODETTEID=o0013000000mvs1 PORT=3305",
         "INPREFIX=OFTP.IN TMPPREFIX=OFTP.TMP MAXSESS=2",
         "SDEB=2048,CREDIT=7",
         NULL };
@@ -54,6 +54,11 @@ main(void)
     CHECK_EQ(c.svc, 0, "SVC has no default: no number, no transport");
     CHECK_EQ(oftp_cfg_line(&c, 0, "PORT=0 BOGUS=1", 9, count, NULL), 2,
              "a bad value and an unknown keyword");
+    /* the TCP control port is gone: a member that still names it gets
+    ** the warning any unknown keyword gets (OFTP010W), and nothing else
+    */
+    CHECK_EQ(oftp_cfg_line(&c, 0, "CONTROLPORT=3306", 10, count, NULL), 1,
+             "CONTROLPORT= is an unknown keyword");
 
     /* SVC= takes 200-255 only. Outside it has to be an error and must
     ** leave the field alone: a typo that silently left the transport

@@ -110,8 +110,12 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   faulted copy-out from a caller that is merely swapped out). Both of
   those are in; the sweep itself is part of `oftp#svc.c`, and whoever
   frees a slot owns its in-flight decrement -- a second decrement
-  underflows the count and wedges `P OFTPD`. It replaces the TCP
-  control port, which goes off by default in 0.2.0.
+  underflows the count and wedges `P OFTPD`. It replaced the TCP
+  control port, ~~which goes off by default in 0.2.0~~ removed entirely
+  (#32, 2026-10-19). #16 is closed (2026-10-19); still not run from #1's
+  plan: the sweep with a slot in flight, two clients at once and a full
+  pool (`421`), a client cancelled while parked, `P OFTPD` with a client
+  parked, a second `S OFTPD`.
   **The utilities use it** (#22, `internals/xmem.md` section 13): no
   host means the SVC, no fallback to TCP; the caller's userid travels
   beside the request line, and `ADMIN=` in `OFTPPRM` decides who sees
@@ -183,8 +187,8 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   a size of 0 gets `TRK(15,15)` instead of `TRK(5,3)`. Measured in two
   MVS/CE containers: 64 000 records (5 MB) delivered with the EERP and
   identical; `TSTDSF` 40/40. A file from mendelson is not checked.
-- The control port answers one of several requests that arrive at once:
-  of four parallel `RELEASE`s one got `200` (containers, 2026-10-18).
+- ~~The control port answers one of several requests that arrive at
+  once~~ -- moot, the port is gone (#32).
 - `F OFTPD,D P`: name the `VIA` partner instead of `-:3305`.
 - ~~mendelson: the M38 nodes as partners there~~ — 2026-10-14, with
   the rename DEV1 -> `O0000000000DEV1`, MENDEL -> MAC1
@@ -210,13 +214,9 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   `test/tso/ispf.lua` runs at 80x43 (`[tso.ispf] size`, mbt 3.0.0-dev).
 - TBCREATE from a CLIST answers RC 20 on dev1 (also with the variables
   set first, as Wally's CMEMFIND does); not understood.
-- Dialog lag: the control port now looks for a request every 0.1 s
-  (was 1 s; greeting after 0.04-0.10 s instead of 1.0 s). A request
-  still takes 1.1-1.2 s in the dialog against 0.03-0.05 s for a panel
-  without one, the same for 5 answer lines (Monitor) as for 9
-  (Transfers): a fixed cost per request on the MVS client side, not per
-  row or byte. A 0.1 s select() tick on the client changed nothing (A/B
-  on dev1). Next suspects: connect() and closesocket() through DYN75.
+- ~~Dialog lag over the control port~~ (1.1-1.2 s per request, suspects
+  connect() and closesocket() through DYN75) -- moot, the port is gone
+  (#32). How long a dialog request takes over the SVC is not measured.
 
 - ~~Spool housekeeping~~ (from rvsMVS's cleanup job): `KEEPDAYS=n`
   (default 7) deletes finished transfers once a day, `PURGE [DAYS(n)]`

@@ -22,7 +22,6 @@ oftp_cfg_defaults(OFTP_CONFIG *c)
 {
     memset(c, 0, sizeof(*c));
     c->port = 3305;
-    c->ctlport = 3306;
     strcpy(c->inprefix, "OFTP.IN");
     strcpy(c->tmpprefix, "OFTP.TMP");
     c->maxsess = 4;
@@ -97,8 +96,6 @@ monitor_kw(OFTP_CONFIG *c, const char *k, const char *v)
         return put(c->odetteid, sizeof(c->odetteid), v);
     if (strcmp(k, "PORT") == 0)
         return (n = num(v, 1, 65535)) < 0 ? -1 : (c->port = (int)n, 0);
-    if (strcmp(k, "CONTROLPORT") == 0)
-        return (n = num(v, 0, 65535)) < 0 ? -1 : (c->ctlport = (int)n, 0);
     /* 200-255 is the installation SVC range. A number outside it is an
     ** error rather than a silent 0: a typo would otherwise leave the
     ** transport off with nothing said about it.
