@@ -112,10 +112,14 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   frees a slot owns its in-flight decrement -- a second decrement
   underflows the count and wedges `P OFTPD`. It replaced the TCP
   control port, ~~which goes off by default in 0.2.0~~ removed entirely
-  (#32, 2026-10-19). #16 is closed (2026-10-19); still not run from #1's
-  plan: the sweep with a slot in flight, two clients at once and a full
-  pool (`421`), a client cancelled while parked, `P OFTPD` with a client
-  parked, a second `S OFTPD`.
+  (#32, 2026-10-19). #16 is closed (2026-10-19). The failure cases of
+  #1's plan are measured (#34, `internals/xmem.md` section 15, MVS/CE
+  containers): a second `S OFTPD`, `P OFTPD` with clients parked, a
+  client cancelled while parked, a full pool, the sweep. Open from
+  there: a batch caller cancelled while parked holds its slot for 300 s
+  (four in five minutes fill the pool); a caller woken by the stop is
+  told "not reached"; TK5, a cancelled TSO user and the `TPROT`/`MVCK`
+  race are not measured.
   **The utilities use it** (#22, `internals/xmem.md` section 13): no
   host means the SVC, no fallback to TCP; the caller's userid travels
   beside the request line, and `ADMIN=` in `OFTPPRM` decides who sees
