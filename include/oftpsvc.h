@@ -17,14 +17,16 @@
 **
 ** Neither check can be a host test: void* is 8 bytes on a 64-bit
 ** host, which moves every field from slot.ascb on and makes
-** sizeof(OFTP_SLOT) 2376 instead of 2368. See internals/xmem.md
+** sizeof(OFTP_SLOT) 2392 instead of 2384. See internals/xmem.md
 ** section 10.
 */
 
 #define OFTP_SVC_SSNAME   "OFT1"        /* the SSCT, discovery only      */
 #define OFTP_SVC_MODULE   "OFTPSVC"
 #define OFTP_SVC_ANCH_OFF 4             /* the patched anchor word       */
-#define OFTP_SVC_VER      1             /* anchor and request layout     */
+#define OFTP_SVC_VER      1             /* request block layout          */
+#define OFTP_ANC_VER      2             /* anchor and slot layout; 2: the
+                                        ** caller's job in the slot (#36) */
 #define OFTP_SVC_NSLOT    4
 #define OFTP_SVC_REQMAX   255           /* request line, one MVCK        */
 #define OFTP_SVC_REPMAX   2048          /* reply area of a slot          */
@@ -88,10 +90,18 @@ typedef struct oftp_slot {
     unsigned    rplyptr;                /* 34 caller's reply buffer, set
                                         **    and read by OFTPSVC only;
                                         **    OFTPD must not clear it   */
-    char        rsv[8];                 /* 38                            */
-    char        req[256];               /* 40 the request line           */
-    char        reply[OFTP_SVC_REPMAX]; /* 140 lines, each ending '\n'   */
-} OFTP_SLOT;                            /* 940                           */
+    /* The caller's job, for a batch caller: its address space is the
+    ** initiator's and outlives the job, so the ASCB alone cannot tell
+    ** that the caller is gone (#36). ASCBJBNI at claim, 0 for TSO and
+    ** started tasks, and the jobname (CHKEY) and step name (CHSTEP) of
+    ** the CSCB it points into. Recorded by OFTPSVC, compared by OFTPD.
+    */
+    void       *jbni;                   /* 38 ASCBJBNI at claim          */
+    char        rsv[4];                 /* 3C                            */
+    char        job[16];                /* 40 CHKEY, CHSTEP at claim     */
+    char        req[256];               /* 50 the request line           */
+    char        reply[OFTP_SVC_REPMAX]; /* 150 lines, each ending '\n'   */
+} OFTP_SLOT;                            /* 950                           */
 
 typedef struct oftp_anchor {
     char        eye[8];                 /* 00 "OFTPANCH"                 */

@@ -47,7 +47,7 @@ ANCSERVD EQU   40
 ANCSAVED EQU   44
 ANCSLOTS EQU   64
 
-* OFTP_SLOT offsets; size X'940' (2368)
+* OFTP_SLOT offsets; size X'950' (2384)
 SLSTATE  EQU   0
 SLASCB   EQU   4
 SLASID   EQU   8
@@ -61,9 +61,11 @@ SLNEXT   EQU   40
 SLRC     EQU   44
 SLSTAMP  EQU   48
 SLRPLYPT EQU   52                  slot.rplyptr
-SLREQ    EQU   64
-SLREPLY  EQU   320
-SLSIZE   EQU   2368
+SLJBNI   EQU   56                  ASCBJBNI at claim (#36)
+SLJOB    EQU   64                  CHKEY, CHSTEP at claim (#36)
+SLREQ    EQU   80
+SLREPLY  EQU   336
+SLSIZE   EQU   2384
 
 * OFTP_SVCREQ offsets
 REQEYE   EQU   0
@@ -75,12 +77,13 @@ REQLEN   EQU   20
 REQTEXT  EQU   24
 REQEND   EQU   279
 
-* Temporary header offsets within slot.req
-QVER     EQU   68
-QRPLY    EQU   72
-QCAP     EQU   76
-QRESUM   EQU   80
-QLEN     EQU   84
+* Temporary header offsets within slot.req: the staged header's
+* REQ* fields, relative to SLREQ so that they move with it
+QVER     EQU   SLREQ+REQVER
+QRPLY    EQU   SLREQ+REQREPLY
+QCAP     EQU   SLREQ+REQCAP
+QRESUM   EQU   SLREQ+REQRESUM
+QLEN     EQU   SLREQ+REQLEN
 
 * Slot states and return codes
 STFREE   EQU   0
@@ -95,7 +98,8 @@ RCBUSY   EQU   8
 RCDOWN   EQU   12
 RCBAD    EQU   16
 RCSTOP   EQU   20                  parked at the stop, never served
-OFTVER   EQU   1
+OFTVER   EQU   1                   request block layout
+ANCV     EQU   2                   anchor and slot layout (#36)
 MAXSLOT  EQU   4
 REQMAX   EQU   255
 REPMIN   EQU   256
@@ -109,6 +113,8 @@ TCBRBP   EQU   0                   TCB+0 -> current SVRB
 TCBPKF   EQU   28                  TCB+X'1C' -> task storage key
 ASCBASID EQU   36                  ASCB+X'24'
 ASCBASXB EQU   108                 ASCB+X'6C'
+ASCBJBNI EQU   172                 ASCB+X'AC' -> CHKEY, job CSCB
+CHSTEPK  EQU   56                  CHSTEP-CHKEY, IEECHAIN
 ASXBSENV EQU   200                 ASXB+X'C8' -> ACEE
 ACEEUSER EQU   20                  ACEE+X'14', length-prefixed
 RBEXSAVE EQU   96                  SVRB+X'60'
@@ -164,7 +170,7 @@ OFTPGO   DS    0H
          CLC   ANCEYE(8,R2),=CL8'OFTPANCH'
          BNE   DOWN
          L     R3,ANCVER(,R2)
-         C     R3,=A(OFTVER)
+         C     R3,=A(ANCV)
          BNE   DOWN
          L     R11,ANCNSLOT(,R2)
          LTR   R11,R11
@@ -199,6 +205,20 @@ CLAIMOK  LR    R7,R10               R7 = our slot
          N     R3,=X'0000FFFF'
          ST    R3,SLASID(,R7)
          MVC   SLUSER(8,R7),=CL8' '
+*---------------------------------------------------------------------*
+* The caller's job, for a batch caller (#36). Its address space is the
+* initiator's and outlives the job, so OFTPD compares this with the
+* ASCB later to tell a cancelled caller from a slow one. ASCBJBNI is 0
+* for TSO and started tasks; else it points at CHKEY in the job's own
+* CSCB, which is common storage and holds the step name 56 bytes on.
+         XC    SLJBNI(4+16,R7),SLJBNI(R7)
+         L     R3,ASCBJBNI(,R5)
+         LTR   R3,R3
+         BZ    JOBOK
+         ST    R3,SLJBNI(,R7)
+         MVC   SLJOB(8,R7),0(R3)          jobname
+         MVC   SLJOB+8(8,R7),CHSTEPK(R3)  step name
+JOBOK    DS    0H
 *---------------------------------------------------------------------*
 * The authoritative userid, from the caller's own control blocks: the
 * request cannot supply or override it. R9 already holds the caller's

@@ -69,8 +69,8 @@
 ** test anyway, because it is the install that depends on it.
 */
 typedef char oftp_svc_sizes[
-    (sizeof(OFTP_SLOT)   == 2368
-  && sizeof(OFTP_ANCHOR) == 64 + OFTP_SVC_NSLOT * 2368
+    (sizeof(OFTP_SLOT)   == 2384
+  && sizeof(OFTP_ANCHOR) == 64 + OFTP_SVC_NSLOT * 2384
   && OFTP_SVC_NSLOT      == 4
   && OFTP_SVC_REQMAX     == 255
   && OFTP_SVC_REPMAX     == 2048) ? 1 : -1];
@@ -87,13 +87,14 @@ mirror_ok(OFTP_MON *m)
         { "SLRECB",  12 }, { "SLUSER",  16 }, { "SLREQLEN", 24 },
         { "SLRESUME", 28 }, { "SLCAP",  32 }, { "SLREPLEN", 36 },
         { "SLNEXT",  40 }, { "SLRC",    44 }, { "SLSTAMP", 48 },
-        { "SLRPLYPT", 52 }, { "SLREQ",  64 }, { "SLREPLY", 320 },
+        { "SLRPLYPT", 52 }, { "SLREQ",  80 }, { "SLREPLY", 336 },
         { "ANCEYE",   0 }, { "ANCVER",   8 }, { "ANCFLAG", 12 },
         { "ANCSVC",  16 }, { "ANCSASCB", 20 }, { "ANCECB", 24 },
         { "ANCINFL", 28 }, { "ANCNSLOT", 32 }, { "ANCFULL", 36 },
-        { "ANCSERVD", 40 }, { "ANCSAVED", 44 }, { "ANCSLOTS", 64 }
+        { "ANCSERVD", 40 }, { "ANCSAVED", 44 }, { "ANCSLOTS", 64 },
+        { "SLJBNI",  56 }, { "SLJOB",   64 }
     };
-    unsigned got[27];
+    unsigned got[29];
     unsigned i;
 
     got[0]  = offsetof(OFTP_SLOT, state);
@@ -123,6 +124,8 @@ mirror_ok(OFTP_MON *m)
     got[24] = offsetof(OFTP_ANCHOR, served);
     got[25] = offsetof(OFTP_ANCHOR, saved);
     got[26] = offsetof(OFTP_ANCHOR, slot);
+    got[27] = offsetof(OFTP_SLOT, jbni);
+    got[28] = offsetof(OFTP_SLOT, job);
 
     for (i = 0; i < sizeof(f) / sizeof(f[0]); i++)
         if (got[i] != f[i].want) {
@@ -176,6 +179,44 @@ dec_inflight(OFTP_ANCHOR *a)
     while (have != 0)
         if (__cas((unsigned *)&a->inflight, &have, have - 1) == 0)
             return;
+}
+
+/* Whether the caller that claimed slot s is gone (#36). Key 0, with the
+** slot in hand. Its address space first: no ASCB at its ASID, or
+** another one, is gone. A batch caller's address space is the
+** initiator's and outlives the job, so for one the routine recorded
+** ASCBJBNI and the jobname and step name of the CSCB it points at: no
+** job in the initiator now, another CSCB, another name or another step
+** is gone as well. The CSCB is read only while ASCBJBNI still points
+** at it, so storage given back is never followed. The same job name
+** resubmitted into the same initiator gets the same CSCB, name and
+** step (measured, #36) and is not told apart; the DONE clock in the
+** sweep is what covers that one.
+*/
+#define ASCB_JBNI   0xAC                /* ASCBJBNI -> CHKEY of the CSCB */
+#define CSCB_STEPK  56                  /* CHSTEP - CHKEY (IEECHAIN)     */
+
+static int
+caller_gone(const OFTP_SLOT *s)
+{
+    void *owner, *jbni;
+
+    /* ASID 0 is checked here and not left to __ascb(): that indexes
+    ** asvtenty[asid-1] under an upper-bound test only, so a zero --
+    ** which the routine cannot produce, but a corrupted slot can --
+    ** would read the word before the table. A slot with no ASID has
+    ** no owner, which is the same answer as a dead one.
+    */
+    owner = (s->asid == 0) ? NULL : __ascb(s->asid);
+    if (owner == NULL || owner != s->ascb)
+        return 1;
+    if (s->jbni == NULL)
+        return 0;
+    jbni = *(void * volatile *)((char *)owner + ASCB_JBNI);
+    if (jbni != s->jbni)
+        return 1;
+    return memcmp(jbni, s->job, 8) != 0
+        || memcmp((char *)jbni + CSCB_STEPK, s->job + 8, 8) != 0;
 }
 
 /* Wake a parked caller. Guarded because __xmpost() WTOs on a NULL
@@ -399,7 +440,7 @@ oftp_svc_start(OFTP_MON *m)
     }
     memset(m->anchor, 0, sizeof(OFTP_ANCHOR));
     memcpy(m->anchor->eye, "OFTPANCH", 8);
-    m->anchor->ver  = OFTP_SVC_VER;
+    m->anchor->ver  = OFTP_ANC_VER;
     m->anchor->svc  = n;
     m->anchor->ascb = __ascb(0);
     /* The wake ECB is OFTPD's own key-8 storage and the routine
@@ -538,7 +579,7 @@ oftp_svc_take(OFTP_MON *m, unsigned i, OFTP_SVCJOB *j)
 {
     unsigned char savekey;
     OFTP_SLOT    *s;
-    int           got = 0;
+    int           got = 0, gone = 0;
 
     if (m == NULL || m->anchor == NULL || j == NULL
         || i >= OFTP_SVC_NSLOT || i >= m->anchor->nslot)
@@ -546,7 +587,16 @@ oftp_svc_take(OFTP_MON *m, unsigned i, OFTP_SVCJOB *j)
     s = &m->anchor->slot[i];
     if (__super(PSWKEY0, &savekey) != 0)
         return 0;
-    if (s->state == OFTP_SL_PENDING) {
+    /* A caller gone while its request waited -- a cancelled job --
+    ** gets nothing carried out on its behalf: its slot is freed here,
+    ** and whoever frees a slot owns its in-flight decrement.
+    */
+    if (s->state == OFTP_SL_PENDING && caller_gone(s)) {
+        if (state_cas(s, OFTP_SL_PENDING, OFTP_SL_FREE)) {
+            dec_inflight(m->anchor);
+            gone = 1;
+        }
+    } else if (s->state == OFTP_SL_PENDING) {
         unsigned n = s->reqlen;
 
         if (n > OFTP_SVC_REQMAX)
@@ -561,6 +611,9 @@ oftp_svc_take(OFTP_MON *m, unsigned i, OFTP_SVCJOB *j)
         got = 1;
     }
     __prob(savekey, NULL);
+    if (gone)
+        oftp_mon_msg("OFTP066W CROSS MEMORY: THE OWNER OF SLOT %u IS GONE,"
+                     " REQUEST NOT CARRIED OUT", i);
     /* The reply can never exceed the slot's own area, whatever the
     ** caller's buffer is; and the routine answers BADREQ when replen
     ** is above the buffer it declared, so the smaller of the two is
@@ -590,7 +643,6 @@ oftp_svc_answer(OFTP_MON *m, unsigned i, const char *reply, unsigned len,
 {
     unsigned char savekey;
     OFTP_SLOT    *s;
-    void         *owner;
     int           posted = 0;
 
     if (m == NULL || m->anchor == NULL || i >= OFTP_SVC_NSLOT)
@@ -602,14 +654,7 @@ oftp_svc_answer(OFTP_MON *m, unsigned i, const char *reply, unsigned len,
         return 0;
     if (len > s->cap)
         len = s->cap;
-    /* ASID 0 is checked here and not left to __ascb(): that indexes
-    ** asvtenty[asid-1] under an upper-bound test only, so a zero --
-    ** which the routine cannot produce, but a corrupted slot can --
-    ** would read the word before the table. A slot with no ASID has
-    ** no owner to post, which is the same answer as a dead one.
-    */
-    owner = (s->asid == 0) ? NULL : __ascb(s->asid);
-    if (owner == NULL || owner != s->ascb) {
+    if (caller_gone(s)) {
         if (state_cas(s, OFTP_SL_PENDING, OFTP_SL_FREE))
             dec_inflight(m->anchor);
         __prob(savekey, NULL);
@@ -655,7 +700,7 @@ oftp_svc_sweep(OFTP_MON *m)
 {
     unsigned char savekey;
     unsigned      i, n, now;
-    unsigned      stuck = 0, aged = 0;
+    unsigned      stuck = 0, aged = 0, left = 0;
 
     if (m == NULL || m->anchor == NULL)
         return;
@@ -690,7 +735,15 @@ oftp_svc_sweep(OFTP_MON *m)
         } else if (st == OFTP_SL_DONE) {
             m->sw_claimed[i] = 0;
             m->sw_copyout[i] = 0;
-            if (s->stamp != 0 && now > s->stamp
+            /* Answered, and its caller is gone: nobody will collect
+            ** it (#36). The clock below is for the case caller_gone()
+            ** cannot see.
+            */
+            if (caller_gone(s)
+                && state_cas(s, OFTP_SL_DONE, OFTP_SL_FREE)) {
+                dec_inflight(m->anchor);
+                left |= 1u << i;
+            } else if (s->stamp != 0 && now > s->stamp
                 && now - s->stamp > OFTP_SW_DONE_SEC
                 && state_cas(s, OFTP_SL_DONE, OFTP_SL_FREE)) {
                 dec_inflight(m->anchor);
@@ -709,6 +762,9 @@ oftp_svc_sweep(OFTP_MON *m)
     if (aged != 0)
         oftp_mon_msg("OFTP061W CROSS MEMORY FREED SLOTS X'%02X' UNCOLLECTED"
                      " FOR %u SECONDS", aged, (unsigned)OFTP_SW_DONE_SEC);
+    if (left != 0)
+        oftp_mon_msg("OFTP067W CROSS MEMORY FREED SLOTS X'%02X', THEIR"
+                     " CALLER IS GONE", left);
 }
 
 /* ---- the SSCT, discovery only ------------------------------------ */
