@@ -164,8 +164,7 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   and is cleaned up like one that ends (`OFTP209E`, `OFTP203I`); measured
   on dev1 with a debug-only trigger (`-DOFTP_DEBUG_ABEND`). The engine's
   record buffer is freed after an abend too (it kept about 38 KB per
-  abend, measured on dev1 2026-10-18; 6 KB of it and the 0.6 KB per
-  abend left are not explained, #13), and the spool's lock is given back
+  abend, measured on dev1 2026-10-18), and the spool's lock is given back
   (hardening: the session holds it for a few pointer stores, an abend
   there needs a damaged spool block). Left open: a session abended while its spool
   request is queued is possible only when its attaching thread gives up
@@ -261,6 +260,14 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   message class (design 8).
 - `docs/`: a configuration guide beside `docs/installation.md`.
 - ~~GitHub repository, CI~~ — `mvslovers/oftpd` (2026-10-13).
+
+- **#13, waits for libc370:** about 520 bytes per session abend stay
+  allocated, because libc370's `try()` retries without `SDWAFREE` and
+  nobody frees the SDWA (measured 2026-10-19 in a container: 0 with the
+  bit set; the 6 KB of dev1 were the largest-block probe, not a loss).
+  The fix is libc370's, ticket there. Then: raise the libc370 floor,
+  measure once more with `D M` (`OFTP103I`, debug builds only), and
+  remove the `OFTP103I`/`D MH` instrument with that change.
 
 ## After the MVP
 
