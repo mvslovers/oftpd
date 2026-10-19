@@ -2371,7 +2371,8 @@ largest_free(void)
 static void *
 raw_get(unsigned lv)
 {
-    unsigned rc, a;
+    unsigned rc;
+    void *a;
 
     __asm__ __volatile__("GETMAIN RC,LV=(%2),SP=0\n\t"
                          "LR\t%0,15\n\t"
@@ -2379,7 +2380,7 @@ raw_get(unsigned lv)
                          : "=r"(rc), "=r"(a)
                          : "r"(lv)
                          : "0", "1", "14", "15", "memory");
-    return rc == 0 ? (void *)a : NULL;
+    return rc == 0 ? a : NULL;
 }
 
 static void
@@ -2391,32 +2392,52 @@ raw_free(void *a, unsigned lv)
                          : "0", "1", "14", "15", "memory");
 }
 
-/* Takes the largest piece left, to 8 bytes, again and again until none
-** of 64 bytes is left, then gives them all back. Each piece holds the
-** chain: its first word the next piece, its second its own length.
+/* Each piece taken holds the chain: the next piece and its own length */
+typedef struct piece {
+    struct piece *next;
+    unsigned      len;
+} PIECE;
+
+/* The largest piece left, to 8 bytes */
+static unsigned
+largest_piece(void)
+{
+    unsigned lo = 0;
+    unsigned hi = 16u * 1024 * 1024;
+
+    while (hi - lo > 8) {
+        unsigned mid = (lo + (hi - lo) / 2) & ~7u;
+        void *q = raw_get(mid);
+
+        if (q != NULL) {
+            raw_free(q, mid);
+            lo = mid;
+        } else
+            hi = mid;
+    }
+    return lo;
+}
+
+/* Takes the largest piece left again and again until none of 64 bytes
+** is left, then gives them all back.
 */
 static unsigned
 total_free(unsigned *pieces)
 {
-    unsigned *head = NULL, *p, sum = 0, n = 0;
+    PIECE *head = NULL;
+    PIECE *p;
+    unsigned sum = 0;
+    unsigned n = 0;
 
     while (n < 4096) {
-        unsigned lo = 0, hi = 16u * 1024 * 1024;
+        unsigned lo = largest_piece();
 
-        while (hi - lo > 8) {
-            unsigned mid = (lo + (hi - lo) / 2) & ~7u;
-            void *q = raw_get(mid);
-
-            if (q != NULL) {
-                raw_free(q, mid);
-                lo = mid;
-            } else
-                hi = mid;
-        }
-        if (lo < 64 || (p = raw_get(lo)) == NULL)
+        if (lo < 64)
             break;
-        p[0] = (unsigned)head;
-        p[1] = lo;
+        if ((p = raw_get(lo)) == NULL)
+            break;
+        p->next = head;
+        p->len = lo;
         head = p;
         sum += lo;
         n++;
@@ -2424,10 +2445,32 @@ total_free(unsigned *pieces)
     *pieces = n;
     while (head != NULL) {
         p = head;
-        head = (unsigned *)p[0];
-        raw_free(p, p[1]);
+        head = p->next;
+        raw_free(p, p->len);
     }
     return sum;
+}
+
+/* D M's second line in test builds; D MH holds 100 KB (again: gives it
+** back), to check that the total sees what is taken
+*/
+static void
+display_total(OFTP_MON *m, const char *what)
+{
+    unsigned np;
+    unsigned tot;
+
+    if (what[1] == 'H') {
+        if (m->dbghold == NULL)
+            m->dbghold = malloc(100u * 1024);
+        else {
+            free(m->dbghold);
+            m->dbghold = NULL;
+        }
+    }
+    tot = total_free(&np);
+    oftp_mon_msg("OFTP103I TOTAL FREE %u BYTES IN %u PIECES, HOLD %s",
+                 tot, np, m->dbghold != NULL ? "100 KB" : "NONE");
 }
 #endif
 
@@ -2472,23 +2515,7 @@ cmd_display(OFTP_MON *m, const char *what)
         oftp_mon_msg("OFTP102I LARGEST FREE BLOCK %u KB, %u SUBTASK HANDLES, "
                      "%d SESSIONS", largest_free() / 1024, th, m->nsess);
 #ifdef OFTP_DEBUG_ABEND
-        {
-            unsigned np, tot;
-
-            /* D MH holds 100 KB (again: gives it back), to check that
-            ** the total sees what is taken */
-            if (what[1] == 'H') {
-                if (m->dbghold == NULL)
-                    m->dbghold = malloc(100u * 1024);
-                else {
-                    free(m->dbghold);
-                    m->dbghold = NULL;
-                }
-            }
-            tot = total_free(&np);
-            oftp_mon_msg("OFTP103I TOTAL FREE %u BYTES IN %u PIECES, HOLD %s",
-                         tot, np, m->dbghold != NULL ? "100 KB" : "NONE");
-        }
+        display_total(m, what);
 #endif
     } else
         oftp_mon_msg("OFTP101I %d SESSIONS", m->nsess);
