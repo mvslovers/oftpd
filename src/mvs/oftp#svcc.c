@@ -104,7 +104,10 @@ oftp_svc_call(const char *req, char *reply, unsigned cap, unsigned resume,
         return OFTP_SVC_DOWN;
     if ((a = (OFTP_ANCHOR *)ssct->ssctsuse) == NULL)
         return OFTP_SVC_DOWN;
-    if (memcmp(a->eye, "OFTPANCH", 8) != 0 || a->ver != OFTP_SVC_VER)
+    /* The anchor's version, not the request block's: an anchor of
+    ** another layout belongs to an OFTPD this client was not built for
+    */
+    if (memcmp(a->eye, "OFTPANCH", 8) != 0 || a->ver != OFTP_ANC_VER)
         return OFTP_SVC_DOWN;
     if ((a->flags & OFTP_ANC_ACTIVE) == 0)
         return OFTP_SVC_DOWN;
