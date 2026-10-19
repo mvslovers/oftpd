@@ -393,9 +393,32 @@ POSTOK   DS    0H
 * its answer is delivered. STOP is a slot the thread never took, so
 * its request was not carried out, and RCSTOP says so (#34). The
 * anchor stays while this caller is in flight, ACTIVE or not.
-         LA    R3,SLRECB(,R7)
+*
+* A wake-up without our own ECB posted is not ours, and is waited out
+* (#36). The ECB of a slot whose caller was cancelled still names that
+* caller's SVRB, and a later job in the same initiator can get an SVRB
+* at the same address: OFTPD's POST of the dead caller's ECB then ends
+* THIS wait, with our slot still PENDING. Measured: a resubmitted job
+* woke so and ended RC 8 while its own request was carried out. The
+* complete bit of our ECB is set only by a POST of it, so waiting
+* again here cannot spin.
+*
+* Our ECB still carries the wait bit of the first WAIT, and a WAIT on
+* an ECB that is being waited on is S301 (measured: five of five). So
+* the ECB goes back to 0 first, by CS against the value it holds: a
+* POST landing in between changes it, the CS fails and the ECB is
+* looked at again. A POST after the CS finds no waiter, sets the
+* complete bit, and the WAIT returns at once.
+WAITAGN  LA    R3,SLRECB(,R7)
          WAIT  1,ECB=(R3)
-         L     R3,SLSTATE(,R7)
+WAKECHK  TM    SLRECB(R7),X'40'    our own ECB posted?
+         BO    WAKEOWN
+         L     R3,SLRECB(,R7)      no: someone else's POST woke this RB
+         SLR   R4,R4
+         CS    R3,R4,SLRECB(R7)    take our wait bit back off
+         BNE   WAKECHK             changed: a POST, look again
+         B     WAITAGN
+WAKEOWN  L     R3,SLSTATE(,R7)
          C     R3,=A(STDONE)
          BE    REPLYOK
          C     R3,=A(STSTOP)
