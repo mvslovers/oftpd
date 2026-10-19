@@ -261,13 +261,13 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 - `docs/`: a configuration guide beside `docs/installation.md`.
 - ~~GitHub repository, CI~~ — `mvslovers/oftpd` (2026-10-13).
 
-- **#13, waits for libc370:** about 520 bytes per session abend stay
-  allocated, because libc370's `try()` retries without `SDWAFREE` and
-  nobody frees the SDWA (measured 2026-10-19 in a container: 0 with the
-  bit set; the 6 KB of dev1 were the largest-block probe, not a loss).
-  The fix is libc370's (mvslovers/libc370#640). Then: raise the libc370 floor,
-  measure once more with `D M` (`OFTP103I`, debug builds only), and
-  remove the `OFTP103I`/`D MH` instrument with that change.
+- ~~#13: about 520 bytes per session abend~~ -- libc370's `try()`
+  retried without `SDWAFREE` and nobody freed the SDWA (the 6 KB of
+  dev1 were the largest-block probe, not a loss). Fixed in libc370
+  2.23.0 (mvslovers/libc370#640), now the floor; measured again in a
+  container 2026-10-19: 50 abends and 50 normal sessions, the region's
+  free storage the same to the byte. The `OFTP103I`/`D MH` instrument
+  is gone with it.
 
 ## After the MVP
 

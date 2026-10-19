@@ -2362,118 +2362,6 @@ largest_free(void)
     return lo;
 }
 
-#ifdef OFTP_DEBUG_ABEND
-/* Test builds only (#13): the free storage of the region in total, to
-** tell a leak from a split region -- largest_free() sees only the
-** biggest piece. A bare GETMAIN RC: libc370's getmain() writes a WTO on
-** each failure and clears what it gets, and this asks for hundreds.
-*/
-static void *
-raw_get(unsigned lv)
-{
-    unsigned rc;
-    void *a;
-
-    __asm__ __volatile__("GETMAIN RC,LV=(%2),SP=0\n\t"
-                         "LR\t%0,15\n\t"
-                         "LR\t%1,1"
-                         : "=r"(rc), "=r"(a)
-                         : "r"(lv)
-                         : "0", "1", "14", "15", "memory");
-    return rc == 0 ? a : NULL;
-}
-
-static void
-raw_free(void *a, unsigned lv)
-{
-    __asm__ __volatile__("FREEMAIN RU,LV=(%0),A=(%1),SP=0"
-                         :
-                         : "r"(lv), "r"(a)
-                         : "0", "1", "14", "15", "memory");
-}
-
-/* Each piece taken holds the chain: the next piece and its own length */
-typedef struct piece {
-    struct piece *next;
-    unsigned      len;
-} PIECE;
-
-/* The largest piece left, to 8 bytes */
-static unsigned
-largest_piece(void)
-{
-    unsigned lo = 0;
-    unsigned hi = 16u * 1024 * 1024;
-
-    while (hi - lo > 8) {
-        unsigned mid = (lo + (hi - lo) / 2) & ~7u;
-        void *q = raw_get(mid);
-
-        if (q != NULL) {
-            raw_free(q, mid);
-            lo = mid;
-        } else
-            hi = mid;
-    }
-    return lo;
-}
-
-/* Takes the largest piece left again and again until none of 64 bytes
-** is left, then gives them all back.
-*/
-static unsigned
-total_free(unsigned *pieces)
-{
-    PIECE *head = NULL;
-    PIECE *p;
-    unsigned sum = 0;
-    unsigned n = 0;
-
-    while (n < 4096) {
-        unsigned lo = largest_piece();
-
-        if (lo < 64)
-            break;
-        if ((p = raw_get(lo)) == NULL)
-            break;
-        p->next = head;
-        p->len = lo;
-        head = p;
-        sum += lo;
-        n++;
-    }
-    *pieces = n;
-    while (head != NULL) {
-        p = head;
-        head = p->next;
-        raw_free(p, p->len);
-    }
-    return sum;
-}
-
-/* D M's second line in test builds; D MH holds 100 KB (again: gives it
-** back), to check that the total sees what is taken
-*/
-static void
-display_total(OFTP_MON *m, const char *what)
-{
-    unsigned np;
-    unsigned tot;
-
-    if (what[1] == 'H') {
-        if (m->dbghold == NULL)
-            m->dbghold = malloc(100u * 1024);
-        else {
-            free(m->dbghold);
-            m->dbghold = NULL;
-        }
-    }
-    tot = total_free(&np);
-    oftp_mon_msg("OFTP103I TOTAL FREE %u BYTES IN %u PIECES, HOLD %s",
-                 tot, np, m->dbghold != NULL ? "100 KB" : "NONE");
-}
-#endif
-
 static void
 cmd_display(OFTP_MON *m, const char *what)
 {
@@ -2514,9 +2402,6 @@ cmd_display(OFTP_MON *m, const char *what)
 
         oftp_mon_msg("OFTP102I LARGEST FREE BLOCK %u KB, %u SUBTASK HANDLES, "
                      "%d SESSIONS", largest_free() / 1024, th, m->nsess);
-#ifdef OFTP_DEBUG_ABEND
-        display_total(m, what);
-#endif
     } else
         oftp_mon_msg("OFTP101I %d SESSIONS", m->nsess);
 }
