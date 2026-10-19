@@ -94,6 +94,7 @@ RCMORE   EQU   4
 RCBUSY   EQU   8
 RCDOWN   EQU   12
 RCBAD    EQU   16
+RCSTOP   EQU   20                  parked at the stop, never served
 OFTVER   EQU   1
 MAXSLOT  EQU   4
 REQMAX   EQU   255
@@ -365,15 +366,22 @@ POSTOK   DS    0H
 * is a protocol error, and this must NOT re-WAIT: the ECB is still
 * posted, a second WAIT returns at once, and the result is a tight
 * key-0 spin in the caller's address space with no way to break in.
+*
+* The state decides, not ACTIVE. A stop clears ACTIVE first and joins
+* the slot thread after, so a request the thread was serving is
+* answered DONE with ACTIVE already off: it has been carried out, and
+* its answer is delivered. STOP is a slot the thread never took, so
+* its request was not carried out, and RCSTOP says so (#34). The
+* anchor stays while this caller is in flight, ACTIVE or not.
          LA    R3,SLRECB(,R7)
          WAIT  1,ECB=(R3)
-         TM    ANCFLAG(R2),X'80'
-         BNO   STOPDEC
          L     R3,SLSTATE(,R7)
          C     R3,=A(STDONE)
          BE    REPLYOK
          C     R3,=A(STSTOP)
          BE    STOPDEC             shutdown while parked
+         TM    ANCFLAG(R2),X'80'
+         BNO   WAKEDOWN
          B     BADSTATE            anything else: protocol error
 *---------------------------------------------------------------------*
 * Take the slot out of DONE and into COPYOUT before reading a field of
@@ -482,7 +490,13 @@ POSTBAD  LA    R15,RCDOWN
          SLR   R0,R0
          SLR   R1,R1
          B     FREEDEC
-STOPDEC  LA    R15,RCDOWN
+STOPDEC  LA    R15,RCSTOP
+         SLR   R0,R0
+         SLR   R1,R1
+         B     FREEDEC
+* Woken in a state OFTPD would not leave, with ACTIVE off: OFTPD is
+* going away, which is what the caller is told.
+WAKEDOWN LA    R15,RCDOWN
          SLR   R0,R0
          SLR   R1,R1
 FREEDEC  LA    R3,STFREE

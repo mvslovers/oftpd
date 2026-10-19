@@ -2042,6 +2042,18 @@ svc_thread(void *arg1, void *arg2)
                 }
                 if (secs > 0 && (m->stop || m->svcstop))
                     break;
+                /* LATE=n holds it n seconds whatever happens and then
+                ** serves it, so that its answer comes after a stop
+                ** has cleared ACTIVE: the request was carried out and
+                ** its caller must get the answer, not "not reached".
+                */
+                sl = strstr(line, "LATE=");
+                secs = sl != NULL ? atoi(sl + 5) : 0;
+                for (k = 0; k < secs; k++) {
+                    ECB e = 0;
+
+                    ecb_timed_wait(&e, 100, 0);
+                }
             }
 #endif
             ctl_request(m, &o.o, line);
