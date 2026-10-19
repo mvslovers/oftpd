@@ -19,8 +19,7 @@ from `OFTPD.DEV.LINKLIB`. The spool keeps its name `IBMUSER.OFTP370.SPOOL`
 | `SYSGEN.ISPF.PLIB(OFTPLSW)` | 2026-10-13 | the transfer list for 110 columns and more, `ispplib/` | delete the member |
 | `SYSGEN.ISPF.PLIB(OFTB@PRI)`, `(OFTBSND)`, `(OFTBLST)`, `(OFTBSHW)`, `(OFTBPTL)`, `(OFTBCFG)`, `(OFTBMON)` | 2026-10-13 | **backup** of the seven panels above as of 2026-10-12, byte for byte (OFTP→OFTB in the name) | delete when no longer needed |
 | `SYSGEN.ISPF.PLIB(ISPMOREB)` | 2026-10-12 | **backup** of `ISPMORE` before the change below, byte for byte (3760 bytes) | delete after restoring |
-| `SYS2.PROCLIB(OFTPDB1)`, `SYS1.CMDPROC(ISPFBK1)`, `SYS2.PARMLIB(OFTPPTNB)` | 2026-10-13 | **backup** of `OFTPD`, `ISPF` and `OFTPPTN0` before the rename (2480, 2160, 800 bytes), byte for byte, read back | copy over the member to go back to `OFTP370.DEV.LINKLIB` and the old partners; delete when no longer needed |
-| `SYS2.PROCLIB(OFTPDB2)` | 2026-10-14 | **backup** of `OFTPD` before its spool default changed (2480 bytes), byte for byte, read back | copy over `OFTPD`; delete when no longer needed |
+| `SYS1.CMDPROC(ISPFBK1)` | 2026-10-13 | **backup** of `ISPF` before the rename (2160 bytes), byte for byte, read back. Its companions `SYS2.PROCLIB(OFTPDB1)` and `SYS2.PARMLIB(OFTPPTNB)` were deleted 2026-10-19 (below) | copy over `ISPF` to go back to `OFTP370.DEV.LINKLIB`; delete when no longer needed |
 | `SYS2.PROCLIB(OFTPDB19)`, `SYS2.PARMLIB(OFTPPR19)` | 2026-10-19 | **backup** of `OFTPD` and `OFTPPRM0` before the move to SVC 237 (2480, 480 bytes), binary, read back byte-identical | copy `OFTPPR19` over `OFTPPRM0`; delete when no longer needed |
 | `SYS1.CMDPROC(ISPFBAK)` | 2026-10-12 | **backup** of the `ISPF` CLIST before the change below, byte for byte (2080 bytes) | delete after restoring |
 
@@ -30,10 +29,10 @@ from `OFTPD.DEV.LINKLIB`. The spool keeps its name `IBMUSER.OFTP370.SPOOL`
 |---|---|---|---|
 | `SYSGEN.ISPF.PLIB(ISPMORE)` | 2026-10-12 | ISPF option M (More) got a line `O  OFTP  Odette file transfer (oftp370)` (since 2026-10-13 `(oftpd)`) and `O,'CMD(OFTPI) NEWAPPL(OFTP)'` in its `TRANS` | copy `ISPMOREB` over `ISPMORE` (binary: the panel holds non-ASCII attribute characters) |
 | `SYS1.CMDPROC(ISPF)` | 2026-10-12 | `OFTP370.DEV.LINKLIB` appended to the `ISPLLIB` allocation (a continuation line), so the dialog module `OFTPI` and ISPLINK resolve from the ISPLLIB concatenation; since 2026-10-13 `OFTPD.DEV.LINKLIB` | copy `ISPFBAK` over `ISPF` (binary) |
-| `SYS2.PROCLIB(OFTPD)` | 2026-10-14 | the spool default `S='OFTP.SPOOL'` became `S='IBMUSER.OFTP370.SPOOL'`, so a plain `S OFTPD` finds dev1's spool | copy `OFTPDB2` over `OFTPD` |
-| `SYS2.PROCLIB(OFTPD)` | 2026-10-13 | `STEPLIB` `OFTP370.DEV.LINKLIB` -> `OFTPD.DEV.LINKLIB` | copy `OFTPDB1` over it (or delete the member, see above) |
+| `SYS2.PROCLIB(OFTPD)` | 2026-10-14 | the spool default `S='OFTP.SPOOL'` became `S='IBMUSER.OFTP370.SPOOL'`, so a plain `S OFTPD` finds dev1's spool | change the line back (the backup `OFTPDB2` was deleted 2026-10-19; a local binary copy is kept) |
+| `SYS2.PROCLIB(OFTPD)` | 2026-10-13 | `STEPLIB` `OFTP370.DEV.LINKLIB` -> `OFTPD.DEV.LINKLIB` | change the line back, or delete the member, see above (`OFTPDB1` deleted 2026-10-19, local copy kept) |
 | `SYS2.PARMLIB(OFTPPRM0)` | 2026-10-19 | `PORT=3305 CONTROLPORT=3306` became `PORT=3305 SVC=237`: the control port is gone from `main` (#32), and the utilities reach OFTPD through SVC 237 | copy `OFTPPR19` over it, and run a build from before #32 |
-| `SYS2.PARMLIB(OFTPPTN0)` | 2026-10-13 | the four test-network partners M38L, M38B (direct), M38X, M38R (`VIA=`) appended, `internals/testnet.md` | copy `OFTPPTNB` over it |
+| `SYS2.PARMLIB(OFTPPTN0)` | 2026-10-13 | the four test-network partners M38L, M38B (direct), M38X, M38R (`VIA=`) appended, `internals/testnet.md` | remove the four entries (`OFTPPTNB` deleted 2026-10-19, local copy kept) |
 
 Why the CLIST and not `SYSGEN.ISPF.LLIB`: copying `OFTPI` into the ISPF
 load library ended SD37 (JOB02144, its primary space is full); nothing was
@@ -226,3 +225,13 @@ BY SVC`, `8 OF 8 PARTNERS ENABLED`, `OFTP031I ... FOUND 0000CCC8
 reaches OFTPD through the SVC as well; not tried in this slot. In the
 network retest (`m38-changes.md`) the 33-character name arrived, and a
 41-character one too.
+
+2026-10-19, same block of slots: the superseded backups
+`SYS2.PROCLIB(OFTPDB1)` (2480 bytes, before the rename),
+`SYS2.PROCLIB(OFTPDB2)` (2480, before the spool default) and
+`SYS2.PARMLIB(OFTPPTNB)` (800, the partners before the rename) deleted
+after a binary copy of each, read twice and identical, kept off the
+stand. `OFTPDB19` is the backout now. Member lists afterwards:
+`SYS2.PROCLIB(OFTPD*)` = `OFTPD`, `OFTPDB19`; `SYS2.PARMLIB(OFTPP*)` =
+`OFTPPRM0`, `OFTPPR19`, `OFTPPTN0`. `SYS1.CMDPROC(ISPFBK1)` stays: a
+`SYS1` write needs its own approval.
