@@ -290,11 +290,15 @@ of `PORT=33n5 CONTROLPORT=33n6`; both members read back identical.
 
 STC00132 and STC00113 showed `OFTP000I oftpd 0.1.0-dev (7a9d9a9)`,
 `OFTP004I AUTHORIZED BY SVC`, `OFTP031I ... FOUND 00017068 80000000`,
-`OFTP039I`. On m38l the banner was not seen: `S OFTPD` was given while
+`OFTP039I`. On m38l the banner was not seen at first: `S OFTPD` was given while
 the old STC00878 was still stopping, so the new one waited for the
 spool (`IEF861I`/`IEF099I`) and got it in the same second STC00878
-ended; its console lines did not come back. That it runs `main` rests
-on SVC 237 being taken (0.1.0 takes none) and the `OFTP` check over it.
+ended; its console lines did not come back. Read later the same day
+in a slot of its own: `P OFTPD` (STC00879 answered `OFTP032I SVC 237
+RESTORED, ENTRY READS 0000CCC8 80000000`, a message only `main` has),
+`S OFTPD` once no OFTPD was active -> **STC00881**, `OFTP000I oftpd
+0.1.0-dev (7a9d9a9)`, `OFTP004I AUTHORIZED BY SVC`, `OFTP031I ...
+FOUND 0000CCC8 80000000`, `OFTP039I`.
 On the TK5 stands the old OFTPD's output was printed and purged at its
 end (`$HASP150 ... 13,189 LINES`, the #12 SYSUDUMP).
 
@@ -321,7 +325,7 @@ missing data set apart).
 | m38b JOB02732 | M38B | M38L | via DEV1 | `OFTPD.IN.M38B.SVC.TO.M38L.F` |
 | m38l JOB01799 | M38L | M38R | DEV1, M38B | `OFTPD.IN.M38L.SVC.TO.M38R.HOP3` |
 
-Now running: dev1 STC00814, m38l STC00879, m38x STC00612, m38b STC00132,
+Now running: dev1 STC00814, m38l STC00881, m38x STC00612, m38b STC00132,
 m38r STC00113, all `7a9d9a9`, SVC 237 active, no control port.
 
 Undo, per stand: copy `OFTPDB19` over `SYS2.PROCLIB(OFTPD)` and
@@ -330,3 +334,19 @@ stop gives SVC 237 back (`OFTP032I`). Then the TOFT010 level runs again
 (dev1: the PROC is unchanged, the old OFTPD level is gone, see
 `dev1-changes.md`). The test files `*.OFTPIN.*.SVC.*` and
 `OFTPD.IN.*.SVC.*` can be deleted.
+
+## TOFT020 is free on all four, 2026-10-19
+
+The check before 0.2.0, read only, in a slot from the MBT session: one
+job per stand, each `LIST` in a step of its own (`EXEC SMPAPP`).
+
+| Stand | Job | `LIST CDS`/`ACDS SYSMOD(TOFT020)` | `TOFT010` CDS / ACDS | `MOD(OFTP OFTPD OFTPI)` |
+|---|---|---|---|---|
+| m38l | JOB01801 | RC 04 / RC 04, `NOT FOUND ... SYSMOD TOFT020` | `REC APP ACC` / `REC APP ACC RGN` | FMID = RMID = TOFT010 |
+| m38x | JOB00654 | the same | the same | the same |
+| m38b | JOB02734 | the same | the same | the same |
+| m38r | JOB00923 | the same | the same | the same |
+
+No `DELBY` anywhere: `TOFT020` has no entry and no tombstone, so it is
+free; `TOFT010` owns the three modules, which 0.2.0's `DELETE(TOFT010)`
+takes over.

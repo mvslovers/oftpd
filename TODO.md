@@ -35,9 +35,9 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   (`internals/testnet.md`, Results). The first final release is 0.2.0
   (`TOFT020`, deletes `TOFT010`). `TOFT010` is spent (REC APP ACC on all
   four, `internals/m38-changes.md`; burned in the workspace SMP table
-  since 2026-10-19). **Before 0.2.0 is cut: `LIST CDS/ACDS
-  SYSMOD(TOFT020)` on m38l, m38x, m38b and m38r, with job numbers** --
-  `TOFT020` is not checked on any stand yet. ~~Each stand on `main`
+  since 2026-10-19). ~~Before 0.2.0 is cut: `LIST CDS/ACDS
+  SYSMOD(TOFT020)` on the four stands~~ -- done 2026-10-19, free on
+  all four (m38l JOB01801, m38x JOB00654, m38b JOB02734, m38r JOB00923). ~~Each stand on `main`
   with `SVC=237`~~ -- done 2026-10-19 on all five, a DEV build ahead of
   TOFT010 on the M38 stands, network retest passed
   (`internals/m38-changes.md`).
