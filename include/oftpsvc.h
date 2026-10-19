@@ -50,6 +50,8 @@
 #define OFTP_SVC_BUSY     8             /* every slot taken              */
 #define OFTP_SVC_DOWN     12            /* OFTPD not active or stopping  */
 #define OFTP_SVC_BADREQ   16            /* not a request block           */
+#define OFTP_SVC_STOPPED  20            /* OFTPD stopped before serving
+                                        ** this request: not carried out */
 
 #define OFTP_ANC_ACTIVE   0x80000000U
 

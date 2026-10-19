@@ -59,6 +59,10 @@ svc_request(const char *req, OFTP_CLILINE line, void *ctx, char *final,
             snprintf(final, (size_t)cap,
                      "OFTPD not reached: not running, or without SVC=");
             return 12;
+        case OFTP_SVC_STOPPED:
+            snprintf(final, (size_t)cap,
+                     "OFTPD stopped before carrying out the request");
+            return 12;
         case OFTP_SVC_BADREQ:
             snprintf(final, (size_t)cap, "request refused by the transport");
             return 8;

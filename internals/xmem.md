@@ -999,7 +999,8 @@ than assumed:
 |---|---|---|---|
 | `RETREL` (served) | routine sets FREE | routine decrements | nothing |
 | `FREEDEC` (`BADHDR`/`BADREPLY`/`BADSTATE`/`POSTBAD`) | routine sets FREE | routine decrements | nothing |
-| `STOPDEC` (woken with ACTIVE off) | routine sets FREE | routine decrements | **not free, not decrement** |
+| `STOPDEC` (woken in STOP: `RCSTOP`, since #34) | routine sets FREE | routine decrements | **not free, not decrement** |
+| `WAKEDOWN` (woken in another state with ACTIVE off) | routine sets FREE | routine decrements | **not free, not decrement** |
 | `SWEPT` (its `CS` from DONE lost) | untouched | untouched | **free and decrement** -- the sweep took it |
 
 So OFTPD decrements in exactly one place: after it has **won** a
@@ -1007,9 +1008,15 @@ So OFTPD decrements in exactly one place: after it has **won** a
 -- the routine's `BCTR` loops have no floor -- and every later
 `P OFTPD` drains forever.
 
-That is also why the stop posts parked slots and frees nothing: with
-ACTIVE already off, the routine tests `ANCFLAG` before it looks at the
-state, so every wake-up takes `STOPDEC` and cleans up after itself.
+That is also why the stop posts parked slots and frees nothing: every
+wake-up of a parked slot takes `STOPDEC` and cleans up after itself.
+Until #34 the routine tested `ANCFLAG` before the state, and that
+discarded an answer: the stop clears ACTIVE before it joins the slot
+thread, so a request being served at that moment was carried out,
+answered DONE, and its caller told `OFTP_SVC_DOWN`. The state is read
+first now: DONE delivers the answer whatever ACTIVE says, and STOP
+returns `OFTP_SVC_STOPPED` (20), "OFTPD stopped before carrying out
+the request", which the old code could not tell from "not running".
 
 ### Three clocks in the sweep, and `stamp` serves only one
 
