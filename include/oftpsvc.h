@@ -17,7 +17,7 @@
 **
 ** Neither check can be a host test: void* is 8 bytes on a 64-bit
 ** host, which moves every field from slot.ascb on and makes
-** sizeof(OFTP_SLOT) 2392 instead of 2384. See internals/xmem.md
+** sizeof(OFTP_SLOT) 2408 instead of 2400. See internals/xmem.md
 ** section 10.
 */
 
@@ -25,8 +25,10 @@
 #define OFTP_SVC_MODULE   "OFTPSVC"
 #define OFTP_SVC_ANCH_OFF 4             /* the patched anchor word       */
 #define OFTP_SVC_VER      1             /* request block layout          */
-#define OFTP_ANC_VER      2             /* anchor and slot layout; 2: the
-                                        ** caller's job in the slot (#36) */
+#define OFTP_ANC_VER      3             /* anchor and slot layout; 2: the
+                                        ** caller's job in the slot (#36),
+                                        ** 3: its JES job id and the claim
+                                        ** sequence                      */
 #define OFTP_SVC_NSLOT    4
 #define OFTP_SVC_REQMAX   255           /* request line, one MVCK        */
 #define OFTP_SVC_REPMAX   2048          /* reply area of a slot          */
@@ -97,15 +99,26 @@ typedef struct oftp_slot {
     ** the CSCB it points into. Recorded by OFTPSVC, compared by OFTPD.
     */
     void       *jbni;                   /* 38 ASCBJBNI at claim          */
-    char        rsv[4];                 /* 3C                            */
+    /* The claim's place in the anchor's claim sequence (24 bits, it
+    ** wraps) and the caller's JES job id (SSIBJBID: JOBnnnnn, TSUnnnnn,
+    ** STCnnnnn; zeros if none). One address space runs one job at a
+    ** time, so a later claim from the same ASCB with another job id
+    ** says the earlier claim's job has ended -- what the CSCB cannot
+    ** tell when a job of the same name comes back to the initiator.
+    ** The routine stores the id before the sequence number, so a
+    ** reader that sees the new number sees the new id.
+    */
+    volatile unsigned claim;            /* 3C                            */
     char        job[16];                /* 40 CHKEY, CHSTEP at claim     */
-    char        req[256];               /* 50 the request line           */
-    char        reply[OFTP_SVC_REPMAX]; /* 150 lines, each ending '\n'   */
-} OFTP_SLOT;                            /* 950                           */
+    char        jobid[8];               /* 50 SSIBJBID at claim          */
+    char        rsv[8];                 /* 58                            */
+    char        req[256];               /* 60 the request line           */
+    char        reply[OFTP_SVC_REPMAX]; /* 160 lines, each ending '\n'   */
+} OFTP_SLOT;                            /* 960                           */
 
 typedef struct oftp_anchor {
     char        eye[8];                 /* 00 "OFTPANCH"                 */
-    unsigned    ver;                    /* 08 OFTP_SVC_VER               */
+    unsigned    ver;                    /* 08 OFTP_ANC_VER               */
     volatile unsigned flags;            /* 0C OFTP_ANC_ACTIVE            */
     unsigned    svc;                    /* 10 the SVC number             */
     void       *ascb;                   /* 14 OFTPD's ASCB               */
@@ -115,7 +128,8 @@ typedef struct oftp_anchor {
     volatile unsigned full;             /* 24 answered BUSY              */
     volatile unsigned served;           /* 28 answers given              */
     unsigned char saved[8];             /* 2C the SVC entry taken over   */
-    char        rsv[12];                /* 34                            */
+    volatile unsigned claims;           /* 34 the claim sequence, 24 bits */
+    char        rsv[8];                 /* 38                            */
     OFTP_SLOT   slot[OFTP_SVC_NSLOT];   /* 40                            */
 } OFTP_ANCHOR;
 

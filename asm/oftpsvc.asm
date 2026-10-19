@@ -45,9 +45,10 @@ ANCNSLOT EQU   32
 ANCFULL  EQU   36
 ANCSERVD EQU   40
 ANCSAVED EQU   44
+ANCCLAIM EQU   52                  claim sequence, 24 bits
 ANCSLOTS EQU   64
 
-* OFTP_SLOT offsets; size X'950' (2384)
+* OFTP_SLOT offsets; size X'960' (2400)
 SLSTATE  EQU   0
 SLASCB   EQU   4
 SLASID   EQU   8
@@ -62,10 +63,12 @@ SLRC     EQU   44
 SLSTAMP  EQU   48
 SLRPLYPT EQU   52                  slot.rplyptr
 SLJBNI   EQU   56                  ASCBJBNI at claim (#36)
+SLCLAIM  EQU   60                  claim sequence number
 SLJOB    EQU   64                  CHKEY, CHSTEP at claim (#36)
-SLREQ    EQU   80
-SLREPLY  EQU   336
-SLSIZE   EQU   2384
+SLJOBID  EQU   80                  SSIBJBID at claim
+SLREQ    EQU   96
+SLREPLY  EQU   352
+SLSIZE   EQU   2400
 
 * OFTP_SVCREQ offsets
 REQEYE   EQU   0
@@ -99,7 +102,7 @@ RCDOWN   EQU   12
 RCBAD    EQU   16
 RCSTOP   EQU   20                  parked at the stop, never served
 OFTVER   EQU   1                   request block layout
-ANCV     EQU   2                   anchor and slot layout (#36)
+ANCV     EQU   3                   anchor and slot layout (#36)
 MAXSLOT  EQU   4
 REQMAX   EQU   255
 REPMIN   EQU   256
@@ -115,6 +118,9 @@ ASCBASID EQU   36                  ASCB+X'24'
 ASCBASXB EQU   108                 ASCB+X'6C'
 ASCBJBNI EQU   172                 ASCB+X'AC' -> CHKEY, job CSCB
 CHSTEPK  EQU   56                  CHSTEP-CHKEY, IEECHAIN
+TCBJSCB  EQU   180                 TCB+X'B4' -> JSCB, 24 bits
+JSCBSSIB EQU   316                 JSCB+X'13C' -> SSIB
+SSIBJBID EQU   12                  SSIB+X'0C' JES job id, CL8
 ASXBSENV EQU   200                 ASXB+X'C8' -> ACEE
 ACEEUSER EQU   20                  ACEE+X'14', length-prefixed
 RBEXSAVE EQU   96                  SVRB+X'60'
@@ -211,7 +217,7 @@ CLAIMOK  LR    R7,R10               R7 = our slot
 * ASCB later to tell a cancelled caller from a slow one. ASCBJBNI is 0
 * for TSO and started tasks; else it points at CHKEY in the job's own
 * CSCB, which is common storage and holds the step name 56 bytes on.
-         XC    SLJBNI(4+16,R7),SLJBNI(R7)
+         XC    SLJBNI(SLREQ-SLJBNI,R7),SLJBNI(R7)
          L     R3,ASCBJBNI(,R5)
          LTR   R3,R3
          BZ    JOBOK
@@ -219,6 +225,30 @@ CLAIMOK  LR    R7,R10               R7 = our slot
          MVC   SLJOB(8,R7),0(R3)          jobname
          MVC   SLJOB+8(8,R7),CHSTEPK(R3)  step name
 JOBOK    DS    0H
+*---------------------------------------------------------------------*
+* The caller's JES job id, and this claim's place in the sequence.
+* One address space runs one job at a time, so OFTPD reads a later
+* claim from the same ASCB with another job id as the end of the
+* earlier claim's job -- the one case the CSCB cannot see, a job of
+* the same name back in the same initiator. The id is private storage,
+* readable here because this runs in the caller's address space. It
+* is stored before the sequence number, and the CS serialises, so
+* whoever sees the new number sees the new id.
+         SLR   R3,R3
+         L     R3,PSATOLD(,R3)     caller TCB
+         L     R3,TCBJSCB(,R3)
+         N     R3,=X'00FFFFFF'
+         BZ    JIDOK
+         L     R3,JSCBSSIB(,R3)
+         N     R3,=X'00FFFFFF'
+         BZ    JIDOK
+         MVC   SLJOBID(8,R7),SSIBJBID(R3)
+JIDOK    L     R3,ANCCLAIM(,R2)
+CLMLP    LR    R4,R3
+         LA    R4,1(,R4)
+         CS    R3,R4,ANCCLAIM(R2)
+         BNE   CLMLP
+         ST    R4,SLCLAIM(,R7)
 *---------------------------------------------------------------------*
 * The authoritative userid, from the caller's own control blocks: the
 * request cannot supply or override it. R9 already holds the caller's

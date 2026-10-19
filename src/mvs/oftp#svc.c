@@ -69,8 +69,8 @@
 ** test anyway, because it is the install that depends on it.
 */
 typedef char oftp_svc_sizes[
-    (sizeof(OFTP_SLOT)   == 2384
-  && sizeof(OFTP_ANCHOR) == 64 + OFTP_SVC_NSLOT * 2384
+    (sizeof(OFTP_SLOT)   == 2400
+  && sizeof(OFTP_ANCHOR) == 64 + OFTP_SVC_NSLOT * 2400
   && OFTP_SVC_NSLOT      == 4
   && OFTP_SVC_REQMAX     == 255
   && OFTP_SVC_REPMAX     == 2048) ? 1 : -1];
@@ -87,14 +87,15 @@ mirror_ok(OFTP_MON *m)
         { "SLRECB",  12 }, { "SLUSER",  16 }, { "SLREQLEN", 24 },
         { "SLRESUME", 28 }, { "SLCAP",  32 }, { "SLREPLEN", 36 },
         { "SLNEXT",  40 }, { "SLRC",    44 }, { "SLSTAMP", 48 },
-        { "SLRPLYPT", 52 }, { "SLREQ",  80 }, { "SLREPLY", 336 },
+        { "SLRPLYPT", 52 }, { "SLREQ",  96 }, { "SLREPLY", 352 },
         { "ANCEYE",   0 }, { "ANCVER",   8 }, { "ANCFLAG", 12 },
         { "ANCSVC",  16 }, { "ANCSASCB", 20 }, { "ANCECB", 24 },
         { "ANCINFL", 28 }, { "ANCNSLOT", 32 }, { "ANCFULL", 36 },
         { "ANCSERVD", 40 }, { "ANCSAVED", 44 }, { "ANCSLOTS", 64 },
-        { "SLJBNI",  56 }, { "SLJOB",   64 }
+        { "SLJBNI",  56 }, { "SLJOB",   64 }, { "SLCLAIM", 60 },
+        { "SLJOBID", 80 }, { "ANCCLAIM", 52 }
     };
-    unsigned got[29];
+    unsigned got[32];
     unsigned i;
 
     got[0]  = offsetof(OFTP_SLOT, state);
@@ -126,6 +127,9 @@ mirror_ok(OFTP_MON *m)
     got[26] = offsetof(OFTP_ANCHOR, slot);
     got[27] = offsetof(OFTP_SLOT, jbni);
     got[28] = offsetof(OFTP_SLOT, job);
+    got[29] = offsetof(OFTP_SLOT, claim);
+    got[30] = offsetof(OFTP_SLOT, jobid);
+    got[31] = offsetof(OFTP_ANCHOR, claims);
 
     for (i = 0; i < sizeof(f) / sizeof(f[0]); i++)
         if (got[i] != f[i].want) {
@@ -188,18 +192,26 @@ dec_inflight(OFTP_ANCHOR *a)
 ** ASCBJBNI and the jobname and step name of the CSCB it points at: no
 ** job in the initiator now, another CSCB, another name or another step
 ** is gone as well. The CSCB is read only while ASCBJBNI still points
-** at it, so storage given back is never followed. The same job name
-** resubmitted into the same initiator gets the same CSCB, name and
-** step (measured, #36) and is not told apart; the DONE clock in the
-** sweep is what covers that one.
+** at it, so storage given back is never followed.
+**
+** A job of the same name back in the same initiator gets the same
+** CSCB, name and step (measured, #36), so last the claims of the other
+** slots: one address space runs one job at a time, and a later claim
+** from the same ASCB under another JES job id means this claim's job
+** has ended. Read only, and a slot read while it is being claimed can
+** only fail to say so: the routine clears the id at claim and stores
+** the new one before the new sequence number, so a stale id never
+** goes with a new number.
 */
 #define ASCB_JBNI   0xAC                /* ASCBJBNI -> CHKEY of the CSCB */
 #define CSCB_STEPK  56                  /* CHSTEP - CHKEY (IEECHAIN)     */
 
 static int
-caller_gone(const OFTP_SLOT *s)
+caller_gone(const OFTP_ANCHOR *a, const OFTP_SLOT *s)
 {
-    void *owner, *jbni;
+    static const char none[8] = { 0 };
+    void    *owner, *jbni;
+    unsigned i, n;
 
     /* ASID 0 is checked here and not left to __ascb(): that indexes
     ** asvtenty[asid-1] under an upper-bound test only, so a zero --
@@ -210,13 +222,38 @@ caller_gone(const OFTP_SLOT *s)
     owner = (s->asid == 0) ? NULL : __ascb(s->asid);
     if (owner == NULL || owner != s->ascb)
         return 1;
-    if (s->jbni == NULL)
+    if (s->jbni != NULL) {
+        jbni = *(void * volatile *)((char *)owner + ASCB_JBNI);
+        if (jbni != s->jbni)
+            return 1;
+        if (memcmp(jbni, s->job, 8) != 0
+            || memcmp((char *)jbni + CSCB_STEPK, s->job + 8, 8) != 0)
+            return 1;
+    }
+    if (memcmp(s->jobid, none, 8) == 0)
         return 0;
-    jbni = *(void * volatile *)((char *)owner + ASCB_JBNI);
-    if (jbni != s->jbni)
-        return 1;
-    return memcmp(jbni, s->job, 8) != 0
-        || memcmp((char *)jbni + CSCB_STEPK, s->job + 8, 8) != 0;
+    n = a->nslot < OFTP_SVC_NSLOT ? a->nslot : OFTP_SVC_NSLOT;
+    for (i = 0; i < n; i++) {
+        const OFTP_SLOT *t = &a->slot[i];
+        unsigned c, later;
+
+        if (t == s || t->state == OFTP_SL_FREE)
+            continue;
+        /* The number first: the id it goes with was stored before it.
+        ** 0 is a claim being made (the routine clears the fields
+        ** first, and the sequence starts at 1), whose id may still be
+        ** the previous occupant's.
+        */
+        if ((c = t->claim) == 0)
+            continue;
+        later = (c - s->claim) & 0x00FFFFFFU;
+        if (later == 0 || later >= 0x00800000U || t->ascb != s->ascb)
+            continue;
+        if (memcmp(t->jobid, none, 8) != 0
+            && memcmp(t->jobid, s->jobid, 8) != 0)
+            return 1;
+    }
+    return 0;
 }
 
 /* Wake a parked caller. Guarded because __xmpost() WTOs on a NULL
@@ -591,7 +628,7 @@ oftp_svc_take(OFTP_MON *m, unsigned i, OFTP_SVCJOB *j)
     ** gets nothing carried out on its behalf: its slot is freed here,
     ** and whoever frees a slot owns its in-flight decrement.
     */
-    if (s->state == OFTP_SL_PENDING && caller_gone(s)) {
+    if (s->state == OFTP_SL_PENDING && caller_gone(m->anchor, s)) {
         if (state_cas(s, OFTP_SL_PENDING, OFTP_SL_FREE)) {
             dec_inflight(m->anchor);
             gone = 1;
@@ -654,7 +691,7 @@ oftp_svc_answer(OFTP_MON *m, unsigned i, const char *reply, unsigned len,
         return 0;
     if (len > s->cap)
         len = s->cap;
-    if (caller_gone(s)) {
+    if (caller_gone(m->anchor, s)) {
         if (state_cas(s, OFTP_SL_PENDING, OFTP_SL_FREE))
             dec_inflight(m->anchor);
         __prob(savekey, NULL);
@@ -739,7 +776,7 @@ oftp_svc_sweep(OFTP_MON *m)
             ** it (#36). The clock below is for the case caller_gone()
             ** cannot see.
             */
-            if (caller_gone(s)
+            if (caller_gone(m->anchor, s)
                 && state_cas(s, OFTP_SL_DONE, OFTP_SL_FREE)) {
                 dec_inflight(m->anchor);
                 left |= 1u << i;

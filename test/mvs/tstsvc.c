@@ -31,8 +31,8 @@
 ** on purpose: oftp#svc.c only builds into OFTPD.
 */
 typedef char tstsvc_sizes[
-    (sizeof(OFTP_SLOT)   == 2384
-  && sizeof(OFTP_ANCHOR) == 64 + OFTP_SVC_NSLOT * 2384) ? 1 : -1];
+    (sizeof(OFTP_SLOT)   == 2400
+  && sizeof(OFTP_ANCHOR) == 64 + OFTP_SVC_NSLOT * 2400) ? 1 : -1];
 
 /* The reply of a piece, as lines */
 static int
