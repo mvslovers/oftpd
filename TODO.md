@@ -117,8 +117,10 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   containers): a second `S OFTPD`, `P OFTPD` with clients parked, a
   client cancelled while parked, a full pool, the sweep. Open from
   there: a batch caller cancelled while parked holds its slot for 300 s
-  (four in five minutes fill the pool) -- **#36**, measured, options
-  there; ~~a caller woken by the stop is told "not reached"~~ -- it is
+  (four in five minutes fill the pool) -- **#36**: told apart by the
+  job's CSCB now (`internals/xmem.md` section 16), except a job of the
+  same name resubmitted into the same initiator, whose cancelled
+  predecessor's request is still carried out (option 2 there); ~~a caller woken by the stop is told "not reached"~~ -- it is
   told `OFTPD stopped before carrying out the request` now, and an
   answer given after the stop cleared ACTIVE is delivered instead of
   being discarded (section 15); TK5, a cancelled TSO user and the
