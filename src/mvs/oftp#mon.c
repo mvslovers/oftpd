@@ -2026,7 +2026,10 @@ svc_thread(void *arg1, void *arg2)
             /* Test builds only (-DOFTP_DEBUG_SLOW), never shipped: a
             ** request carrying SLOW=n holds the slot thread n seconds
             ** before it is served, so that other callers stay parked
-            ** behind it (#34). A stop cuts the wait short.
+            ** behind it (#34). A stop cuts the wait short and leaves
+            ** this request and every one behind it unserved, as if the
+            ** stop had come before the thread took them: that is the
+            ** path where oftp_svc_stop() has parked slots to post.
             */
             {
                 const char *sl = strstr(line, "SLOW=");
@@ -2037,6 +2040,8 @@ svc_thread(void *arg1, void *arg2)
 
                     ecb_timed_wait(&e, 100, 0);
                 }
+                if (secs > 0 && (m->stop || m->svcstop))
+                    break;
             }
 #endif
             ctl_request(m, &o.o, line);
