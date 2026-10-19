@@ -33,7 +33,13 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   (`internals/m38-changes.md`), `OFTP004I AUTHORIZED BY SVC` on all four;
   test network steps 1-5 passed over up to four hops, EERP and NERP back
   (`internals/testnet.md`, Results). The first final release is 0.2.0
-  (`TOFT020`, deletes `TOFT010`).
+  (`TOFT020`, deletes `TOFT010`). `TOFT010` is spent (REC APP ACC on all
+  four, `internals/m38-changes.md`; burned in the workspace SMP table
+  since 2026-10-19). **Before 0.2.0 is cut: `LIST CDS/ACDS
+  SYSMOD(TOFT020)` on m38l, m38x, m38b and m38r, with job numbers** --
+  `TOFT020` is not checked on any stand yet. Each stand also needs
+  `SVC=237` in its `OFTPPRM0` and `CONTROLPORT=` removed before it runs
+  a build from `main`.
 - **Cross-memory transport** (#1, `internals/xmem.md`, a private SVC):
   SVC 237, free on all five stands (measured 2026-10-14); the ESTAE is
   in (d5b8bdc, measured with a CANCEL on dev1), #2 too; the handlers
