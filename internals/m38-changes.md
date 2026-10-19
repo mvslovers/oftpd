@@ -243,8 +243,16 @@ T0000021/22 `RECV CONFIRMED`) and passed them on, and dev1 refused both
 on the first attempt with reason 12, no retry (m38l T0000019/20
 `REJECTED`, "refused by the partner, reason 12"). m38l then sent the
 NERP 12 back, and T0000010/11 on m38x are `REJECTED`. Nothing
-`IBMUSER.OFTPIN.M38X.SVC.*` exists on dev1. The cause on dev1 is not
-read yet: its console messages do not reach the Hercules log.
+`IBMUSER.OFTPIN.M38X.SVC.*` and no `IBMUSER.OFTPTMP.*` exists on dev1
+(MBT, read only). The cause is **inferred, not read**: dev1's console
+messages reach neither the Hercules log nor STC00813's JESMSGLG. dev1
+runs `2253a7a`, built on libc370 2.17.0, whose `rename()` writes the
+`ALTER ... NEWNAME()` past column 72 (fixed in 2.18.1, libc370#590).
+The final name `IBMUSER.OFTPIN.M38X.SVC.TO.DEV1.F` has 33 characters;
+cut at 32 it ends in a dot, the ALTER fails, and `OFTP221E` answers
+reason 12 without retry -- all of which fits. The test that would show
+it is the same send under a name of at most 31 characters, or dev1 on a
+build with libc370 2.18.1 or later; both write on dev1.
 
 **The lasting state: m38x runs a DEV build ahead of the SMP level.**
 `OFTPD.LINKLIB` still holds TOFT010; the STEPLIB's first library wins.
