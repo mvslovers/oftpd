@@ -117,9 +117,12 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   containers): a second `S OFTPD`, `P OFTPD` with clients parked, a
   client cancelled while parked, a full pool, the sweep. Open from
   there: a batch caller cancelled while parked holds its slot for 300 s
-  (four in five minutes fill the pool); a caller woken by the stop is
-  told "not reached"; TK5, a cancelled TSO user and the `TPROT`/`MVCK`
-  race are not measured.
+  (four in five minutes fill the pool) -- **#36**, measured, options
+  there; ~~a caller woken by the stop is told "not reached"~~ -- it is
+  told `OFTPD stopped before carrying out the request` now, and an
+  answer given after the stop cleared ACTIVE is delivered instead of
+  being discarded (section 15); TK5, a cancelled TSO user and the
+  `TPROT`/`MVCK` race are not measured.
   **The utilities use it** (#22, `internals/xmem.md` section 13): no
   host means the SVC, no fallback to TCP; the caller's userid travels
   beside the request line, and `ADMIN=` in `OFTPPRM` decides who sees
