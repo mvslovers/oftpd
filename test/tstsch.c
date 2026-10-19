@@ -15,7 +15,7 @@ static long now;
 static const char *
 at(long t)
 {
-    static char buf[20];
+    static char buf[64];
     time_t tt = (time_t)t;
     struct tm tm;
 
