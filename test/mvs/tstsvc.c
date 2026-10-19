@@ -229,5 +229,41 @@ main(int argc, char **argv)
     CHECK_EQ(rc, OFTP_SVC_OK, "an unknown request comes back answered");
     CHECK(has_line(buf, len, "500 "), "and the answer is the 500");
 
+    /* 7. A reply buffer this job may not store into is the routine's
+    ** to refuse (TPRNG, xmem.md section 6), with a return code and not
+    ** a program check -- and refusing it must leak nothing. Low core
+    ** is key 0, so a key-8 store there fails TPROT. Twice the pool's
+    ** worth of such calls: a slot or an in-flight count left behind by
+    ** each would have filled the pool by the fifth, and the STATUS
+    ** after them would answer BUSY. In flight is read from the anchor,
+    ** a key-8 fetch of subpool 241 that #15 measured legal; nothing
+    ** else is calling, so it has to be back at 0 (#34).
+    */
+    {
+        char    *lowcore = (char *)0x200;
+        SSCT    *ssct    = ssct_find(OFTP_SVC_SSNAME);
+        unsigned k, refused = 0, wrote = 0;
+
+        for (k = 0; k < 2 * OFTP_SVC_NSLOT; k++) {
+            len = 99;
+            rc = oftp_svc_call("STATUS", lowcore, OFTP_SVC_REPMIN, 0, &len,
+                               NULL);
+            if (rc == OFTP_SVC_BADREQ)
+                refused++;
+            if (len != 0)
+                wrote++;
+        }
+        CHECK_EQ((int)refused, 2 * OFTP_SVC_NSLOT,
+                 "a reply buffer in key-0 storage is refused, every time");
+        CHECK_EQ((int)wrote, 0, "and nothing is reported written");
+        memset(buf, 0, sizeof(buf));
+        len = 0;
+        rc = oftp_svc_call("STATUS", buf, sizeof(buf), 0, &len, NULL);
+        CHECK_EQ(rc, OFTP_SVC_OK, "STATUS still answers after them: no slot lost");
+        CHECK(ssct != NULL
+              && ((OFTP_ANCHOR *)ssct->ssctsuse)->inflight == 0,
+              "and no call is left in flight");
+    }
+
     return mbt_test_summary("TSTSVC");
 }
