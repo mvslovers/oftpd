@@ -137,6 +137,13 @@ host = false
 sources = ["test/mvs/tstrcvm.c"]
 host = false
 
+# oftpd#52: the reply buffer freed by a subtask while the request is
+# parked. Needs an OFTPD built with -DOFTP_DEBUG_SLOW; runs for real only
+# from test/mvs/tstsvcr.jcl (PARM='SLOW').
+[test.TSTSVCR]
+sources = ["test/mvs/tstsvcr.c"]
+host = false
+
 # The SMP installation package (mbt package): the load modules go to
 # OFTPD.LINKLIB (SMP's, distribution library OFTPD.AOFTPLOD), samplib/
 # and ispplib/ are received as text libraries beside it.

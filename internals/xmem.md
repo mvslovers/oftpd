@@ -291,8 +291,14 @@ check. Three things about it are worth keeping in mind:
   +2048 across a known boundary settles it, and that probe belongs
   with #15.
 - It does not close a TOCTOU window: a second task in the caller's
-  address space can free the storage between the `TPROT` and the
-  `MVCK`. That window is what the sweep is for.
+  address space can free the storage after the `TPROT`. For the
+  request that is the few instructions up to the `MVCK`. **For the
+  reply buffer it is the whole time the request is parked**, because
+  the `TPROT` is made before the park and the copy-out after the
+  `WAIT`. Section 17 measures it: the store lands in the freed block,
+  in the caller's own address space and key, and harms nobody else.
+  The sweep is for the other outcome, a program check inside the
+  routine.
 
 **The sweep, in `oftp#svc.c` -- written 2026-10-18, see section 11 --
 and it is not purely OFTPD-side, which is how this was first
@@ -1662,8 +1668,8 @@ address, took the entry, served a `LIST` and gave the entry back at its
 stop; the old anchor and module stay in CSA until the IPL, as section 6
 says.
 
-Not covered: TK5, a cancelled TSO user, and the race between `TPROT`
-and `MVCK`.
+Not covered here: TK5, a cancelled TSO user, and the race between
+`TPROT` and `MVCK`. Section 17 has them.
 
 ### The stop's answers, corrected (same day)
 
@@ -1789,5 +1795,111 @@ a claim being made. Slot 2400 bytes, anchor version 3, `OFTPSVC` 1280.
 
 **Left open:** the request of a caller cancelled before any later claim
 from its address space, while a job of the same name holds the same
-CSCB, is still carried out -- the next claim is what reveals it. TK5
-and a cancelled TSO user are not measured.
+CSCB, is still carried out -- the next claim is what reveals it. A
+cancelled TSO user is section 17.
+
+
+## 17. TK5, a cancelled TSO user, and the freed reply buffer (2026-10-20, #52)
+
+Section 15 left three things open: the cancelled TSO user, the race
+between `TPROT` and `MVCK`, and TK5 for all of it. A throwaway container
+of the `tk5` image on mvsdev (TK5 Update 5), `main` at `6307d52` built
+with `-DOFTP_DEBUG_SLOW`, OFTPD authorized by the RAKF SVC (`OFTP004I
+AUTHORIZED BY SVC`), SVC 237 on `00017068` before, and `OFTP032I SVC 237 RESTORED, ENTRY
+READS 00017068` at the stop.
+Instruments as in section 15: the anchor and slots read with Hercules'
+`v`, the syslog from its web console. A slot is X'960' bytes
+(`sizeof(OFTP_SLOT)` 2400), the stride used here; section 15 wrote
+X'940'.
+
+### A cancelled TSO user
+
+`CALL 'OFTPD.DEV.LINKLIB(OFTP)' 'LIST SLOW(40)'` from a TN3270 logon
+(`mbt test --tso`), `C U=HERC01` from the console while it was parked.
+
+| | What was read |
+|---|---|
+| parked | slot 0 PENDING, ASID 13, `ASCBJBNI` 0 (a TSO user has no CSCB job), `inflight` 1 |
+| `C U=HERC01` at 17.49.34 | `IEE301I CANCEL COMMAND ACCEPTED`, `IEF450I ... ABEND S222` the same second |
+| 6, 14 and 20 s after | slot 0 **still PENDING**, `inflight` 1 |
+| 17.49.53, when the 40 s hold ended | `OFTP064W CROSS MEMORY: THE OWNER OF SLOT 0 IS GONE, ANSWER DISCARDED`; slot FREE, `inflight` 0 |
+
+A second run put the TSO user behind a batch `LIST SLOW(60)` (JOB00051),
+so that its request was not being served but waiting. Cancelled at
+17.55.35; thirteen seconds later both slots still PENDING, `inflight`
+2. At 17.55.51, when the batch request ended: `OFTP066W CROSS MEMORY:
+THE OWNER OF SLOT 1 IS GONE, REQUEST NOT CARRIED OUT`, both slots FREE,
+`inflight` 0, the batch job CC 0 with its own answer.
+
+**So a cancelled TSO user does not take a slot for five minutes, as a
+batch caller does (section 15 case 3), and the pool is whole
+afterwards; but its slot is not freed at the moment of the cancel.** It
+is freed when the slot thread next reaches it: `oftp_svc_take` when the
+request was waiting, `oftp_svc_answer` when it was being served. The
+sweep never touches PENDING. The time is whatever the slot thread is
+busy with. Today's handlers are short (spool and partner table, no
+network wait) so it is milliseconds; a handler that blocked would hold
+the cancelled caller's slot, and four of them the pool. Freeing it at
+the cancel itself needs a hook in the caller's task (an ESTAE or
+end-of-task resource manager in the routine), which is a change to the
+transport and was not made here.
+
+The two TSO logons got different ASCBs for the same ASID 13
+(`00FE05F8`, then `00FE06A8`), and different job ids (`TSU 3`, `TSU 4`).
+That is why `caller_gone` said gone: the ASCB in the slot no longer was
+the one in the ASVT. **Not measured:** a new logon that comes back with
+the same ASID *and* the same ASCB address before the slot thread has
+reached the slot. For a TSO caller `caller_gone` has no CSCB to compare
+(`ASCBJBNI` is 0), so only the claim sequence could tell, and that needs
+a claim from the new logon. The request would then be carried out for
+the dead user, as section 16's "left open" says for batch. The post of
+the answer goes to the reply ECB in the slot, in CSA, which nobody
+waits on, so that reading gives no harm beyond the request being
+carried out. A reading of the code, not a measurement.
+
+### The reply buffer freed while parked
+
+`TPROT` of the reply buffer is made before the request is parked and
+the copy-out after the `WAIT`, so a second task of the caller can take
+the buffer away for the whole time OFTPD holds the request, not only
+for the instructions between `TPROT` and a `MVCK`. `test/mvs/tstsvcr.c`
+(`TSTSVCR`, PARM='SLOW', needs the `-DOFTP_DEBUG_SLOW` build) does it:
+a subtask `GETMAIN`s 2048 bytes, the main task issues `LIST SLOW=3`
+into that block under `try()`, and the subtask `FREEMAIN`s the block as
+soon as it sees a slot PENDING in the anchor. Eight rounds, twice the
+pool.
+
+Result, JOB00047 and again JOB00050 after the checks were added, 62 of
+62: in every round the SVC returned `OFTP_SVC_OK`, 16 bytes, `try()` 0,
+`FREEMAIN` 0, and the first byte of the freed block was the answer's.
+**No program check.** Afterwards `inflight` 0, every slot FREE, `STATUS`
+answers.
+
+Why: `FREEMAIN` gives the block back to the region's free list, not to
+the system, and the page stays valid; the copy-out is `SPKA` to the
+caller's key and `MVC`, and a key-8 store into key-8 storage of the
+caller's own address space is permitted. So the answer is written into
+a block the caller no longer owns. That is the caller's own bug, with
+the caller's own authority: the routine stores nothing the caller could
+not store itself, and nothing outside the caller's address space. If
+the block has been reused in the meantime the answer overwrites its new
+contents (at most 2048 bytes of OFTPD's reply to the caller's own
+request); if it has been reused under another key the store is a
+protection exception, which is the next case.
+
+The other outcome, a program check in the copy-out, was **not
+provoked**: from problem state there is no way found to make storage
+the `TPROT` saw available unavailable later. It would abend the
+caller's own task in the routine with the slot left COPYOUT, and the
+sweep frees that after two passes (`OFTP060W`, section 15 case 5, where
+the state was written by hand). The test accepts it (`try()` S0C4) and
+checks the pool after either.
+
+The request's own window, between `TPROT` and `MVCK`, is a few
+instructions and cannot be aimed at: whether a second task can even be
+dispatched inside the routine there was not checked, so this is
+**analysed and not shown**. Its outcome would be the same two: the
+`MVCK` runs under the caller's key, so a block freed and reused gives
+the caller's own bytes or a protection exception in the caller's own
+task, before the slot is PENDING, and the slot stays CLAIMED until the
+sweep frees it (section 15 case 5, by hand-written state).
