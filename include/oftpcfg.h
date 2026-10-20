@@ -63,6 +63,8 @@ typedef struct oftp_partner {
     char        skey[8];                /* spool key of the maintained
                                            entry (oftpspl.h), X'00' for
                                            one that is only in OFTPPTN   */
+    int         ovr;                    /* maintained, and OFTPPTN names
+                                           it too: the spool wins        */
 } OFTP_PARTNER;
 
 typedef struct oftp_config {
@@ -197,6 +199,12 @@ extern int  oftp_cfg_alloc(OFTP_CONFIG *c)              asm("OFTPCFGV");
 
 /* Leaves slot i a gap */
 extern void oftp_cfg_free(OFTP_CONFIG *c, int i)        asm("OFTPCFGW");
+
+/* Disables the enabled partners whose VIA names no enabled direct
+** partner, saying so through msg. Returns how many.
+*/
+extern int  oftp_cfg_vias(OFTP_CONFIG *c, OFTP_CFGMSG msg, void *ctx)
+                                                        asm("OFTPCFGJ");
 
 /* Partners that are not gaps, and those of them enabled */
 extern int  oftp_cfg_count(const OFTP_CONFIG *c, int *enabled)

@@ -188,6 +188,20 @@ main(void)
     CHECK_EQ(a, 1, "the gap is used again");
     CHECK_EQ(c.nptn, 3, "and the table did not grow");
 
+    /* VIA through a gap or a partner that went: disabled, said once */
+    {
+        OFTP_PARTNER *nw = &c.ptn[oftp_cfg_slot(&c, "NEW")];
+        int slot = oftp_cfg_slot(&c, "NEW");
+
+        strcpy(nw->via, "GONE");
+        nw->enabled = 1;
+        CHECK_EQ(oftp_cfg_vias(&c, NULL, NULL), 1, "a VIA with no partner is disabled");
+        CHECK(!c.ptn[slot].enabled, "and off");
+        CHECK_EQ(oftp_cfg_vias(&c, NULL, NULL), 0, "nothing more to say");
+        nw->via[0] = '\0';
+        nw->enabled = 1;
+    }
+
     /* full: gaps are used, a full table says so */
     while (c.nptn < OFTP_MAXPTN) {
         char l[80];

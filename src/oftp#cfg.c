@@ -344,6 +344,40 @@ oftp_cfg_complete(const OFTP_CONFIG *c, OFTP_PARTNER *p)
 }
 
 int
+oftp_cfg_vias(OFTP_CONFIG *c, OFTP_CFGMSG msg, void *ctx)
+{
+    int i, j, off = 0;
+
+    for (i = 0; i < c->nptn; i++) {
+        OFTP_PARTNER *p = &c->ptn[i];
+        const OFTP_PARTNER *v = NULL;
+
+        if (!p->via[0] || !p->enabled)
+            continue;
+        for (j = 0; j < c->nptn; j++)
+            if (c->ptn[j].peer.name[0]
+                && strcmp(c->ptn[j].peer.name, p->via) == 0)
+                v = &c->ptn[j];
+        if (v == NULL || !v->enabled || v->via[0] || v == p) {
+            if (p->line > 0)
+                say(msg, ctx, "line %d: partner %s: VIA names no direct partner, disabled",
+                    p->line, p->peer.name);
+            else if (msg != NULL) {
+                char line[120];
+
+                snprintf(line, sizeof(line),
+                         "partner %s: VIA names no direct partner, disabled",
+                         p->peer.name);
+                msg(ctx, line);
+            }
+            p->enabled = 0;
+            off++;
+        }
+    }
+    return off;
+}
+
+int
 oftp_cfg_finish(OFTP_CONFIG *c, OFTP_CFGMSG msg, void *ctx)
 {
     int i, j, on = 0;
@@ -367,22 +401,7 @@ oftp_cfg_finish(OFTP_CONFIG *c, OFTP_CFGMSG msg, void *ctx)
         if (p->enabled)
             on++;
     }
-    /* VIA must name an enabled direct partner */
-    for (i = 0; i < c->nptn; i++) {
-        OFTP_PARTNER *p = &c->ptn[i], *v = NULL;
-
-        if (!p->via[0] || !p->enabled)
-            continue;
-        for (j = 0; j < c->nptn; j++)
-            if (strcmp(c->ptn[j].peer.name, p->via) == 0)
-                v = &c->ptn[j];
-        if (v == NULL || !v->enabled || v->via[0] || v == p) {
-            say(msg, ctx, "line %d: partner %s: VIA names no direct partner, disabled",
-                p->line, p->peer.name);
-            p->enabled = 0;
-            on--;
-        }
-    }
+    on -= oftp_cfg_vias(c, msg, ctx);
     return on;
 }
 

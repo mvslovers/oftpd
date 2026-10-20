@@ -129,6 +129,7 @@ main(int argc, char **argv)
     if (oftp_spl_verified(m->spool))
         oftp_mon_msg("OFTP021W SPOOL WAS NOT CLOSED (OPEN RC %d), VERIFIED",
                      oftp_spl_verified(m->spool));
+    oftp_mon_maint(m);
     oftp_mon_recover(m);
     if (oftp_mon_start(m) != 0) {
         oftp_mon_stop(m);
