@@ -451,9 +451,13 @@ pentry(DLG *d, const char *name, int adding)
         n = (size_t)snprintf(req, sizeof(req), "PARTNER %s PARTNER=%s",
                              adding ? "ADD" : "CHANGE", name);
         rc = 0;
-        for (i = 0; i < NF && rc == 0; i++)
-            if (sent(i, adding, old[i], now[i]))
-                rc = addkw(req, sizeof(req), &n, pf[i].kw, now[i]);
+        for (i = 0; i < NF; i++) {
+            if (!sent(i, adding, old[i], now[i]))
+                continue;
+            rc = addkw(req, sizeof(req), &n, pf[i].kw, now[i]);
+            if (rc != 0)
+                break;
+        }
         if (rc != 0) {
             PUT(d, oftmsg, "The entries do not fit one request");
             continue;

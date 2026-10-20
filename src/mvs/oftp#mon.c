@@ -2007,11 +2007,14 @@ ptn_why(PTNREQ *q, const char *why)
 static int
 ptn_delete(OFTP_MON *m, PTNREQ *q)
 {
-    OFTP_PARTNER *old = &m->cfg.ptn[q->slot];
-    OFTP_PARTNER n = *old;
+    OFTP_PARTNER *old = q->slot >= 0 ? &m->cfg.ptn[q->slot] : NULL;
+    OFTP_PARTNER n;
     OFTP_SPPTN rec;
     int k, uses, was;
 
+    if (old == NULL)
+        return ptn_refuse(q, "501 no such partner");
+    n = *old;
     if (old->skey[0] == '\0')
         return ptn_refuse(q, "513 the partner is in OFTPPTN: remove it there,"
                           " then REFRESH");
@@ -2057,7 +2060,7 @@ ptn_delete(OFTP_MON *m, PTNREQ *q)
 static int
 ptn_change_ok(OFTP_MON *m, PTNREQ *q, OFTP_PARTNER *n)
 {
-    OFTP_PARTNER *old = &m->cfg.ptn[q->slot];
+    const OFTP_PARTNER *old = &m->cfg.ptn[q->slot];
     OFTP_PARTNER t = *n;
     char a[OFTP_SPLRECL], b[OFTP_SPLRECL];
     int k;
@@ -2120,7 +2123,8 @@ ptn_save(OFTP_MON *m, PTNREQ *q, int adding)
     OFTP_PARTNER n;
     OFTP_SPPTN rec;
     char why[80];
-    int i = q->slot, rc;
+    int i = q->slot;
+    int rc;
 
     memset(&rec, 0, sizeof(rec));
     if (adding)
@@ -2184,12 +2188,14 @@ ptn_report(OFTP_MON *m, CTLOUT *o, PTNREQ *q, const char *sub)
 }
 
 static void
-ctl_partner(OFTP_MON *m, CTLOUT *o, char *line)
+ctl_partner(OFTP_MON *m, CTLOUT *o, const char *line)
 {
     PTNREQ q;
     char sub[10];
-    char *rest = line + 7;
-    int k = 0, rc, adding;
+    const char *rest = line + 7;
+    int k = 0;
+    int rc;
+    int adding;
 
     while (*rest == ' ')
         rest++;
@@ -2964,30 +2970,36 @@ cmd_trace(OFTP_MON *m, const char *onoff, const char *ptn)
 }
 
 static void
-cmd_display(OFTP_MON *m, const char *what)
+display_partners(OFTP_MON *m)
 {
     int i;
 
-    if (what[0] == 'P') {
-        for (i = 0; i < m->cfg.nptn; i++) {
-            OFTP_PARTNER *p = &m->cfg.ptn[i];
-            char ss[32];
+    for (i = 0; i < m->cfg.nptn; i++) {
+        OFTP_PARTNER *p = &m->cfg.ptn[i];
+        char ss[32];
 
-            if (p->peer.name[0] == '\0')
-                continue;
-            ss[0] = '\0';
-            if (m->busy[i])
-                snprintf(ss, sizeof(ss), " %d OF %d SESSIONS", m->busy[i],
-                         p->sessions);
-            if (m->trace_all || m->trace[i])
-                strcat(ss, " TRACE");
-            oftp_mon_msg("OFTP100I %-8s %-25s %s%s LEVEL %d %s:%d", p->peer.name,
-                         p->peer.code, p->enabled ? "ENABLED" : "DISABLED",
-                         ss, p->peer.level, p->host[0] ? p->host : "-", p->port);
-        }
-        oftp_mon_msg("OFTP101I %d PARTNERS, %d SESSIONS",
-                     oftp_cfg_count(&m->cfg, NULL), m->nsess);
-        show_trace(m);
+        if (p->peer.name[0] == '\0')
+            continue;
+        ss[0] = '\0';
+        if (m->busy[i])
+            snprintf(ss, sizeof(ss), " %d OF %d SESSIONS", m->busy[i],
+                     p->sessions);
+        if (m->trace_all || m->trace[i])
+            strcat(ss, " TRACE");
+        oftp_mon_msg("OFTP100I %-8s %-25s %s%s LEVEL %d %s:%d", p->peer.name,
+                     p->peer.code, p->enabled ? "ENABLED" : "DISABLED",
+                     ss, p->peer.level, p->host[0] ? p->host : "-", p->port);
+    }
+    oftp_mon_msg("OFTP101I %d PARTNERS, %d SESSIONS",
+                 oftp_cfg_count(&m->cfg, NULL), m->nsess);
+    show_trace(m);
+}
+
+static void
+cmd_display(OFTP_MON *m, const char *what)
+{
+    if (what[0] == 'P') {
+        display_partners(m);
     } else if (what[0] == 'Q') {
         OFTP_SPREC r;
         char last[8];

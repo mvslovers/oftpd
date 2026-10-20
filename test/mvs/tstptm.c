@@ -208,7 +208,8 @@ phase_a(const char *host, const char *port, const char *dsn)
     /* 6. send a file to it, without a restart in between */
     snprintf(req, sizeof(req), "SEND PARTNER=" NAME " DSN=%s", dsn);
     CHECK(answers(req, "200"), "SEND to the partner is queued");
-    key[0] = state[0] = '\0';
+    key[0] = '\0';
+    state[0] = '\0';
     for (i = 0; i < 60; i++) {
         if (transfer(key, state)
             && (strcmp(state, "DELIVERED") == 0 || strcmp(state, "FAILED") == 0
