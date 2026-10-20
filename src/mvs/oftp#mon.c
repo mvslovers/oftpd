@@ -511,12 +511,15 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
         r.relay = 'Y';
         r.xlate = 'N';
         strcpy(r.from, c->pt->peer.name);
-        strcpy(r.target, target != next ? target->peer.name : "");
         strcpy(r.partner, next->peer.name);
     }
     lock(c->m, 0);
-    live = next == NULL || (next->enabled
-                            && strcmp(next->peer.name, r.partner) == 0);
+    /* the route was looked up without the lock: both partners must still
+    ** be there, enabled and the ones looked up, and the final one's name
+    ** is read here and not before */
+    live = next == NULL
+        || oftp_cfg_relay_live(next, r.partner, target, f->dest, r.target,
+                               sizeof(r.target));
     rc = live ? oftp_spl_add(c->m->spool, &r) : 0;
     unlock(c->m, 0);
     if (!live) {

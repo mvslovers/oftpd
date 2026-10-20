@@ -132,6 +132,16 @@ main(void)
                  "a word of 99 characters is still taken");
         CHECK_EQ(n.port, 77, "with its whole value");
     }
+    /* a word that is not KEYWORD=VALUE is named by its place: after
+    ** PASSWORD=ab the word cd is the rest of a password (#121)
+    */
+    n = c.ptn[0];
+    why[0] = '\0';
+    CHECK_EQ(oftp_cfg_apply(&n, "PORT=4000 PASSWORD=ab cd", why, sizeof(why)), -1,
+             "a word without '=' is refused");
+    CHECK(strstr(why, "cd") == NULL && strstr(why, "ab") == NULL,
+          "and the reason shows none of the words");
+    CHECK(strcmp(why, "word 3 is not KEYWORD=VALUE") == 0, "but where it is");
     n = c.ptn[0];
     oftp_cfg_apply(&n, "ODETTEID=O0013000000ACME", why, sizeof(why));
     CHECK_EQ(oftp_cfg_check(&c, &n, 0, why, sizeof(why)), -1,

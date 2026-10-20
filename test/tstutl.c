@@ -188,6 +188,30 @@ main(void)
     CHECK(strstr(lastreq, "PASSWORD=AVERYVERYLONGSECRET") != NULL,
           "and the request itself is not masked");
 
+    /* every way of writing the value is masked, and all of it: a blank
+    ** before the value, a blank around '=', a ')' inside the value (#121)
+    */
+    rc = batch("PARTNER CHANGE ACME PASSWORD secret1\n"
+               "PARTNER CHANGE ACME PASSWORD (secret2)\n"
+               "PARTNER CHANGE ACME PASSWORD = secret3\n"
+               "PARTNER CHANGE ACME PASSWORD(ab)secret4)\n"
+               "PARTNER CHANGE ACME PASSWORD( secret5 ) PORT(4000)\n"
+               "PARTNER CHANGE ACME OURPASSWORD ='se cret6' PORT(4000)\n"
+               "PARTNER CHANGE ACME PASSWORD('se)cret7')\n",
+               out, sizeof(out));
+    CHECK(strstr(out, "secret") == NULL && strstr(out, "cret") == NULL
+          && strstr(out, "ab)") == NULL,
+          "no form of the password value reaches the echo");
+    CHECK(strstr(out, "PASSWORD ********\n") != NULL
+          && strstr(out, "PASSWORD (********)\n") != NULL
+          && strstr(out, "PASSWORD = ********\n") != NULL
+          && strstr(out, "PASSWORD(********)\n") != NULL,
+          "the stars stand where the value stood");
+    CHECK(strstr(out, "PASSWORD( ******** ) PORT(4000)") != NULL
+          && strstr(out, "OURPASSWORD ='********' PORT(4000)") == NULL
+          && strstr(out, "OURPASSWORD =******** PORT(4000)") != NULL,
+          "and what follows the value is as typed");
+
     /* a long command is echoed in lines that fit */
     rc = batch("SEND PARTNER(ACME) DSN(AAAAAAAAAAAA.BBBBBBBBBBBB.CCCCCCCCCC) -\n"
                "  VFN(DDDDDDDDDDDDDDDDDDDDDDDDDDDDDD) -\n"

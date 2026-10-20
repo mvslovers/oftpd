@@ -3,8 +3,9 @@
 ** A PARTNER request can carry a password, and the slot is readable from
 ** key 8. The slot is wiped when OFTPD has copied the request out, and
 ** also when the caller turned out to be gone and the request is dropped
-** unread (#113). Neither needs a running OFTPD: the anchor here is
-** ordinary storage and oftp_svc_take() runs on it.
+** unread (#113); the sweep wipes a reply nobody will collect, and the
+** stop wipes every slot before the anchor is freed (#121). None of it
+** needs a running OFTPD: the anchor here is ordinary storage.
 **
 ** oftp_svc_take() brackets its access in key 0, so this must run from
 ** an APF-authorized library with AC(1), like TSTPROT; the job fails its
@@ -40,6 +41,20 @@ all_zero(const char *p, size_t n)
         if (*p++ != 0)
             return 0;
     return 1;
+}
+
+/* A slot in the state given, request and reply full of text */
+static void
+fill(OFTP_ANCHOR *a, unsigned i, unsigned state)
+{
+    OFTP_SLOT *s = &a->slot[i];
+
+    memset(s, 0, sizeof(*s));
+    memcpy(s->req, secret, sizeof(secret) - 1);
+    memset(s->reply, 'R', sizeof(s->reply));
+    s->reqlen = (unsigned)(sizeof(secret) - 1);
+    s->replen = (unsigned)sizeof(s->reply);
+    s->state  = state;
 }
 
 /* Slot 0 pending with a request in it; the caller is the one given */
@@ -107,6 +122,35 @@ main(int argc, char **argv)
     CHECK_EQ((int)a->inflight, 0, "and its in-flight count is given back");
     CHECK(all_zero(a->slot[0].req, sizeof(a->slot[0].req)),
           "and the request, with its password, is not left in it");
+
+    /* a reply nobody collects: the caller is gone, and the sweep frees
+    ** the slot (#121) */
+    fill(a, 0, OFTP_SL_DONE);
+    a->inflight = 1;
+    oftp_svc_sweep(m);
+    CHECK_EQ((int)a->slot[0].state, OFTP_SL_FREE, "a DONE slot of a gone caller is freed");
+    CHECK_EQ((int)a->inflight, 0, "and its in-flight count is given back");
+    CHECK(all_zero(a->slot[0].reply, sizeof(a->slot[0].reply)),
+          "its reply is not left in it");
+    CHECK(all_zero(a->slot[0].req, sizeof(a->slot[0].req)),
+          "and nor is its request");
+
+    /* the stop wipes every slot, whatever it holds, before the free */
+    {
+        unsigned i, clean = 0;
+
+        fill(a, 0, OFTP_SL_FREE);
+        fill(a, 1, OFTP_SL_PENDING);
+        fill(a, 2, OFTP_SL_DONE);
+        fill(a, 3, OFTP_SL_STOP);
+        oftp_svc_scrub(m);
+        for (i = 0; i < OFTP_SVC_NSLOT; i++)
+            if (all_zero(a->slot[i].req, sizeof(a->slot[i].req))
+                && all_zero(a->slot[i].reply, sizeof(a->slot[i].reply)))
+                clean++;
+        CHECK_EQ((int)clean, OFTP_SVC_NSLOT,
+                 "oftp_svc_scrub() wipes request and reply of every slot");
+    }
 
     free(a);
     free(m);

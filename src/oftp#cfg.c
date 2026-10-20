@@ -189,8 +189,9 @@ partner_kw(OFTP_PARTNER *p, const char *k, const char *v)
 
 /* The next KEYWORD=VALUE of *pp into tok[100]: tok the keyword, upper-cased,
 ** *v the value, upper-cased except HOST. 1 for a pair, 0 at the end, -1
-** for a word without '=' (tok holds it), -2 for a word of more than 99
-** characters (tok is empty: the word may hold a password).
+** for a word without '=' (tok holds it, but it is not to be shown: it can
+** be the rest of a password), -2 for a word of more than 99 characters
+** (tok is empty).
 */
 static int
 next_kv(const char **pp, char *tok, char **v)
@@ -244,14 +245,18 @@ typedef struct {
     const void *ctx;
 } CFG_AT;
 
-/* A word next_kv() refused: -2 too long, else no KEYWORD=VALUE. */
+/* A word next_kv() refused, the word-th of its line: -2 too long, else no
+** KEYWORD=VALUE. The word is named by its place, never shown.
+*/
 static void
-cfg_badword(int partner, OFTP_PARTNER *cur, int got, const char *tok,
+cfg_badword(int partner, OFTP_PARTNER *cur, int got, int word,
             const CFG_AT *at)
 {
     if (got != -2) {
-        say(at->msg, at->ctx, "line %d: %s is not KEYWORD=VALUE", at->lineno,
-            tok);
+        char what[40];
+
+        snprintf(what, sizeof(what), "word %d is not KEYWORD=VALUE", word);
+        say(at->msg, at->ctx, "line %d: %s", at->lineno, what);
         return;
     }
     say(at->msg, at->ctx, "line %d: %s", at->lineno,
@@ -309,6 +314,7 @@ oftp_cfg_line(OFTP_CONFIG *c, int partner, const char *text, int lineno,
     const CFG_AT at = { lineno, msg, ctx };
     OFTP_PARTNER *cur = last_partner(c);
     int errors = 0;
+    int word = 0;
 
     if (*p == '*')
         return 0;
@@ -319,8 +325,9 @@ oftp_cfg_line(OFTP_CONFIG *c, int partner, const char *text, int lineno,
 
         if (got == 0)
             break;
+        word++;
         if (got < 0) {
-            cfg_badword(partner, cur, got, tok, &at);
+            cfg_badword(partner, cur, got, word, &at);
             errors++;
             continue;
         }
@@ -344,6 +351,7 @@ int
 oftp_cfg_apply(OFTP_PARTNER *p, const char *text, char *why, int whylen)
 {
     const char *t = text;
+    int word = 0;
 
     for (;;) {
         char tok[100];
@@ -353,12 +361,13 @@ oftp_cfg_apply(OFTP_PARTNER *p, const char *text, char *why, int whylen)
 
         if ((got = next_kv(&t, tok, &v)) == 0)
             return 0;
+        word++;
         if (got == -2) {
             snprintf(why, (size_t)whylen, "a word is longer than 99 characters");
             return -1;
         }
         if (got < 0) {
-            snprintf(why, (size_t)whylen, "%s is not KEYWORD=VALUE", tok);
+            snprintf(why, (size_t)whylen, "word %d is not KEYWORD=VALUE", word);
             return -1;
         }
         if (strcmp(tok, "PARTNER") == 0)
@@ -484,6 +493,22 @@ oftp_cfg_route(OFTP_CONFIG *c, const char *odetteid, OFTP_PARTNER **final)
     }
     *final = NULL;
     return NULL;
+}
+
+int
+oftp_cfg_relay_live(const OFTP_PARTNER *next, const char *nextname,
+                    const OFTP_PARTNER *final, const char *dest,
+                    char *tname, size_t tcap)
+{
+    tname[0] = '\0';
+    if (!next->enabled || strcmp(next->peer.name, nextname) != 0)
+        return 0;
+    if (final == next)
+        return 1;
+    if (!final->enabled || strcmp(final->peer.code, dest) != 0)
+        return 0;
+    snprintf(tname, tcap, "%s", final->peer.name);
+    return 1;
 }
 
 OFTP_PARTNER *
