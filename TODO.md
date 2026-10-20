@@ -143,7 +143,13 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   two RAKF userids (HERC01 in `ADMIN=`, HERC02 not), paging, `TSTSVC`
   34/34; then on the stand m38b as a test instance beside its OFTPD
   (`TSTSVC` 20/20, SVC 237 back to `00017068` at the end). Open from it:
-  - The dialog has not run on TK5 at all.
+  - ~~The dialog has not run on TK5 at all~~ (#53): it runs there with the
+    panels unchanged, see `docs/installation.md` section 9. Measured in a
+    TK5 container (2026-10-20): menu, send, the transfer list with S, H,
+    R, T and D, the partner list with C and the pick for send, configure
+    (Revedit, then the partner member is read again), monitor, and
+    `test/tso/ispf.lua`. Not measured: a wide screen other than 132x43,
+    and any ISPF but TK5's.
   - ~~**`SEND` reads the data set with OFTPD's authority**~~: over the
     SVC the caller's READ is checked at queue time (RACINIT PASSCHK=NO,
     RACHECK), measured in a TK5 container with a deny profile

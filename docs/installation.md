@@ -19,7 +19,9 @@ This package installs it through SMP 4, the SMP that comes with MVS 3.8j.
 - For the dialog: ISPF (Wally Mclaughlin's, as on TK5 and MVS/CE) and a
   screen of more than 24 rows: the main menu and the send panel do not
   fit on 24. The panels are made for 43 rows (3278/3279 model 4) and use
-  the width of a wider screen.
+  the width of a wider screen. On 24 rows TK5's ISPF does not say what is
+  wrong: it shows `ISPF SERVICE ERROR DISPLAY` with `SERVICE NAME DISPLAY`
+  and `RETURN CODE 20`. Ask your 3270 emulator for model 4.
 
 ## The package
 
@@ -263,7 +265,9 @@ SYSOUT and tape.
 Copy `OFTPD.SAMPLIB(OFTPD)` to `SYS2.PROCLIB`. Its `STEPLIB` already names
 `OFTPD.LINKLIB`. Its defaults are `SYS2.PARMLIB` (members `OFTPPRM0`,
 `OFTPPTN0` and `OFTPRCV0`; `R=` names another rules member) and the spool `OFTP.SPOOL`; give your spool's name either in
-the procedure (`S=`) or when starting it.
+the procedure (`S=`) or when starting it. TK5 has no `SYS2.PARMLIB`: put
+the members into `SYS1.PARMLIB` and start with
+`S OFTPD,D='SYS1.PARMLIB'` (or change `D=` in the procedure).
 
 Under RAKF, the started task's userid may need update access to the
 spool and the authority to create data sets under `INPREFIX` and
@@ -392,6 +396,13 @@ allocates them, usually in the CLIST that starts ISPF:
 - `OFTPD.ISPPLIB` to the `ISPPLIB` allocation,
 - `OFTPD.LINKLIB` to the `ISPLLIB` allocation.
 
+Mind the block sizes (`LISTDS 'name'` shows them). ISPF abends
+(`FUNCTION HAS ABENDED` on the first panel it reads) when a library with
+a smaller block size comes before one with a larger block size in a
+concatenation. `OFTPD.ISPPLIB` has 3120, less than the user panel
+libraries of most systems, so it goes last; so does `OFTPD.LINKLIB` when
+its block size is not above that of the `ISPLLIB` libraries already there.
+
 Then start it with
 
 ```
@@ -416,6 +427,53 @@ all.
 receive rules (section 6). If you take the new procedure over your old one,
 copy `OFTPRCV0` to your parmlib first, or delete the DD from your copy;
 otherwise the start fails with a JCL error for the missing member.
+
+### On TK5
+
+TK5 builds the allocations at logon, in `SYS1.CMDPROC(ISPLOGON)`, with the
+REXX exec `$CONCAT` (ddname, data set, and `BOT` to add at the end). The
+same procedure then runs `userid.CMDPROC(MYLOGON)` if there is one. Create
+it:
+
+```
+PROC 0
+CONTROL NOMSG,NOLIST,NOSYMLIST,NOCONLIST,NOFLUSH
+RX $CONCAT ISPPLIB OFTPD.ISPPLIB BOT
+RX $CONCAT ISPLLIB OFTPD.LINKLIB BOT
+EXIT
+```
+
+and log on again. The menu entry goes into the "Additional applications"
+panel (option `M` of the primary menu), `TSOAPPLS` in `SYS2.ISP.PLIB`. Do
+not change that library: copy the member to your own panel library, the
+first in `ISPPLIB` (`userid.ISP.PLIB`), and add the line and the `TRANS`
+entry there:
+
+```
+%   O @OFTPD       + Odette file transfer
+...
+                O,'CMD(OFTPI) NEWAPPL(OFTP)'
+```
+
+The line is the one of another entry with the name changed. Then
+`ISPF`, `M`, `O` opens the dialog. Without the entry, option `6` of the primary
+menu and `ISPEXEC SELECT CMD(OFTPI) NEWAPPL(OFTP)` do the same.
+
+Option 4 asks for the partner member and keeps it in your ISPF profile.
+The first time it offers `SYS2.PARMLIB(OFTPPTN0)`: on TK5 type the member
+you use, for example `SYS1.PARMLIB(OFTPPTN0)`. The editor is TK5's
+`REVEDIT`; leaving it with PF3 makes OFTPD read the member again.
+
+### The test
+
+`mbt test --tso --only ispf --target NAME` (`test/tso/ispf.lua`) goes
+through the dialog over TN3270 on an 80x43 screen: the monitor, the
+partner list, a held send, show, hold and delete in the transfer list,
+the partner pick for the send panel, and an edit of a copy of the
+partner member. It needs OFTPD running, the entry `O` in the
+"Additional applications" panel, and the data set `userid.OFTPD.SAMPLE`
+(any sequential data set, empty is enough; the transfer is held and
+deleted again). It passes on TK5.
 
 ## Removing it
 

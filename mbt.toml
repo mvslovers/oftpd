@@ -162,3 +162,6 @@ prereq = []
 # panels are made for.
 [tso.ispf]
 size = "80x43"
+
+[tso.ispf.fixtures]
+PARMS = ["test/tso/oftpptn0"]
