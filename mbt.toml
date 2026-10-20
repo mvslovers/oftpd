@@ -98,6 +98,14 @@ host = false
 # job still answered __isauth() == 0 until this line existed.
 ac = 1
 
+# What oftp_svc_take() leaves in a CSA request slot (#113). It switches
+# to key 0, so AC(1) and an authorized library, like TSTPROT; no OFTPD
+# needed. Runs for real only from test/mvs/tsttake.jcl (PARM='RUN').
+[test.TSTTAKE]
+sources = ["test/mvs/tsttake.c"]
+host = false
+ac = 1
+
 # The daily KEEPDAYS run on MVS (#59): seeds old and young finished
 # transfers into the spool of a stopped OFTPD, and reads it back after
 # OFTPD's first tick. Runs for real only from test/mvs/tstkeep.jcl.

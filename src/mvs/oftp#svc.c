@@ -629,6 +629,9 @@ oftp_svc_take(OFTP_MON *m, unsigned i, OFTP_SVCJOB *j)
     ** and whoever frees a slot owns its in-flight decrement.
     */
     if (s->state == OFTP_SL_PENDING && caller_gone(m->anchor, s)) {
+        /* wiped before the slot is free: once it is, a new caller may
+        ** be writing its request into it */
+        memset(s->req, 0, sizeof(s->req));
         if (state_cas(s, OFTP_SL_PENDING, OFTP_SL_FREE)) {
             dec_inflight(m->anchor);
             gone = 1;
