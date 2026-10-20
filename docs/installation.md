@@ -221,11 +221,11 @@ data set, not a member.
 product (RAKF) whether your userid may read the data set, and refuses
 with `not authorized` (RC 8) when it may not -- an administrator
 included. So a data set needs the profile that protects it; under RAKF a
-data set no profile covers may be read by everyone. A caller that has no
-userid at all, an address space without a security environment, is
-refused the same way, with `not authorized: the caller has no userid`
-(RC 8), also for `DISP(DELETE)`: there is no one whose authority could be
-checked.
+data set no profile covers may be read by everyone. On a system with a
+security product, a caller that has no userid at all, an address space
+without a security environment, is refused the same way, with
+`not authorized: the caller has no userid` (RC 8), also for
+`DISP(DELETE)`: there is no one whose authority could be checked.
 
 ### Who may see and change a transfer
 
@@ -245,11 +245,13 @@ a data set profile, since there is none. So on such a system give OFTPD
 only to people who may touch each other's transfers.
 
 `CALL`, `PURGE` and `REFRESH` need a userid in `ADMIN=` in either case.
-Without a security product no caller has a userid, so OFTPD refuses these
-three from the utility and the dialog; the utility prints `needs ADMIN= in
-OFTPPRM` (RC 8). The operator's `F OFTPD,CALL`, `F OFTPD,PURGE` and
-`F OFTPD,REFRESH` (section 7) are not affected. `PURGE DAYS(0)` deletes
-every finished transfer, however recent.
+Without a security product there is no security environment and so no
+userid, and OFTPD refuses all three. `CALL` and `PURGE` are utility
+commands; the utility prints `needs ADMIN= in OFTPPRM` (RC 8). `REFRESH`
+is sent by the dialog only, after you edit the partner member (section 9).
+The operator's `F OFTPD,CALL`, `F OFTPD,PURGE` and `F OFTPD,REFRESH`
+(section 7) are not affected. `PURGE DAYS(0)` deletes every finished
+transfer, however recent.
 
 ## 9. The ISPF dialog
 
@@ -271,7 +273,8 @@ for example as an entry in a menu panel: a line for the option in the
 body, and `O,'CMD(OFTPI) NEWAPPL(OFTP)'` in its `TRANS` (replace `O` with
 the option you choose). The dialog reaches OFTPD the way `OFTP` does,
 through the SVC and with the same rules. Reading the partner member
-again after option 4 is for an administrator.
+again after option 4 is for an administrator; on a system without a
+security product nobody is one, and OFTPD refuses it (section 8).
 
 ## Removing it
 

@@ -44,8 +44,8 @@
 *              queued. Received files belong to nobody, so only an
 *              ADMIN= userid sees them. On a system without a
 *              security product nobody has a userid: everyone sees
-*              and changes every transfer, and CALL, PURGE and
-*              REFRESH from the utility are refused.           (none)
+*              and changes every transfer; CALL and PURGE from the
+*              utility and REFRESH from the dialog are refused. (none)
 *
 * ADMIN=IBMUSER
 *
