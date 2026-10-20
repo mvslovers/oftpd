@@ -189,7 +189,8 @@ partner_kw(OFTP_PARTNER *p, const char *k, const char *v)
 
 /* The next KEYWORD=VALUE of *pp into tok[100]: tok the keyword, upper-cased,
 ** *v the value, upper-cased except HOST. 1 for a pair, 0 at the end, -1
-** for a word without '=' (tok holds it).
+** for a word without '=' (tok holds it), -2 for a word of more than 99
+** characters (tok is empty: the word may hold a password).
 */
 static int
 next_kv(const char **pp, char *tok, char **v)
@@ -208,10 +209,16 @@ next_kv(const char **pp, char *tok, char **v)
            && *p != '\r') {
         if (n < 99)
             tok[n++] = *p;
+        else
+            n = 100;
         p++;
     }
-    tok[n] = '\0';
     *pp = p;
+    if (n > 99) {
+        tok[0] = '\0';
+        return -2;
+    }
+    tok[n] = '\0';
     if ((eq = strchr(tok, '=')) == NULL)
         return -1;
     *eq = '\0';
@@ -230,62 +237,94 @@ last_partner(OFTP_CONFIG *c)
     return c->nptn > 0 ? &c->ptn[c->nptn - 1] : NULL;
 }
 
+/* Where a message about a line goes: its number and the message sink. */
+typedef struct {
+    int         lineno;
+    OFTP_CFGMSG msg;
+    const void *ctx;
+} CFG_AT;
+
+/* A word next_kv() refused: -2 too long, else no KEYWORD=VALUE. */
+static void
+cfg_badword(int partner, OFTP_PARTNER *cur, int got, const char *tok,
+            const CFG_AT *at)
+{
+    if (got != -2) {
+        say(at->msg, at->ctx, "line %d: %s is not KEYWORD=VALUE", at->lineno,
+            tok);
+        return;
+    }
+    say(at->msg, at->ctx, "line %d: %s", at->lineno,
+        "a word is longer than 99 characters");
+    if (partner && cur != NULL)
+        cur->enabled = 0;
+}
+
+/* One KEYWORD=VALUE word of a line; 1 when it is wrong, else 0. */
+static int
+cfg_word(OFTP_CONFIG *c, int partner, OFTP_PARTNER **cur, const char *tok,
+         const char *v, const CFG_AT *at)
+{
+    OFTP_CFGMSG msg = at->msg;
+    const void *ctx = at->ctx;
+    int lineno = at->lineno;
+    int rc;
+
+    if (!partner)
+        rc = monitor_kw(c, tok, v);
+    else if (strcmp(tok, "PARTNER") == 0) {
+        OFTP_PARTNER *np;
+
+        if (c->nptn >= OFTP_MAXPTN) {
+            say(msg, ctx, "line %d: more than %s partners", lineno, "32");
+            return 1;
+        }
+        np = &c->ptn[c->nptn++];
+        *cur = np;
+        oftp_cfg_newptn(np, "");
+        np->line = lineno;
+        rc = put(np->peer.name, sizeof(np->peer.name), v);
+        if (rc == 0 && v[0] == '\0')
+            rc = -1;
+    } else if (*cur == NULL) {
+        say(msg, ctx, "line %d: %s before the first PARTNER=", lineno, tok);
+        return 1;
+    } else
+        rc = partner_kw(*cur, tok, v);
+
+    if (rc == -2)
+        say(msg, ctx, "line %d: unknown keyword %s", lineno, tok);
+    else if (rc != 0)
+        say(msg, ctx, "line %d: invalid value for %s", lineno, tok);
+    if (rc != 0 && partner && *cur != NULL)
+        (*cur)->enabled = 0;
+    return rc != 0;
+}
+
 int
 oftp_cfg_line(OFTP_CONFIG *c, int partner, const char *text, int lineno,
               OFTP_CFGMSG msg, const void *ctx)
 {
     const char *p = text;
+    const CFG_AT at = { lineno, msg, ctx };
     OFTP_PARTNER *cur = last_partner(c);
     int errors = 0;
 
     if (*p == '*')
         return 0;
     for (;;) {
-        char tok[100], *v = NULL;
-        int rc, got;
+        char tok[100];
+        char *v = NULL;
+        int got = next_kv(&p, tok, &v);
 
-        got = next_kv(&p, tok, &v);
         if (got == 0)
             break;
         if (got < 0) {
-            say(msg, ctx, "line %d: %s is not KEYWORD=VALUE", lineno, tok);
+            cfg_badword(partner, cur, got, tok, &at);
             errors++;
             continue;
         }
-
-        if (!partner)
-            rc = monitor_kw(c, tok, v);
-        else if (strcmp(tok, "PARTNER") == 0) {
-            OFTP_PARTNER *np;
-
-            if (c->nptn >= OFTP_MAXPTN) {
-                say(msg, ctx, "line %d: more than %s partners", lineno, "32");
-                errors++;
-                continue;
-            }
-            np = &c->ptn[c->nptn++];
-            cur = np;
-            oftp_cfg_newptn(np, "");
-            np->line = lineno;
-            rc = put(np->peer.name, sizeof(np->peer.name), v);
-            if (rc == 0 && v[0] == '\0')
-                rc = -1;
-        } else if (cur == NULL) {
-            say(msg, ctx, "line %d: %s before the first PARTNER=", lineno, tok);
-            errors++;
-            continue;
-        } else
-            rc = partner_kw(cur, tok, v);
-
-        if (rc == -2) {
-            say(msg, ctx, "line %d: unknown keyword %s", lineno, tok);
-            errors++;
-        } else if (rc != 0) {
-            say(msg, ctx, "line %d: invalid value for %s", lineno, tok);
-            errors++;
-        }
-        if (rc != 0 && partner && cur != NULL)
-            cur->enabled = 0;
+        errors += cfg_word(c, partner, &cur, tok, v, &at);
     }
     c->errors += errors;
     return errors;
@@ -307,11 +346,17 @@ oftp_cfg_apply(OFTP_PARTNER *p, const char *text, char *why, int whylen)
     const char *t = text;
 
     for (;;) {
-        char tok[100], *v = NULL;
-        int rc, got;
+        char tok[100];
+        char *v = NULL;
+        int rc;
+        int got;
 
         if ((got = next_kv(&t, tok, &v)) == 0)
             return 0;
+        if (got == -2) {
+            snprintf(why, (size_t)whylen, "a word is longer than 99 characters");
+            return -1;
+        }
         if (got < 0) {
             snprintf(why, (size_t)whylen, "%s is not KEYWORD=VALUE", tok);
             return -1;

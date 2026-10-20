@@ -176,5 +176,23 @@ main(void)
         CHECK_EQ(oftp_cfg_line(&k, 0, "KEEPDAYS=X", 1, count, NULL), 1,
                  "KEEPDAYS not a number refused");
     }
+    /* a word of more than 99 characters turns its entry off: cut short,
+    ** PORT=0...0799 would have been PORT=0...07 (#113)
+    */
+    {
+        OFTP_CONFIG k;
+        char l[260];
+
+        oftp_cfg_defaults(&k);
+        strcpy(l, "PARTNER=LONG ODETTEID=O0013000000LONG ");
+        memset(l + strlen(l), '0', 98);
+        memcpy(l + strlen(l) - 98, "PORT=", 5);
+        strcpy(l + strlen(l), "799");
+        CHECK_EQ(oftp_cfg_line(&k, 1, l, 1, count, NULL), 1,
+                 "a word of 101 characters is one error");
+        oftp_cfg_finish(&k, count, NULL);
+        CHECK(oftp_cfg_find(&k, "LONG") == NULL,
+              "and its partner is off, not running on a cut value");
+    }
     return mbt_test_summary("TSTCFG");
 }

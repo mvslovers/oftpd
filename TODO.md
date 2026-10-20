@@ -296,6 +296,13 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   a deleted partner is gone from the slot a new one takes (by hand,
   console). **Not measured**: the ISPF panels and `OFTPI` (built,
   nothing drives them; `test/tso/` has no script for them yet).
+  Review follow-up (#113, container, 2026-10-20): `DELETE` and `REFRESH`
+  walk the spool outside the monitor lock (they held it 4 to 9 s at 3000
+  records, about 1.4 to 2.4 ms a record); a session set-up during a
+  `DELETE` walk waited 6.1 s before, 80 ms (the idle figure) after.
+  `TSTPTM` A 61/61, P1/P2/B/C unchanged, `TSTTAKE` 9/9. Still open:
+  `PASSWORD` empty means an open partner, and `PARTNER SHOW` shows
+  ADDRESS and OURID to every user (both waiting for a decision).
 - ~~GitHub repository, CI~~ — `mvslovers/oftpd` (2026-10-13).
 
 - ~~#13: about 520 bytes per session abend~~ -- libc370's `try()`

@@ -69,6 +69,10 @@ sources = ["test/tstptn.c"]
 sources = ["test/tstsess.c"]
 mvs = false
 
+[test.TSTUTL]            # the OFTP utility's operands and SYSIN echo; POSIX
+sources = ["test/tstutl.c"]
+mvs = false
+
 [test.TSTKSDS]           # VSAM on MVS; runs for real only from test/mvs/tstksds.jcl
 sources = ["test/mvs/tstksds.c"]
 host = false
@@ -92,6 +96,14 @@ host = false
 # module is AC(0) by default. Measured in the container 2026-10-18 --
 # run from SYS2.LINKLIB, which IS in IEAAPF00 on its own volume, the
 # job still answered __isauth() == 0 until this line existed.
+ac = 1
+
+# What oftp_svc_take() leaves in a CSA request slot (#113). It switches
+# to key 0, so AC(1) and an authorized library, like TSTPROT; no OFTPD
+# needed. Runs for real only from test/mvs/tsttake.jcl (PARM='RUN').
+[test.TSTTAKE]
+sources = ["test/mvs/tsttake.c"]
+host = false
 ac = 1
 
 # The daily KEEPDAYS run on MVS (#59): seeds old and young finished
