@@ -17,6 +17,11 @@ OFTPD answers with message #cmd("OFTP199E"). The commands of this chapter are
 for the operator. Users and administrators who work from TSO or batch use
 the #cmd("OFTP") utility instead.
 
+#cmd("CALL"), #cmd("HOLD"), #cmd("RELEASE") and #cmd("PURGE") take one operand
+at most. If a second one follows, as in #cmd("F OFTPD,HOLD P1,P2"), OFTPD
+refuses the whole command with #cmd("OFTP122E") and does nothing, not even for
+the first operand.
+
 In the command formats, square brackets enclose an operand that may be left
 out, braces enclose a choice of which one must be taken, and a bar separates
 the choices. Words in lower case stand for a value that you supply.
@@ -56,7 +61,7 @@ to send. OFTPD answers #cmd("OFTP121I"). The message says that the call is
 requested, not that it succeeded\; the messages of the session follow. If the
 partner is not enabled, or OFTPD cannot call it (see the keywords
 #cmd("CALL"), #cmd("HOST") and #cmd("VIA")), the answer is #cmd("OFTP120E")
-and no call is made.
+and no call is made. A second operand is refused with #cmd("OFTP122E").
 
 == REFRESH <op-refresh>
 
@@ -89,7 +94,8 @@ OFTPD answers with #cmd("OFTP233I"), which tells how many transfers it
 changed. The count can be 0. Without an operand, OFTPD answers
 #cmd("OFTP123E"). If the partner is unknown or not enabled, the answer is
 #cmd("OFTP120E"). If the spool cannot be used, the answer is
-#cmd("OFTP237E").
+#cmd("OFTP237E"). A second operand is refused with #cmd("OFTP122E")\; no
+transfer is changed.
 
 == TRACE <op-trace>
 
@@ -110,6 +116,30 @@ operand other than #cmd("ON") or #cmd("OFF") is refused with
 #cmd("OFTP126E"). A partner that is not in the table is refused with
 #cmd("OFTP120E")\; a partner that is disabled is accepted. The state of the
 trace is shown by #cmd("D P") and #cmd("D S") in message #cmd("OFTP127I").
+#cmd("OFTP127I") holds at least ten partner names, more if the names are short.
+A longer list is cut at the end of the line, which is marked with
+#cmd(">"), and the last name may be cut. #cmd("D P") marks every traced partner
+with #cmd("TRACE") in its #cmd("OFTP100I") line.
+
+After #cmd("TRACE OFF") OFTPD writes no more trace lines. A session that is
+running at that moment writes none either, not even the line for the data
+buffers it has counted so far.
+
+The trace is a diagnostic\; switch it off when you have what you need. Every
+protocol command is one line in the log, and a session that moves three small
+files writes about 28 trace lines. A partner that connects often fills the log
+quickly, and there is no limit to the size of what the trace writes. If the
+log data set is full, OFTPD gives the log up and writes every further message
+to the console (#cmd("OFTP023E")), the trace lines included, so a forgotten
+trace can flood the console.
+
+With #cmd("TRACE ON") for all partners, the first two lines of a session that
+the partner started, #cmd("SEND SSRM") and #cmd("RECV SSID"), show the
+caller's address in place of the partner name, because OFTPD does not know the
+partner yet. If the caller is refused or unknown, every line of the session
+shows the address. A trace for one partner starts with the #cmd("RECV SSID")
+line. In a session that OFTPD started with a call, the partner is known from
+the first line, which is #cmd("RECV SSRM").
 
 == PURGE <op-purge>
 
@@ -122,7 +152,9 @@ The command deletes the finished transfers from the spool whose last change
 is older than the given number of days, from 0 to 9999. Without an operand it
 uses #cmd("KEEPDAYS") of #cmd("OFTPPRM"). If #cmd("KEEPDAYS") is 0 and no
 operand is given, or the operand is not a number from 0 to 9999, the answer is
-#cmd("OFTP122E") and nothing is deleted. Otherwise OFTPD answers
+#cmd("OFTP122E") and nothing is deleted. A second operand, as in
+#cmd("PURGE 30,x"), is refused in the same way, with the text
+#cmd("PURGE: UNEXPECTED OPERAND x"). Otherwise OFTPD answers
 #cmd("OFTP235I") with the number of transfers deleted, or #cmd("OFTP236E") if
 the spool failed. Only the spool records are deleted\; no data set is
 deleted.
