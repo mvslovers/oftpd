@@ -15,8 +15,8 @@
 %  2  {Transfers  +What is queued, sent and received
 +                  S show, H hold, R release, T retry, D delete
 +
-%  3  {Partners   +The partner table as OFTPD has it
-+                  C calls a partner now
+%  3  {Partners   +The partner table as OFTPD has it: add, modify,
++                  enable, disable, delete; C calls a partner now
 +
 %  4  {Configure  +Edit the partner member
 +                  OFTPD reads it again when the edit ends

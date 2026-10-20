@@ -1,0 +1,48 @@
+)ATTR
+ + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)   COLOR(GREEN)
+ % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)   COLOR(WHITE)
+ _ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT) COLOR(TURQ)
+ # TYPE(INPUT)  INTENS(NON)  JUST(LEFT) COLOR(TURQ)
+ @ TYPE(OUTPUT) INTENS(HIGH) JUST(LEFT) CAPS(OFF) COLOR(WHITE)
+ ! TYPE(OUTPUT) INTENS(HIGH) JUST(LEFT) CAPS(OFF) COLOR(YELLOW)
+)BODY WIDTH(&ZSCREENW) EXPAND(//)
+%------------------------------ OFTPD - Partner -/-/----------------------------
++
+%  Function    ===>!OFTETTL +
+%  Partner     ===>!OFTENAM +
++
+%  Identity
++    Odette ID   ===>_Z                        + up to 25 characters
++    Password    ===>#Z       +@OFTEPWS +the partner's to us; blank keeps
++    Our passwd  ===>#Z       +@OFTEOPS +ours to the partner; blank keeps
++    Our ID      ===>_Z                        + blank: the ODETTEID of OFTPD
++
+%  Where
++    Host        ===>_Z                                                       +
++                    blank: the partner calls us, OFTPD does not call it
++    Port        ===>_Z    + blank: 3305    Address ===>_Z              +
++                                                  calls only from here
+%  How
++    Level       ===>_Z+ 5, 4, 2, 1       Mode ===>_Z+ S, R or B
++    Compress    ===>_Z+ Y or N           Call ===>_Z+ Y: OFTPD calls it
++    Sessions    ===>_Z + blank: 1         Translate ===>_Z+ Y or N
++    Via         ===>_Z       + reached through this partner
++    Enabled     ===>_Z+ Y or N
++
+!OFTMSG
++
++  Enter saves, END leaves without saving.
+)INIT
+  .ZVARS = '(EID EPW EOP EOI EHS EPT EAD ELV EMD ECM ECL ESE EXL EVI EEN)'
+  .CURSOR = EID
+)PROC
+  VER (&EID,NONBLANK)
+  VER (&EPT,NUM)
+  VER (&ELV,LIST,1,2,4,5)
+  VER (&EMD,LIST,S,R,B)
+  VER (&ECM,LIST,Y,N)
+  VER (&ECL,LIST,Y,N)
+  VER (&ESE,NUM)
+  VER (&EXL,LIST,Y,N)
+  VER (&EEN,LIST,Y,N)
+)END

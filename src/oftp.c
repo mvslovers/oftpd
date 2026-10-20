@@ -10,6 +10,16 @@
 **                           every send to that partner (* all) that you
 **                           may change: QUEUED/WAITING held, HELD queued
 **   OFTP CALL partner       OFTP PARTNERS
+**   OFTP PARTNER LIST|SHOW name|ENABLE name|DISABLE name|DELETE name
+**   OFTP PARTNER ADD|CHANGE name [ODETTEID(id)] [PASSWORD(pw)]
+**             [OURPASSWORD(pw)] [OURID(id)] [HOST(name)] [PORT(n)]
+**             [LEVEL(n)] [MODE(S|R|B)] [COMPRESS(Y|N)] [CALL(Y|N)]
+**             [SESSIONS(n)] [ADDRESS(ip)] [VIA(partner)] [XLATE(Y|N)]
+**             [SDEB(n)] [CREDIT(n)] [ENABLED(Y|N)]
+**                           the partner table, kept by OFTPD and surviving
+**                           its restart; administrators only, except LIST
+**                           and SHOW. DELETE is refused while a transfer
+**                           in the spool names the partner.
 **   OFTP PURGE [DAYS(n)]    finished transfers older than n days (default
 **                           KEEPDAYS in OFTPPRM); administrators only
 **
@@ -89,15 +99,37 @@ static const char *const verbs[][2] = {
     { "SEND", "" },     { "LIST", "" },       { "SHOW", "KEY" },
     { "DELETE", "KEY" }, { "HOLD", "KEY" },   { "RELEASE", "KEY" },
     { "RETRY", "KEY" },  { "CALL", "PARTNER" }, { "PARTNERS", "" },
-    { "PURGE", "DAYS" },
+    { "PURGE", "DAYS" }, { "PARTNER", "PARTNER" },
 };
+
+/* A password does not belong in a listing: PASSWORD(x) and OURPASSWORD=x
+** of an echoed line become stars
+*/
+static void
+mask(char *line)
+{
+    char *p, *e;
+
+    for (p = line; strlen(p) > 8; p++) {
+        char k[9];
+
+        memcpy(k, p, 8);
+        k[8] = '\0';
+        upcase(k);
+        if (strcmp(k, "PASSWORD") != 0 || (p[8] != '(' && p[8] != '='))
+            continue;
+        for (e = p + 9; *e && *e != ')' && *e != ' '; e++)
+            *e = '*';
+        p = e - 1;
+    }
+}
 
 /* One command: argv[0] the verb. Returns its RC. */
 static int
 command(int argc, char **argv, FILE *out)
 {
-    char req[300], final[256], verb[12];
-    const char *pos = NULL;
+    char req[256], final[256], verb[12], psub[10];
+    const char *pos = NULL, *setting = NULL;
     int i, rc, mine = 0;
     size_t n;
 
@@ -111,7 +143,42 @@ command(int argc, char **argv, FILE *out)
         return 8;
     }
 
+    /* PARTNER sub name ...: ENABLE and DISABLE are a CHANGE, LIST is
+    ** PARTNERS */
+    if (strcmp(verb, "PARTNER") == 0) {
+        if (argc < 2) {
+            fprintf(out, "OFTP002E PARTNER LIST, SHOW, ADD, CHANGE, ENABLE, "
+                    "DISABLE OR DELETE\n");
+            return 8;
+        }
+        snprintf(psub, sizeof(psub), "%s", argv[1]);
+        upcase(psub);
+        if (strcmp(psub, "LIST") == 0) {
+            strcpy(verb, "PARTNERS");
+            pos = "";
+            argc = 1;
+        } else if (strcmp(psub, "ENABLE") == 0
+                   || strcmp(psub, "DISABLE") == 0) {
+            setting = psub[0] == 'E' ? " ENABLED=Y" : " ENABLED=N";
+            strcpy(psub, "CHANGE");
+        } else if (strcmp(psub, "ADD") != 0 && strcmp(psub, "CHANGE") != 0
+                   && strcmp(psub, "DELETE") != 0
+                   && strcmp(psub, "SHOW") != 0) {
+            fprintf(out, "OFTP002E UNKNOWN PARTNER COMMAND %s\n", argv[1]);
+            return 8;
+        }
+        if (argc > 1 && argc < 3) {
+            fprintf(out, "OFTP004E PARTNER %s NEEDS A PARTNER NAME\n", psub);
+            return 8;
+        }
+    }
+
     n = (size_t)snprintf(req, sizeof(req), "%s", verb);
+    if (argc > 1 && strcmp(verb, "PARTNER") == 0) {
+        n += (size_t)snprintf(req + n, sizeof(req) - n, " %s", psub);
+        argv++;
+        argc--;
+    }
     for (i = 1; i < argc; i++) {
         char key[16], val[80];
         const char *a = argv[i];
@@ -143,6 +210,8 @@ command(int argc, char **argv, FILE *out)
             return 8;
         }
     }
+    if (setting != NULL)
+        n += (size_t)snprintf(req + n, sizeof(req) - n, "%s", setting);
     /* OFTPD knows who asks; MINE=Y says to show only that one's own */
     if (mine && n < sizeof(req))
         n += (size_t)snprintf(req + n, sizeof(req) - n, " MINE=Y");
@@ -230,6 +299,7 @@ main(int argc, char **argv)
                 line[0] = '\0';
                 continue;
             }
+            mask(echo);
             fprintf(out, "OFTP %s\n", echo);
             r = command(n, w, out);
             if (r > rc)
@@ -239,7 +309,7 @@ main(int argc, char **argv)
         }
         if (cmds == 0) {
             fprintf(out, "OFTP001E NO COMMAND IN PARM OR SYSIN. "
-                    "OFTP SEND|LIST|SHOW|DELETE|HOLD|RELEASE|RETRY|CALL|PARTNERS|PURGE\n");
+                    "OFTP SEND|LIST|SHOW|DELETE|HOLD|RELEASE|RETRY|CALL|PARTNERS|PARTNER|PURGE\n");
             rc = 8;
         }
     }
