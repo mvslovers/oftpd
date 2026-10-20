@@ -15,6 +15,7 @@
 
 #include <mbtcheck.h>
 
+#include "oftpdata.h"
 #include "oftpsess.h"
 
 /* ---- transport over a socket ------------------------------------- */
@@ -671,6 +672,174 @@ trace_scenario(const char *name, OFTP_TRACEFN fn, int level)
         CHECK(tr_count("SSRM") == 0, "partner-only trace: SSRM came before the partner was known");
 }
 
+/* ---- a peer that packs F records as mendelson OFTP2 CE does ------- */
+
+#define MF_LREC     80
+#define MF_NREC     6
+#define MF_SDEB     240
+
+static int
+mf_frame(int fd, unsigned char *b, unsigned n)
+{
+    unsigned len = n + 4;
+
+    b[0] = 0x10;
+    b[1] = (unsigned char)((len >> 16) & 0xFF);
+    b[2] = (unsigned char)((len >> 8) & 0xFF);
+    b[3] = (unsigned char)(len & 0xFF);
+    return x_send(&fd, b, len);
+}
+
+/* Reads one frame; returns its command code, 0 on failure */
+static char
+mf_read(int fd, unsigned char *b)
+{
+    unsigned len;
+
+    if (x_recv(&fd, b, 4, 5) != 0)
+        return 0;
+    len = ((unsigned)b[1] << 16) | ((unsigned)b[2] << 8) | b[3];
+    if (len < 5 || len > 4100 || x_recv(&fd, b + 4, len - 4, 5) != 0)
+        return 0;
+    return oftp_cmd_code(b + 4, len - 4);
+}
+
+/* The initiator's side, run in the child. Each buffer is filled with
+** subrecords of 63 octets and of 17 with the end-of-record flag, the
+** pattern starting afresh at the head of every buffer whatever the record
+** boundary: a record cut by the end of a buffer loses its flag and the
+** flags after it stand 63 octets into the next record. The EFID counts the
+** flags set. 0 when the responder sent EFPA.
+*/
+static int
+run_mendelson(int fd, const unsigned char *data, unsigned total)
+{
+    unsigned char b[4200];
+    OFTP_SSIDCMD o;
+    OFTP_SFIDCMD f;
+    OFTP_EFIDCMD e;
+    unsigned long eors = 0;
+    unsigned pos = 0;
+    int n;
+
+    if (mf_read(fd, b) != OFTP_SSRM)
+        return 1;
+    memset(&o, 0, sizeof(o));
+    o.level = 5;
+    strcpy(o.code, "O0013000000MVS1");
+    strcpy(o.pswd, g_pw);
+    o.sdeb = MF_SDEB;
+    o.sr = 'B';
+    o.cmpr = o.rest = o.spec = o.auth = 'N';
+    o.cred = 99;
+    n = oftp_enc_ssid(&o, b + 4, sizeof(b) - 4);
+    if (n < 0 || mf_frame(fd, b, (unsigned)n) != 0)
+        return 2;
+    if (mf_read(fd, b) != OFTP_SSID)
+        return 3;
+
+    memset(&f, 0, sizeof(f));
+    strcpy(f.dsn, "MENDEL.F80");
+    strcpy(f.date, "20261020");
+    strcpy(f.time, "1200000001");
+    strcpy(f.dest, "O0013000000MVS2");
+    strcpy(f.orig, "O0013000000MVS1");
+    f.fmt = 'F';
+    f.lrecl = MF_LREC;
+    f.fsiz = f.osiz = 1;
+    f.sign = 'N';
+    n = oftp_enc_sfid(5, &f, b + 4, MF_SDEB);
+    if (n < 0 || mf_frame(fd, b, (unsigned)n) != 0)
+        return 4;
+    if (mf_read(fd, b) != OFTP_SFPA)
+        return 5;
+
+    while (pos < total) {
+        unsigned used = 1;
+        int tail = 0;
+
+        b[4] = OFTP_DATA;
+        while (pos < total) {
+            unsigned k = tail ? MF_LREC - OFTP_SR_MAX : OFTP_SR_MAX;
+            unsigned char hdr;
+
+            if (k > total - pos)
+                k = total - pos;
+            if (used + 1 + k > MF_SDEB)
+                break;
+            hdr = (unsigned char)k;
+            if (tail || pos + k == total) {
+                hdr |= OFTP_SR_EOR;
+                eors++;
+            }
+            b[4 + used] = hdr;
+            memcpy(b + 4 + used + 1, data + pos, k);
+            used += 1 + k;
+            pos += k;
+            tail = !tail;
+        }
+        if (mf_frame(fd, b, used) != 0)
+            return 6;
+    }
+    e.rcnt = eors;
+    e.ucnt = total;
+    n = oftp_enc_efid(5, &e, b + 4, MF_SDEB);
+    if (n < 0 || mf_frame(fd, b, (unsigned)n) != 0)
+        return 7;
+    return mf_read(fd, b) == OFTP_EFPA ? 0 : 8;
+}
+
+/* An F file from such a peer arrives whole, in records of its LRECL */
+static void
+mendelson_scenario(void)
+{
+    unsigned char data[MF_NREC * MF_LREC];
+    char want[MF_NREC * (MF_LREC + 1) + 1];
+    MFILES m;
+    int sv[2], status = -1, rc, i;
+    unsigned w = 0;
+    pid_t pid;
+    char msg[120];
+
+    for (i = 0; i < MF_NREC; i++) {
+        memset(data + i * MF_LREC, 'A' + i, MF_LREC);
+        data[i * MF_LREC] = (unsigned char)('0' + i);
+        memcpy(want + w, data + i * MF_LREC, MF_LREC);
+        w += MF_LREC;
+        want[w++] = '|';
+    }
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) != 0) {
+        CHECK(0, "socketpair");
+        return;
+    }
+    pid = fork();
+    if (pid == 0) {
+        close(sv[1]);
+        rc = run_mendelson(sv[0], data, sizeof(data));
+        close(sv[0]);
+        _exit(rc);
+    }
+    close(sv[0]);
+
+    memset(&m, 0, sizeof(m));
+    peer_init(&resp_view, "MVS1", "O0013000000MVS1", "O0013000000MVS2",
+              5, MF_SDEB, 99, 0);
+    sess_init(&sess, &sv[1], &m, 0);
+    strcpy(sess.localcode, "O0013000000MVS2");
+    rc = oftp_sess_run(&sess);
+    close(sv[1]);
+    waitpid(pid, &status, 0);
+
+    snprintf(msg, sizeof(msg), "mendelson F: the peer got EFPA (child rc %d)",
+             WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+    CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0, msg);
+    CHECK(m.nin == 1 && m.in[0].closed == 1, "mendelson F: file kept");
+    CHECK(m.nin == 1 && m.in[0].len == w
+          && memcmp(m.in[0].data, want, w) == 0,
+          "mendelson F: records cut at the LRECL, payload intact");
+    (void)rc;
+}
+
 int
 main(void)
 {
@@ -703,5 +872,6 @@ main(void)
     trace_scenario("trace on 1.4", trace_always, 4);
     trace_scenario("trace on 1.3", trace_always, 2);
     trace_scenario("trace partner", trace_known, 5);
+    mendelson_scenario();
     return mbt_test_summary("TSTSESS");
 }
