@@ -22,6 +22,8 @@
 * SPACE    tracks, 1-9999; used only when the sender gives no size
 * XLATE    Y or N: translate this file or not, instead of what the
 *          partner entry says
+* JOB      pds(member): a job to submit once the file has been received
+*          (the symbols below, ?PFILE ?VFILE ?ID ?KEY, are put into it)
 *
 * Symbols in DSN= (the data set name is checked when the file arrives; a
 * name that comes out invalid refuses the file with SFNA 01 and the
@@ -46,6 +48,16 @@
 * one needs a letter in front and no more than 7 characters after it:
 * Y%YYYY is 5, D%MM%DD is 5, T%HH%MI%SS is 7.
 *
+* JOB=pds(member): OFTPD reads the member, puts in the symbols
+*   ?PFILE  the data set the file was received as
+*   ?VFILE  the virtual file name (letters, digits and . - _ @ # $ only)
+*   ?ID     the partner          ?KEY  the spool key
+* and gives it to its own internal reader. The EERP does not wait for the
+* job. A line that grows past column 72 (a // line) or 80 is not cut: the
+* job is not submitted, the file is kept (OFTP247W). The job runs with
+* what a job from the OFTPD started task gets; protect this member and the
+* library of the jobs as you protect SYS2.PARMLIB.
+*
 * F OFTPD,REFRESH reads this member again. A member with any error is not
 * used at all: the rules that were in force stay, and the console names
 * the line (OFTP010W) and says OFTP025E.
@@ -54,3 +66,6 @@
 *              DSN=PROD.ORDERS.Y%YYYY.D%MM%DD.T%HH%MI%SS
 * RULE=INVOICE FROM=*  VFN=INV?????.DATA
 *              DSN=ACCT.IN.%ID.%VFN  REPLACE=Y  VOLSER=WORK01  SPACE=30
+* RULE=ORDERS2 FROM=PARTNER1  VFN=ORDERS.*
+*              DSN=PROD.ORDERS.IN.%ID  REPLACE=Y
+*              JOB=PROD.JCL(ORDERS)

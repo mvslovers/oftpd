@@ -14,6 +14,16 @@
 //*   TSTRCVW3  writes a member with a syntax error
 //*   -----     F TSTRCVMB,REFRESH   (OFTP010W, OFTP025E: not used)
 //*   TSTRCVM3  the second set is still in force
+//*   -----     P TSTRCVMA, P TSTRCVMB, S TSTRCVMC (B with the SVC)
+//*   TSTRCVM4  what B recorded of the jobs after receipt (#45): the
+//*             spool records of the three JOB= files of TSTRCVM1
+//*
+//* TSTRCVM1 also has the job after receipt (#45): JOB= files whose job
+//* runs (RCVJOB, a copy of the file under two names), whose line grows
+//* too long (RCVLONG) and whose member is not there. The submitted job
+//* needs a class-A initiator of its own beside the two OFTPDs and the
+//* test: start one ($SI4 or the next free one). OFTP246P and OFTP247W
+//* are on B's console and log; look for them there.
 //*
 //* The userid that runs them must be in ADMIN= of OFTPD A. The test
 //* library must not be APF-authorized (the point of the transport).
@@ -36,6 +46,18 @@
 //D7       DD  DISP=(MOD,DELETE),DSN=IBMUSER.OFTPBIN.TSTRCV.REP.TWO,
 //             UNIT=SYSDA,SPACE=(TRK,1)
 //D8       DD  DISP=(MOD,DELETE),DSN=IBMUSER.RCVTEST.REP.BUSY,
+//             UNIT=SYSDA,SPACE=(TRK,1)
+//D9       DD  DISP=(MOD,DELETE),DSN=IBMUSER.RCVTEST.JOB.ONE,
+//             UNIT=SYSDA,SPACE=(TRK,1)
+//D10      DD  DISP=(MOD,DELETE),DSN=IBMUSER.RCVTEST.JOB.LONG,
+//             UNIT=SYSDA,SPACE=(TRK,1)
+//D11      DD  DISP=(MOD,DELETE),DSN=IBMUSER.RCVTEST.JOB.NONE,
+//             UNIT=SYSDA,SPACE=(TRK,1)
+//D12      DD  DISP=(MOD,DELETE),DSN=IBMUSER.RCVTEST.JOBOUT.TSTA,
+//             UNIT=SYSDA,SPACE=(TRK,1)
+//D13      DD  DISP=(MOD,DELETE),DSN=IBMUSER.RCVTEST.JOBV.TSTRCV.JOB.ONE,
+//             UNIT=SYSDA,SPACE=(TRK,1)
+//D14      DD  DISP=(MOD,DELETE),DSN=IBMUSER.RCVTEST.JOBOUT.LONG,
 //             UNIT=SYSDA,SPACE=(TRK,1)
 //* the data set the REPLACE=Y rule will not be able to replace: it is
 //* a copy of the first file, and the next step holds it
@@ -113,6 +135,13 @@ RULE=XYZ    FROM=NOBODY  VFN=TSTRCV.XYZ.*  DSN=IBMUSER.RCVTEST.XYZ
 //*
 //TSTRCVM3 JOB (OFTP),'RCV RULES 3',CLASS=A,MSGCLASS=H
 //RUN      EXEC PGM=TSTRCVM,PARM='RUN 3'
+//STEPLIB  DD  DISP=SHR,DSN=IBMUSER.OFTPD.V0R1M0D.TESTLIB
+//SYSPRINT DD  SYSOUT=*
+//STDOUT   DD  SYSOUT=*
+//STDERR   DD  SYSOUT=*
+//*
+//TSTRCVM4 JOB (OFTP),'RCV RULES 4',CLASS=A,MSGCLASS=H
+//RUN      EXEC PGM=TSTRCVM,PARM='RUN 4'
 //STEPLIB  DD  DISP=SHR,DSN=IBMUSER.OFTPD.V0R1M0D.TESTLIB
 //SYSPRINT DD  SYSOUT=*
 //STDOUT   DD  SYSOUT=*

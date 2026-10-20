@@ -187,6 +187,7 @@ member holds at most 64 rules.
 | `UNIT=` `VOLSER=` | where the data set is allocated, instead of the `OFTPPRM0` values |
 | `SPACE=` | primary space in tracks (1 to 9999), the secondary is half of it plus one; used only when the sender's file description gives no size |
 | `XLATE=` | `Y` or `N`: translate this file or not, instead of what the partner entry says |
+| `JOB=` | `pds(member)`: a job to run once the file has been received (see below) |
 
 **The first rule in member order that matches the partner and the file
 name decides**, so put the narrow rules before the wide ones. If none
@@ -246,6 +247,47 @@ is fine; the member is not used, see `OFTP010W`). A `DSN=` that can name a
 data set under your `TMPPREFIX` is refused for the same reason. Even so, use
 `REPLACE=Y` only for a partner and a name you trust.
 
+### A job after receipt
+
+`JOB=ACCT.JCL(ORDERS)` makes OFTPD read that member once the file is under
+its final name, put the symbols below into it, and give it to the internal
+reader. The EERP does not wait for the job: it says the file has arrived,
+not that anything was done with it. The data set name and the member are
+read when the file is received, so the member can be changed any time.
+
+| Symbol | Value |
+|---|---|
+| `?PFILE` | the data set the file was received as |
+| `?VFILE` | the virtual file name |
+| `?ID` | the partner's name |
+| `?KEY` | the transfer's spool key, `T` and 7 digits |
+
+The names are upper case. A `?` followed by anything else stays as it is.
+A JCL statement (a line starting `//`) has 72 columns of text; any other
+line has 80. A line that comes out longer, after the symbols went in, is
+**not** cut: the job is not submitted. The file is kept and acknowledged
+all the same, and the console says `OFTP247W` with the reason. A job is
+not submitted either when the member is not there, is empty, or has a
+record past column 80. The record of the transfer says which of the two
+happened (`OFTP SHOW`: `job submitted JOB00123`, or `job not submitted:
+...`); a submitted job is `OFTP246P` in the log.
+
+The virtual file name is chosen by the partner and ends up in the JCL, so
+`?VFILE` stands only for letters, digits and `. - _ @ # $`: a name with
+another character (a quote, a blank, a comma, `&`) does not get a job.
+The other three are made by OFTPD.
+
+**Whose job it is.** It goes through the internal reader of the OFTPD
+started task and runs with what a job submitted from that task gets: with
+no `USER=` on its job card it runs as the started task would. OFTPD checks
+nothing more; the member is named in the rules member, so whoever may change
+that member decides what runs. Protect the rules member and the library of
+the jobs like `SYS2.PARMLIB` itself. A JES that wants a `USER=` on the job
+card gets it from the member, not from OFTPD.
+
+Not part of it: a job after a send, a job when a send fails (`ERRJOB`), a
+job for a file that was refused.
+
 `F OFTPD,REFRESH` reads the rule member again together with the other two,
 and replaces the whole set. **A member with any error is not used at all**:
 the lines in error are reported with `OFTP010W`, `OFTP025E` says the old
@@ -255,8 +297,7 @@ as well. `OFTP026W` means the DD cannot be opened now and the old rules
 stay. A rule for a partner that is not in `OFTPPTN0` is an error, so
 refresh the partners and the rules together.
 
-Not (yet) part of the rules: a job after receipt, passing a file on, GDGs,
-SYSOUT and tape.
+Not (yet) part of the rules: passing a file on, GDGs, SYSOUT and tape.
 
 ## 7. The procedure
 

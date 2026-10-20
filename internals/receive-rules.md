@@ -1,8 +1,8 @@
 # Receive rules and jobs after receipt
 
 Status: **decided** 2026-10-20 (section 6); **names, `REPLACE` and the
-allocation are built** (#44, sections 1 to 3 and 7), **the job after
-receipt is not** (section 4, a later issue). It turns `design.md` 5.2
+allocation are built** (#44, sections 1 to 3 and 7), **so is the job after
+receipt** (#45, section 4 and 8). It turns `design.md` 5.2
 ("receive rules ... *later*") and 5.3 (post-processing) into something
 that can be implemented, after rvsMVS's *Resident Receive Entries* (User
 Manual 4.3 and appendix A.3), studied for concepts only. Where sections 1
@@ -110,6 +110,9 @@ the literal head of the pattern up to its first symbol is compared with
 
 ## 4. The job after receipt
 
+*Built in #45 with the symbols `?PFILE ?VFILE ?ID ?KEY`; what differs from
+this proposal is in section 8, which wins.*
+
 `JOB=pds(member)`: once the file is under its final name and before the
 EERP is queued, OFTPD reads the member, substitutes, and writes it to the
 internal reader. rvs's symbols, which rvs users will know, all with `?`:
@@ -160,7 +163,9 @@ fails for good, and a job when the submit itself fails.
    names (`%YYY %J %N %D %H %M %S`) are not supported, and neither are
    `%YY` and `%JJJ`, which the proposal listed but nobody asked for.
 3. **The job's identity** is deferred to MVS-42 (the job after receipt).
-   Until then there is no job; section 4 stays a proposal.
+   Decided there (2026-10-20, the board, option A): no extra checks, the
+   job goes through the internal reader of the OFTPD started task, no
+   `JOBUSER=`, no `USER=` added.
 4. **The member**: its own, `OFTPRCV0` behind DD `OFTPRCV`, not inside the
    partner member.
 5. **Order of work**: names and `REPLACE` first (they change only how the
@@ -308,3 +313,53 @@ between the two renames and the restore at its next start (TSTRCVR runs the
 same function on prepared data sets, not after a crash); the console text of
 `OFTP239I` and `OFTP248W`. `TSTRCVM` and `TSTRCVR` need their JCL, not
 `mbt test --mvs` (`host = false`, they skip there).
+
+## 8. The job after receipt, as built (#45)
+
+Code: `src/oftp#sub.c` and `include/oftpsub.h` (portable: the symbols and
+the card width; `test/tstsub.c`), `src/mvs/oftp#job.c` and
+`include/oftpjob.h` (reading the member, the internal reader), `run_job()`
+in `src/mvs/oftp#mon.c` called from `f_close_in`, `JOB=` in
+`src/oftp#rcv.c`. The hook is one call, after a `REPLACE=Y` has been
+settled and before the record goes to RECEIVED, so the job is submitted
+only for a file that is under its final name, and the EERP, which goes out
+afterwards, never waits for the job to run. Relay files never meet a rule,
+so they get no job.
+
+**What differs from section 4.**
+
+- Only `?PFILE ?VFILE ?ID ?KEY` are implemented. The rvs date and time
+  symbols (`?QDATE ?QTIME ?YYY ?J ?N ?D ?H ?M ?S`) are not: their formats
+  are not verified and nobody asked for them (the issue says "at least"
+  the four). A `?` that starts any other name stays as it is, so a member
+  written with them is not damaged, only not substituted.
+- The result is in the spool record's `ppstate` (`S` submitted, `E` not),
+  `pprc` (0 or 8) and `pptext` (the JES job id or the reason; a field
+  appended to the record, so older spool data sets still read, with an
+  empty value). It is not in `text`, because `f_erp_sent` overwrites that
+  ("received, EERP sent"). `SHOW` prints `job submitted JOBnnnnn` or `job
+  not submitted: <reason>`; `LIST` is unchanged.
+- **Two passes over the member.** A job that is closed half written on the
+  internal reader is run by JES all the same, so the first pass reads and
+  substitutes every record with no reader open (the width, `?VFILE`, a
+  record past column 80, an empty member) and only the second pass opens
+  the reader and writes. Between the passes the member could be edited; a
+  failure in the second pass closes the reader, and what was written is
+  then run. That window is the reading of one member.
+- **Width.** A record starting `//` has 72 columns of text, columns 73 to
+  80 are sequence numbers: with no symbol in it the record goes through as
+  it is, with one the text is substituted and padded. Any other record has
+  80 columns. A record that grows past its columns is not submitted
+  (`OFTP247W`, "LINE TOO LONG AFTER SUBSTITUTION (RECORD n)"), nor cut.
+- **`?VFILE` is partner text in JCL**, so it is limited to letters, digits
+  and `. - _ @ # $`; a job that uses `?VFILE` and meets another character
+  is not submitted. This goes beyond decision 6.3 (which checks nothing
+  more about the *job*): it protects the *member* from the partner, the
+  way the first-qualifier rule of `DSN=` does. `?PFILE ?ID ?KEY` come from
+  OFTPD, the rule and the partner table.
+- `JOB=` takes `pds(member)` with a data set name of up to 44 characters
+  and a member of 1 to 8; it may not hold a symbol (a data set name that
+  came from the partner would choose what runs). A rule with a bad
+  `JOB=` is an error and the member is not used (`OFTP010W`, `OFTP025E`).
+- Messages: `OFTP246P` (log) submitted, `OFTP247W` (console and log) not
+  submitted.

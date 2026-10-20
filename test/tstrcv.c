@@ -202,6 +202,27 @@ main(void)
           "one bad rule makes the member unusable as a whole");
     CHECK(msgs == 1, "and is told once");
 
+    /* JOB=pds(member), the job after receipt (#45) */
+    CHECK_EQ(load((const char *[]){ "RULE=A JOB=prod.oftp.jcl(orders)", NULL }), 0,
+             "JOB=pds(member)");
+    CHECK(strcmp(rs.r[0].job, "PROD.OFTP.JCL(ORDERS)") == 0, "upper-cased");
+    CHECK_EQ(load((const char *[]){ "RULE=A DSN=X.Y", NULL }), 0, "no JOB=");
+    CHECK(rs.r[0].job[0] == '\0', "is no job");
+    CHECK_EQ(load((const char *[]){ "RULE=A JOB=P.J(@A#$1234)", NULL }), 0,
+             "national characters and digits in the member");
+    CHECK_EQ(load((const char *[]){ "RULE=A JOB=PROD.OFTP.JCL", NULL }), 1, "JOB= without a member");
+    CHECK_EQ(load((const char *[]){ "RULE=A JOB=PROD.OFTP.JCL()", NULL }), 1, "an empty member");
+    CHECK_EQ(load((const char *[]){ "RULE=A JOB=PROD.OFTP.JCL(NINECHARS)", NULL }), 1, "a member over 8");
+    CHECK_EQ(load((const char *[]){ "RULE=A JOB=PROD.OFTP.JCL(1A)", NULL }), 1, "a member that starts with a digit");
+    CHECK_EQ(load((const char *[]){ "RULE=A JOB=PROD.OFTP.JCL(A", NULL }), 1, "no closing parenthesis");
+    CHECK_EQ(load((const char *[]){ "RULE=A JOB=PROD.OFTP.JCL(A)B", NULL }), 1, "text after the member");
+    CHECK_EQ(load((const char *[]){ "RULE=A JOB=PROD..JCL(A)", NULL }), 1, "an empty qualifier");
+    CHECK_EQ(load((const char *[]){ "RULE=A JOB=(A)", NULL }), 1, "no data set");
+    CHECK_EQ(load((const char *[]){ "RULE=A JOB=PROD.%ID.JCL(A)", NULL }), 1,
+             "no symbols in the name: the member is the installation's");
+    CHECK_EQ(load((const char *[]){ "RULE=A JOB=", NULL }), 1, "JOB= with nothing");
+    CHECK(msgs == 1, "each with a message");
+
     {
         char l[40];
         int i;
