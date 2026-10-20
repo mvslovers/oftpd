@@ -93,7 +93,7 @@ oftp_job_submit(const char *job, const OFTP_SUBCTX *x, char *jobid, char *why)
                 goto fail;
             }
             if (rc == OFTP_SUB_UNSAFE) {
-                reason(why, "?VFILE HAS A CHARACTER NOT ALLOWED IN JCL", recs);
+                reason(why, "?VFILE NOT ALLOWED IN JCL", recs);
                 goto fail;
             }
             if (pass == 2) {

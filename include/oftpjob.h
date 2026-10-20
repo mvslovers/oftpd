@@ -8,7 +8,7 @@
 #include "oftpsub.h"
 
 #define OFTP_JOB_ID     9               /* "JOB01234", NUL included       */
-#define OFTP_JOB_WHY    40              /* the reason, NUL included       */
+#define OFTP_JOB_WHY    48              /* the reason, NUL included       */
 
 /* Reads job (a "pds(member)" of a rule's JOB=), puts the ?symbols of x in
 ** and gives it to the internal reader of the caller. The member is read

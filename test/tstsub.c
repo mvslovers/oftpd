@@ -74,14 +74,16 @@ main(void)
     CHECK(rc == 0 && strcmp(s, "//  PARM='?id,?pfile'") == 0,
           "symbols are upper case");
 
-    /* the width of a // line is 72, 73-80 are the sequence numbers */
+    /* the text of a // line is columns 1-71, 72 is the continuation mark and
+    ** 73-80 the sequence numbers */
     strcpy(rec, "//X DD DSN=?PFILE");
     spaces(pad, 72 - (int)strlen(rec), ' ');
     strcat(rec, pad);
     strcat(rec, "00000100");
     s = sub(rec, &rc);
-    CHECK(rc == 0 && strcmp(s, "//X DD DSN=PROD.ORDERS.IN") == 0,
-          "columns 73 to 80 of a // line are not text, and go when it changes");
+    CHECK(rc == 0 && strncmp(s, "//X DD DSN=PROD.ORDERS.IN ", 26) == 0
+          && strcmp(s + 72, "00000100") == 0,
+          "columns 72 to 80 of a // line are not text: they stay where they are");
 
     strcpy(rec, "//X DD DSN=PROD.ORDERS.IN,DISP=SHR");
     spaces(pad, 72 - (int)strlen(rec), ' ');
@@ -92,17 +94,25 @@ main(void)
           "a // line without a symbol keeps its sequence numbers");
 
     /* ?ID is 3 characters, PARTNER1 is 8: five more */
+    spaces(rec, 63, 'A');
+    memcpy(rec, "//", 2);
+    strcat(rec, "?ID");
+    s = sub(rec, &rc);
+    CHECK(rc == 0 && strlen(s) == 71, "a // line ends in column 71: fits");
+
     spaces(rec, 64, 'A');
     memcpy(rec, "//", 2);
     strcat(rec, "?ID");
     s = sub(rec, &rc);
-    CHECK(rc == 0 && strlen(s) == 72, "a // line ends in column 72: fits");
+    CHECK_EQ(rc, OFTP_SUB_LONG, "column 72: too long, it is the continuation mark");
 
-    spaces(rec, 65, 'A');
-    memcpy(rec, "//", 2);
-    strcat(rec, "?ID");
+    strcpy(rec, "//X DD DSN=?PFILE,");
+    spaces(pad, 71 - (int)strlen(rec), ' ');
+    strcat(rec, pad);
+    strcat(rec, ",");
     s = sub(rec, &rc);
-    CHECK_EQ(rc, OFTP_SUB_LONG, "column 73: too long");
+    CHECK(rc == 0 && strlen(s) == 72 && s[71] == ',' && s[70] == ' ',
+          "a continuation mark in column 72 stays in column 72");
 
     ctx.pfile = "AAAAAAAA.BBBBBBBB.CCCCCCCC.DDDDDDDD.EEEEEEEE";
     s = sub("//SYSUT1   DD DSN=?PFILE,DISP=SHR", &rc);

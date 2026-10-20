@@ -91,7 +91,7 @@ A MEMBER OF A PDS
 /*
 //* the jobs of the JOB= rules (#45): RCVJOB copies the file OFTPD made
 //* to a data set named after ?ID and another named after ?VFILE; RCVLONG
-//* has a line that grows past column 72 with ?PFILE and must not run
+//* has a line that grows past column 71 with ?PFILE and must not run
 //DELJCL   EXEC PGM=IEFBR14
 //D1       DD  DISP=(MOD,DELETE),DSN=IBMUSER.TSTRCVM.JCL,
 //             UNIT=SYSDA,SPACE=(TRK,1)
@@ -112,8 +112,8 @@ A MEMBER OF A PDS
 //SYSPRINT DD  SYSOUT=*
 //SYSIN    DD  DUMMY
 //SYSUT1   DD  DISP=SHR,DSN=?PFILE
-//SYSUT2   DD  DSN=IBMUSER.RCVTEST.JOBV.?VFILE,DISP=(NEW,CATLG),
-//             UNIT=SYSDA,SPACE=(TRK,1),
+//SYSUT2   DD  DSN=IBMUSER.RCVTEST.JOBV.?VFILE,
+//             DISP=(NEW,CATLG),UNIT=SYSDA,SPACE=(TRK,1),
 //             DCB=(RECFM=FB,LRECL=80,BLKSIZE=3120)
 @@
 //SYSUT2   DD  DSN=IBMUSER.TSTRCVM.JCL(RCVJOB),DISP=(NEW,CATLG),

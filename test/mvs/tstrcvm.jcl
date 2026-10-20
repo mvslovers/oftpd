@@ -25,6 +25,10 @@
 //* test: start one ($SI4 or the next free one). OFTP246P and OFTP247W
 //* are on B's console and log; look for them there.
 //*
+//* The job runs as the default user of RAKF (no USER= on its card), so
+//* that user needs ALTER on IBMUSER.RCVTEST.JOB* (a RAKF DATASET profile
+//* for that prefix, then S RAKFPROF), or the job ends in IEF720I.
+//*
 //* The userid that runs them must be in ADMIN= of OFTPD A. The test
 //* library must not be APF-authorized (the point of the transport).
 //* Change the library names.
@@ -55,7 +59,8 @@
 //             UNIT=SYSDA,SPACE=(TRK,1)
 //D12      DD  DISP=(MOD,DELETE),DSN=IBMUSER.RCVTEST.JOBOUT.TSTA,
 //             UNIT=SYSDA,SPACE=(TRK,1)
-//D13      DD  DISP=(MOD,DELETE),DSN=IBMUSER.RCVTEST.JOBV.TSTRCV.JOB.ONE,
+//D13      DD  DISP=(MOD,DELETE),
+//             DSN=IBMUSER.RCVTEST.JOBV.TSTRCV.JOB.ONE,
 //             UNIT=SYSDA,SPACE=(TRK,1)
 //D14      DD  DISP=(MOD,DELETE),DSN=IBMUSER.RCVTEST.JOBOUT.LONG,
 //             UNIT=SYSDA,SPACE=(TRK,1)

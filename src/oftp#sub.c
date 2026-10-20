@@ -53,27 +53,33 @@ oftp_sub_card(const char *rec, const OFTP_SUBCTX *x, char *card)
 {
     size_t n = strlen(rec), width, at = 0, i;
     int subst = 0;
-    char out[OFTP_SUB_CARD + 1];
+    char head[OFTP_SUB_CARD + 1], out[OFTP_SUB_CARD + 1];
 
     if (n > OFTP_SUB_CARD)
         n = OFTP_SUB_CARD;
-    width = rec[0] == '/' && rec[1] == '/' ? 72 : OFTP_SUB_CARD;
+    /* a JCL statement has its text in columns 1-71; 72 says whether it is
+    ** continued and 73-80 are the sequence number: they stay where they
+    ** are and only the text grows */
+    width = rec[0] == '/' && rec[1] == '/' ? OFTP_SUB_TEXT : OFTP_SUB_CARD;
+    memcpy(head, rec, n);
+    head[n] = '\0';
     if (n > width)
-        n = width;
-    while (n > 0 && rec[n - 1] == ' ')
+        head[width] = '\0';
+    n = strlen(head);
+    while (n > 0 && head[n - 1] == ' ')
         n--;
     for (i = 0; i < n;) {
         size_t len = 1, vl;
-        const char *v = rec + i;
+        const char *v = head + i;
         int theirs = 0;
 
-        if (rec[i] == '?' && (v = symbol(rec + i, x, &len, &theirs)) != NULL) {
+        if (head[i] == '?' && (v = symbol(head + i, x, &len, &theirs)) != NULL) {
             if (theirs && !safe(v))
                 return OFTP_SUB_UNSAFE;
             subst++;
             vl = strlen(v);
         } else {
-            v = rec + i;
+            v = head + i;
             len = vl = 1;
         }
         if (at + vl > width)
@@ -82,16 +88,17 @@ oftp_sub_card(const char *rec, const OFTP_SUBCTX *x, char *card)
         at += vl;
         i += len;
     }
+    n = strlen(rec);
+    if (n > OFTP_SUB_CARD)
+        n = OFTP_SUB_CARD;
     if (subst == 0) {
-        /* as it came, columns 73-80 of a statement included */
-        n = strlen(rec);
-        if (n > OFTP_SUB_CARD)
-            n = OFTP_SUB_CARD;
         memcpy(card, rec, n);
         memset(card + n, ' ', OFTP_SUB_CARD - n);
     } else {
+        memset(card, ' ', OFTP_SUB_CARD);
         memcpy(card, out, at);
-        memset(card + at, ' ', OFTP_SUB_CARD - at);
+        if (n > width)
+            memcpy(card + width, rec + width, n - width);
     }
     card[OFTP_SUB_CARD] = '\0';
     return 0;

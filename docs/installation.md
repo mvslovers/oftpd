@@ -263,9 +263,9 @@ read when the file is received, so the member can be changed any time.
 | `?KEY` | the transfer's spool key, `T` and 7 digits |
 
 The names are upper case. A `?` followed by anything else stays as it is.
-A JCL statement (a line starting `//`) has 72 columns of text; any other
-line has 80. A line that comes out longer, after the symbols went in, is
-**not** cut: the job is not submitted. The file is kept and acknowledged
+A JCL statement (a line starting `//`) has its text in columns 1 to 71
+(72 is the continuation mark); any other line has 80. A line that comes
+out longer, after the symbols went in, is **not** cut: the job is not submitted. The file is kept and acknowledged
 all the same, and the console says `OFTP247W` with the reason. A job is
 not submitted either when the member is not there, is empty, or has a
 record past column 80. The record of the transfer says which of the two
@@ -278,12 +278,16 @@ another character (a quote, a blank, a comma, `&`) does not get a job.
 The other three are made by OFTPD.
 
 **Whose job it is.** It goes through the internal reader of the OFTPD
-started task and runs with what a job submitted from that task gets: with
-no `USER=` on its job card it runs as the started task would. OFTPD checks
+started task and runs with what a job submitted from that task gets. OFTPD
+sets no `USER=`, and on a system with RAKF a job without one starts as the
+default user (the log says `RAKF0011I ... STARTED USING DEFAULT PROD
+ACCOUNT`), not as the started task: that user needs the access the job's
+data sets call for, or the member carries a `USER=` and `PASSWORD=` of its
+own on the job card. A job that fails there fails in the JES log of the job,
+not in OFTPD: `job submitted` says only that JES took it. OFTPD checks
 nothing more; the member is named in the rules member, so whoever may change
 that member decides what runs. Protect the rules member and the library of
-the jobs like `SYS2.PARMLIB` itself. A JES that wants a `USER=` on the job
-card gets it from the member, not from OFTPD.
+the jobs like `SYS2.PARMLIB` itself.
 
 Not part of it: a job after a send, a job when a send fails (`ERRJOB`), a
 job for a file that was refused.

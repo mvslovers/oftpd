@@ -126,7 +126,7 @@ internal reader. rvs's symbols, which rvs users will know, all with `?`:
 | `?YYY` `?J` `?N` `?D` `?H` `?M` `?S` | now (rvs's set) |
 | `?KEY` | the spool key |
 
-- A line that would grow past column 72 (`//` lines) or 80 refuses the
+- A line that would grow past column 71 (`//` lines) or 80 refuses the
   submit, not the file: the file stays received, the transfer records
   "job not submitted: line n too long", `OFTP2nnW` on the console. rvs
   marks it as an error the same way.
@@ -346,8 +346,10 @@ so they get no job.
   the reader and writes. Between the passes the member could be edited; a
   failure in the second pass closes the reader, and what was written is
   then run. That window is the reading of one member.
-- **Width.** A record starting `//` has 72 columns of text, columns 73 to
-  80 are sequence numbers: with no symbol in it the record goes through as
+- **Width.** A record starting `//` has its text in columns 1 to 71, column
+  72 is the continuation mark and 73 to 80 are sequence numbers (a comma
+  that landed in 72 would be read by JES as a continuation mark, measured
+  as IEF618I): with no symbol in it the record goes through as
   it is, with one the text is substituted and padded. Any other record has
   80 columns. A record that grows past its columns is not submitted
   (`OFTP247W`, "LINE TOO LONG AFTER SUBSTITUTION (RECORD n)"), nor cut.
@@ -363,3 +365,26 @@ so they get no job.
   `JOB=` is an error and the member is not used (`OFTP010W`, `OFTP025E`).
 - Messages: `OFTP246P` (log) submitted, `OFTP247W` (console and log) not
   submitted.
+
+**Measured** (mvsce container, two OFTPDs, `test/mvs/tstrcvm*.jcl`):
+
+- A file whose rule has `JOB=` is received, the job goes to the internal
+  reader and runs in about the time the EERP takes: `OFTP246P TSTA:
+  T0000028 JOB IBMUSER.TSTRCVM.JCL(RCVJOB) SUBMITTED FOR
+  IBMUSER.RCVTEST.JOB.ONE AS JOB00034` on the log, the copies named after
+  `?ID` and `?VFILE` are there with the file's content. `SHOW` prints
+  `100 job submitted JOB00036 (JES job id)`, `100 job not submitted: LINE
+  TOO LONG AFTER SUBSTITUTION (RECORD 5)` and `100 job not submitted:
+  MEMBER NOT FOUND OR NOT READABLE`. The long line and the missing member
+  do not refuse the file (delivered, EERP back) and no job runs.
+- **The job's identity.** A job from the internal reader of a started task
+  with no `USER=` runs as RAKF's default user (`PROD`), not as the task:
+  the first run failed with `IEF720I USER NOT AUTHORIZED TO DEFINE THIS DATA
+  SET` on `IBMUSER.RCVTEST.*`. The test set-up needs a RAKF profile that
+  lets that user define `IBMUSER.RCVTEST.JOB*` (`tstrcvmd.jcl`). This is
+  what decision 6.3 option A means in practice; the alternative that was
+  weighed (`JOBUSER=`) would have given the job a user of the operator's
+  choosing.
+- **Column 72.** A substituted `//` line that ended in a comma in column 72
+  was read by JES as a continuation mark (`IEF618I`): the text of a JCL
+  statement stops at column 71, which is why the width is 71, not 72.

@@ -40,7 +40,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `?KEY` (the transfer) into it and give it to the internal reader of the
   started task. The EERP does not wait for the job. The transfer record
   (`OFTP SHOW`) says whether the job was submitted, with its JES job id, or
-  why not; a line that grows past column 72 (a JCL statement) or 80 after
+  why not; a line that grows past column 71 (a JCL statement) or 80 after
   the substitution, a member that is missing or empty, or a virtual file
   name with a character JCL must not get from a partner leaves the job
   unsubmitted and the file received (`OFTP247W`).

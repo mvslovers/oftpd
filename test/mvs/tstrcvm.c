@@ -390,13 +390,14 @@ phase3(void)
           "after a bad member: the second set is still in force");
 }
 
-/* The transfer of the last LIST reply whose line holds local, its key in
-** key[9]; 0 when there is none
+/* The latest transfer in the LIST reply whose line holds local (the spool
+** keeps those of earlier runs), its key in key[9]; 0 when there is none
 */
 static int
 key_of(const char *local, char *key)
 {
     unsigned i = 0;
+    int found = 0;
 
     while (i < rlen) {
         unsigned e = i;
@@ -410,12 +411,12 @@ key_of(const char *local, char *key)
             if (strstr(line, local) != NULL) {
                 memcpy(key, line + 4, 8);
                 key[8] = '\0';
-                return 1;
+                found = 1;
             }
         }
         i = e + 1;
     }
-    return 0;
+    return found;
 }
 
 /* What B recorded for the file it made as local: the "100 job" line */
@@ -423,8 +424,23 @@ static const char *
 job_of(const char *local)
 {
     char key[9], req[40];
+    unsigned next = 0, from = 0;
+    int rc, found = 0;
 
-    if (ask("LIST PARTNER=TSTA") != OFTP_SVC_OK || !key_of(local, key))
+    do {
+        memset(reply, 0, sizeof(reply));
+        rlen = 0;
+        rc = oftp_svc_call("LIST PARTNER=TSTA", reply, sizeof(reply), from,
+                           &rlen, &next);
+        if (rc != OFTP_SVC_OK && rc != OFTP_SVC_MORE) {
+            printf("    LIST PARTNER=TSTA: transport answered %d\n", rc);
+            return NULL;
+        }
+        if (key_of(local, key))
+            found = 1;
+        from = next;
+    } while (rc == OFTP_SVC_MORE);
+    if (!found)
         return NULL;
     snprintf(req, sizeof(req), "SHOW KEY=%s", key);
     if (ask(req) != OFTP_SVC_OK)
