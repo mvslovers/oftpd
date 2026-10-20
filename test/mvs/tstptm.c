@@ -111,10 +111,18 @@ answers(const char *req, const char *code)
 }
 
 static int
+show_of(const char *name, const char *text)
+{
+    char req[64];
+
+    snprintf(req, sizeof req, "PARTNER SHOW PARTNER=%s", name);
+    return ask(req) == OFTP_SVC_OK && find("100 ", text) != NULL;
+}
+
+static int
 show_has(const char *text)
 {
-    return ask("PARTNER SHOW PARTNER=" NAME) == OFTP_SVC_OK
-           && find("100 ", text) != NULL;
+    return show_of(NAME, text);
 }
 
 /* The key of the newest transfer of the partner into key[9], and its
@@ -224,25 +232,25 @@ phase_a(const char *host, const char *port, const char *dsn)
 static int
 phase_p1(void)
 {
-    CHECK(show_has("PARTNER=PARMPTN") && show_has("PORT=1 ")
-          && show_has("source: OFTPPTN"), "PARMPTN comes from the member");
+    CHECK(show_of("PARMPTN", "PORT=1 ") && show_of("PARMPTN", "source: OFTPPTN"),
+          "PARMPTN comes from the member");
     CHECK(answers("PARTNER SHOW PARTNER=GONEPTN", "200"),
           "so does GONEPTN");
     CHECK(answers("PARTNER DELETE PARTNER=PARMPTN", "513"),
           "a partner that is only in the member cannot be deleted");
     CHECK(answers("PARTNER CHANGE PARTNER=PARMPTN PORT=7 ENABLED=N", "200"),
           "but it can be changed: that makes a record that overrides it");
-    CHECK(show_has("PORT=7 ") && show_has("ENABLED=N")
-          && show_has("overrides OFTPPTN"),
+    CHECK(show_of("PARMPTN", "PORT=7 ") && show_of("PARMPTN", "ENABLED=N")
+          && show_of("PARMPTN", "overrides OFTPPTN"),
           "SHOW reads the change back and says it overrides the member");
     CHECK(answers("REFRESH", "200"), "REFRESH is done");
-    CHECK(show_has("PORT=7 ") && show_has("ENABLED=N"),
+    CHECK(show_of("PARMPTN", "PORT=7 ") && show_of("PARMPTN", "ENABLED=N"),
           "and leaves the changed partner alone");
     CHECK(answers("PARTNER DELETE PARTNER=PARMPTN", "200")
           && find("200", "entry is back") != NULL,
           "DELETE takes the record away: the member's entry is back");
-    CHECK(show_has("PORT=1 ") && show_has("ENABLED=Y")
-          && show_has("source: OFTPPTN"),
+    CHECK(show_of("PARMPTN", "PORT=1 ") && show_of("PARMPTN", "ENABLED=Y")
+          && show_of("PARMPTN", "source: OFTPPTN"),
           "as the member has it");
     return 0;
 }
@@ -269,7 +277,8 @@ phase_c(void)
     CHECK(answers("REFRESH", "507"), "and REFRESH");
     CHECK(answers("PARTNER SHOW PARTNER=" NAME, "501"),
           "nothing was added");
-    CHECK(answers("PARTNER SHOW PARTNER=PARMPTN", "200") && show_has("PORT=1 "),
+    CHECK(answers("PARTNER SHOW PARTNER=PARMPTN", "200")
+          && show_of("PARMPTN", "PORT=1 "),
           "nor changed: SHOW is open to everyone");
     CHECK(answers("PARTNERS", "200"), "and so is PARTNERS");
     return 0;
