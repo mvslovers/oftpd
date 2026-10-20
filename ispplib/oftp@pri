@@ -18,8 +18,8 @@
 %  3  {Partners   +The partner table as OFTPD has it: add, modify,
 +                  enable, disable, delete; C calls a partner now
 +
-%  4  {Configure  +Edit the partner member
-+                  OFTPD reads it again when the edit ends
+%  4  {Configure  +Edit the partner member; OFTPD reads it again (REFRESH)
++                  Removed partners leave the table, or are disabled if in use
 +
 %  5  {Monitor    +OFTPD: Odette ID, port, SVC, sessions
 +                  and the spool

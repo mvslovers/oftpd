@@ -361,8 +361,9 @@ of the member would be lost.
 **REFRESH reads the parmlib layer only.** It re-reads OFTPPTN, adds,
 changes and disables parmlib partners as before, and **leaves every
 maintained partner alone**. A parmlib partner that was removed from the
-member is dropped only when it has no session and no transfer in the
-spool; otherwise it is disabled. To change a maintained partner, use the
+member leaves the table only when it has no session, no call and no
+transfer in the spool; otherwise it is disabled
+(`oftp_mon_refresh`). To change a maintained partner, use the
 command.
 
 **Commands** (`PARTNER ADD|CHANGE|DELETE|SHOW`, section 7; `OFTP PARTNER
@@ -376,9 +377,8 @@ A failed spool write (451) leaves the table as it was.
   parse or check is 508, and nothing is written. A full table is 514.
 - CHANGE of a partner with a session or a call in progress is 450, unless
   only `ENABLED` changes. A change that changes nothing (including ENABLE
-of an enabled partner) is answered 200 "unchanged", nothing is written.
-Disabling
-  a partner that an enabled partner names as `VIA` is 512.
+  of an enabled partner) is answered 200 "unchanged", nothing is written.
+  Disabling a partner that an enabled partner names as `VIA` is 512.
 - **DELETE** takes maintained partners only (a parmlib-only partner is
   513: remove it from the member and REFRESH). It is 450 while the
   partner has a session or a call, and 512 while another partner is
@@ -649,12 +649,34 @@ Another transport -- an HTTP API, say -- can be added beside the SVC
 through the same output function, and it has to bring a real identity
 with it.
 
-Proposed protocol: line-based text, one request per line, numbered
+Protocol: line-based text, one request per line, numbered
 responses in the FTP manner (`2xx` done, `4xx` try later, `5xx` refused),
-multi-line output for lists. Verbs mirror the utility: `SEND`, `LIST`,
+multi-line output for lists (`1xx` lines, then a final `2xx`, `4xx` or
+`5xx` line). Verbs mirror the utility: `SEND`, `LIST`,
 `SHOW`, `HOLD`, `RELEASE`, `DELETE`, `RETRY`, `CALL`, `PARTNERS`,
 `PARTNER ADD|CHANGE|DELETE|SHOW PARTNER=name KEYWORD=VALUE ...` (the
 keywords of `OFTPPTN`; `ENABLED=N` disables), `STATUS`.
+
+**What the user sees.** The utility prints the final line without its
+number (`oftp_cli_piece`, `src/oftp#rep.c`); the number is not shown. The
+return code of the command comes from the number (`oftp_cli_rc`): 200 is 0;
+any other `2xx` (210, done with a warning), any `4xx` and 504 are 4; 501 is
+12 and is printed after `OFTP010E`; every other `5xx` is 8. The codes in use
+(`src/mvs/oftp#mon.c`):
+
+| Code | Meaning |
+|---|---|
+| 450, 451 | try later: a session or call in progress, a changed record, no spool, no storage, the partner member cannot be read |
+| 500 | unknown request, or a `PARTNER` subcommand that is none |
+| 501 | unknown partner (also: a disabled one for `SEND`, or one that cannot be called) |
+| 502, 503, 510 | data set not found or cannot be opened; a name longer than 26; `DISP=DELETE` of a member |
+| 504, 506 | no such transfer; not yours |
+| 505 | the state of the transfer does not allow it |
+| 507 | needs `ADMIN=` |
+| 508 | an operand that does not parse or check |
+| 509 | `SEND` not authorized; `PARTNER ADD` of a name that exists |
+| 512, 513, 514 | partner in use (`VIA`, transfers in the spool); partner only in `OFTPPTN`; table full |
+| 552 | the reply does not fit in the buffer |
 
 ### 7.1 Who is asking
 
