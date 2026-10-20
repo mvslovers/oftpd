@@ -14,6 +14,9 @@ The log is `DD OFTPLOG` of the procedure (`docs/installation.md`, "The
 log"). Each log line has the date and time in front; the console line does
 not. A line is at most 123 characters; a longer one is cut and ends in `>`.
 
+Two messages bypass the log: `OFTP219W` and `OFTP219E`, written by the
+task that serves the spool, go to the console only.
+
 If the log is not available -- the DD is missing, it will not open, or a
 write to it fails -- everything goes to the console, class `P` included,
 and `OFTP022W` or `OFTP023E` says so once.
@@ -179,6 +182,8 @@ except for a refusal for lack of authority.
 
 | Id | Dest | Text and meaning |
 |---|---|---|
+| `OFTP219W` | Console only | `SPOOL THREAD WITHOUT ABEND RECOVERY`: the task that serves the spool could not set up abend recovery; a request that abends is not caught. It is written to the console directly, not to the log |
+| `OFTP219E` | Console only | `SPOOL REQUEST n ABEND Sxxx` or `Unnnn`, `ANSWERED WITH AN ERROR`: a request to the spool abended; its caller got an error and the spool task goes on. It is written to the console directly, not to the log |
 | `OFTP230P` | Log only | `<key> QUEUED FOR <partner>: <data set> AS <dsn>` |
 | `OFTP231P` | Log only | `<key> DELETED BY <user>` |
 | `OFTP232P` | Log only | `<key> HOLD/RELEASE/RETRY BY <user>` |

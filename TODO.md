@@ -304,8 +304,13 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 - ~~Log to a SYSOUT data set instead of every line by WTO; a log-only
   message class (design 8)~~ -- #47: `DD OFTPLOG`, class `P`,
   `docs/messages.md`. Not done: a log viewer, log switching, size limits.
-- `docs/`: a configuration guide beside `docs/installation.md`
-  (`docs/partners.md` is the first part of it).
+- #63: configuration guide, operator manual and message reference go
+  into the books ML09-0001/0002 (skeleton: #64), not into more `docs/*.md`
+  (`docs/partners.md` is the first part of the guide).
+  Landed: `tools/check-messages.py` (every message id of the source is in
+  the reference, in CI). Open: the book text; when the message appendix is
+  in the book, `docs/messages.md` goes and the script is pointed at the
+  appendix.
 - ~~Partner maintenance by command and ISPF~~ (#46): `PARTNER
   ADD|CHANGE|DELETE|SHOW` over the SVC, `OFTP PARTNER ...`, the dialog's
   partner list and entry panels; the partners kept by command are P
