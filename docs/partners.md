@@ -10,7 +10,9 @@ OFTPD keeps its partners in two layers.
 
 A partner in both layers is the one kept by command: it wins by name.
 `REFRESH` reads the parmlib layer only and leaves partners kept by command
-alone. To get the parmlib entry of a name back, delete the partner kept by
+alone. A partner you removed from `OFTPPTN` leaves the table; while a
+session, a call or a transfer in the spool still holds it, it is disabled
+instead. To get the parmlib entry of a name back, delete the partner kept by
 command; the entry in `OFTPPTN` is in force again at once.
 
 **Protect the spool like `OFTPPTN`.** A partner kept by command is stored
@@ -22,7 +24,8 @@ This is also why `PARTNER SHOW` never prints a password.
 
 Anyone may look at the table (`PARTNERS`, `PARTNER SHOW`). Adding,
 changing, enabling, disabling and deleting is for the userids named in
-`ADMIN=` in `OFTPPRM0`; anyone else gets RC 8 (`needs ADMIN=`).
+`ADMIN=` in `OFTPPRM0`; anyone else is refused with a message that begins
+`needs ADMIN=` (return code 8, see "What is refused").
 
 ## From the OFTP utility
 
@@ -46,7 +49,7 @@ PARTNER DELETE PARTNER2
 `COMPRESS`, `CALL`, `SESSIONS`, `ADDRESS`, `VIA`, `XLATE`, `SDEB`, `CREDIT`
 and `ENABLED`. `KEYWORD=VALUE` works as well as `KEYWORD(VALUE)`. `CHANGE`
 alters only what you name. A keyword that is none, or a value that does not
-fit, is refused (RC 8) and nothing is changed.
+fit, is refused (return code 8) and nothing is changed.
 
 OFTPD reads every request in upper case, so values (passwords and the
 host name included) are upper case. `SHOW` never prints a password: it says
@@ -61,24 +64,42 @@ can read.
 A password in a `PARTNER` command also travels through common storage
 (CSA): `OFTP` hands the request to OFTPD in a slot there, and OFTPD
 erases the slot as soon as it has copied the request. Common storage is
-not fetch-protected, so until then any program on the system could read it.
-That window is short, but it is there; it is a limit of the way the
-utilities reach OFTPD, not something a setting closes.
+not fetch-protected: a program of any user can read it, though not change
+it (measured on MVS/CE; not on TK5). Until OFTPD has copied the request,
+any program on the system could therefore read the password. That window
+is short, but it is there; it is a limit of the way the utilities reach
+OFTPD, not something a setting closes.
 
 ### What is refused
 
-| Request | Answer |
-|---|---|
-| `ADD` of a name that exists | RC 8, use `CHANGE` |
-| `CHANGE` or `DELETE` of a name that is not there | RC 12 |
-| `CHANGE` while a session with the partner runs (or OFTPD is calling it) | RC 4, try again; only `ENABLE` and `DISABLE` are taken at once |
-| `CHANGE`, `ENABLE` or `DISABLE` that changes nothing (the partner is as asked) | RC 0, "unchanged" |
-| `ADD` when the table holds 32 partners | RC 8 |
-| `DISABLE` or `DELETE` of a partner that another partner is reached through (`VIA`) | RC 8 |
-| `DELETE` of a partner that is only in `OFTPPTN` | RC 8: remove it from the member and `REFRESH` |
-| `DELETE` while a session with it runs | RC 4, try again |
-| `DELETE` while the spool holds a transfer for, to or from it | RC 8 |
-| `SEND` to a disabled partner | RC 12, "unknown or disabled partner" |
+`OFTP` prints the text of OFTPD's final answer and nothing else: not the
+three-digit number OFTPD sends in front of it, and not a return code. The
+return code is what the command ends with (in batch the condition code of
+the step, the highest of all commands in `SYSIN`; the ISPF dialog shows the
+text only). It follows the answer: 0 for done, 4 for "try again" and for an
+answer that is a warning, 8 for a refusal, 12 for an unknown partner or
+OFTPD not reached. An answer with return code 12 is printed after
+`OFTP010E`.
+
+| Request | Text shown | Return code |
+|---|---|---|
+| any change by a userid not in `ADMIN=` | `needs ADMIN= ...` | 8 |
+| `ADD` of a name that exists | `partner exists: use CHANGE` | 8 |
+| `ADD` when the table holds 32 partners | `the partner table is full` | 8 |
+| a keyword that is none, or a value that does not fit | for example `unknown keyword TOKEN`, `invalid value for TOKEN`, `ODETTEID is required` | 8 |
+| `CHANGE`, `ENABLE`, `DISABLE` or `DELETE` of a name that is not there | `OFTP010E no such partner` | 12 |
+| `CHANGE` while a session with the partner runs (or OFTPD is calling it); only `ENABLE` and `DISABLE` are taken at once | `the partner has a session now, try again` | 4 |
+| `DELETE` while a session with it runs | `the partner has a session now, try again` | 4 |
+| `CHANGE`, `ENABLE` or `DISABLE` that changes nothing (the partner is as asked) | `partner NAME unchanged` | 0 |
+| `DISABLE` of a partner that an enabled partner is reached through (`VIA`) | `partner X is reached through it: disable that first` | 8 |
+| `DELETE` of a partner that another partner is reached through | `partner X is reached through it` | 8 |
+| `DELETE` of a partner that is only in `OFTPPTN` | `the partner is in OFTPPTN: remove it there, then REFRESH` | 8 |
+| `DELETE` while the spool holds a transfer for, to or from it | `n transfers in the spool name partner NAME: PURGE or DELETE them first`, with `(it is disabled now)` after the name when this `DELETE` disabled it | 8 |
+| any of the above when OFTPD cannot use its spool | `spool not available` | 4 |
+| `SEND` to a disabled partner | `OFTP010E unknown or disabled partner` | 12 |
+
+`X` is the partner that is reached through the one you named. The
+dialog shows the same text, without `OFTP010E`.
 
 **A partner with transfers in the spool is never deleted.** That counts
 every transfer, finished ones too (a finished transfer is the record of what
