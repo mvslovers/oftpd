@@ -1810,11 +1810,14 @@ installed and not active) is still read off the code and not run.
 | HERC01, own ACEE (the control) | `SEND ... HOLD=Y` | `200 T0000002 queued and held` |
 | no ACEE, RAKF present | `SEND ... HOLD=Y` | `509 not authorized: the caller has no userid`; console `OFTP238W` (JOB00070) |
 | no ACEE, RAKF present | `SEND ... DISP=DELETE` | the same `509` |
-| no ACEE, RAKF present | `LIST` | `200 0 transfers` |
-| no ACEE, `CVTRAC` cleared | `SEND ... HOLD=Y` | `200 T0000004 queued and held` (JOB00071) |
-| no ACEE, `CVTRAC` cleared | `SEND ... DISP=DELETE` | `200 T0000005 queued and held` |
-| no ACEE, `CVTRAC` cleared | `LIST` | `200 0 transfers` |
-| no ACEE, `CVTRAC` cleared | `SHOW`, `RELEASE`, `DELETE` of its own transfer | `506 not your transfer` |
+| no ACEE, RAKF present | `LIST` | `200 0 transfers` (the control transfer exists and is held) |
+| no ACEE, RAKF present | `SHOW`, `DELETE` of the control transfer | `506 not your transfer` |
+| no ACEE, `CVTRAC` cleared | `SEND ... HOLD=Y` | `200 T0000003 queued and held` (JOB00048) |
+| no ACEE, `CVTRAC` cleared | `SEND ... DISP=DELETE` | `200 T0000004 queued and held` |
+| no ACEE, `CVTRAC` cleared | `LIST` | `100 T0000002 ...` first: the control transfer, which another userid owns, is listed too |
+| no ACEE, `CVTRAC` cleared | `SHOW` of its transfer | `100 T0000003 SEND HELD, partner PARTNER1, owner -` |
+| no ACEE, `CVTRAC` cleared | `HOLD` of its (already held) transfer | `505 only a queued or waiting send can be held`: past the owner test |
+| no ACEE, `CVTRAC` cleared | `DELETE` of its transfer | `200 T0000003 deleted` |
 | HERC01 (`ADMIN=`), own ACEE | `DELETE` of those transfers | `200 ... deleted` |
 
 **Decided, and what the test shows.**
@@ -1827,13 +1830,26 @@ installed and not active) is still read off the code and not run.
 - On a system **without** a security product nothing is checked and a
   send is queued, with the owner blank.
 
-**Open, and not decided here.** On a system without a security product
-every caller has a blank userid, and a blank userid owns nothing and is
-never an administrator (`ctl_may()`, `ctl_list()`). So a send is
-queued, but the sender cannot `LIST`, `SHOW`, `HOLD`, `RELEASE` or `DELETE`
-it; only the operator's `F OFTPD,...` commands reach it. That answers
-"can still use OFTPD" with "to send, yes; to manage what was sent, no".
-Changing it changes the authorization model (who counts as an
-administrator or an owner when there is nobody to tell apart), which this
-issue leaves out.
+**Decided: without a security product everyone manages everything.**
+On a system without a security product every caller has a blank userid,
+and before this change a blank userid owned nothing: a send was queued,
+and the sender could then not `LIST`, `SHOW`, `HOLD`, `RELEASE` or
+`DELETE` it (`506`; only the operator's `F OFTPD,...` reached it). A
+sender who cannot manage what it sent is not using OFTPD, so:
 
+- `svc_line()` reads `CVTRAC` once per request into `CTLOUT.nosec`
+  (`src/mvs/oftp#mon.c`); the handlers do not look at the CVT.
+- `ctl_may()` allows any caller when `nosec` is set, and `ctl_list()`
+  lists every transfer to every caller (it does not filter to "one's
+  own"). The commands that need `ADMIN=` (`CALL`, `PURGE`, `REFRESH`)
+  still do: `nosec` is not an administrator.
+- With a security product nothing changes: the owner or `ADMIN=`; a
+  blank userid owns nothing and sees nothing.
+
+`TSTSEC` shows both halves: with RAKF (JOB00047, 9/9) the caller without
+an ACEE gets `200 0 transfers` for `LIST` and `506` for `SHOW` and
+`DELETE` of the control transfer; with `CVTRAC` cleared (JOB00048,
+10/10) it lists, shows, and deletes its own transfer, and `HOLD` on the
+held transfer answers `505` rather than `506`. The test clears `CVTRAC`
+of the whole system for one SVC: throwaway containers only, never a
+stand.
