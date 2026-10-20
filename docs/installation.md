@@ -272,7 +272,9 @@ out longer, after the symbols went in, is **not** cut: the job is not submitted.
 all the same, and the console says `OFTP247W` with the reason. A job is
 not submitted either when the member is not there, is empty, or has a
 record past column 80, or its record format is undefined (`RECFM=U`) or
-its record length is not positive. The record of the transfer says which of the two
+its record length is not positive, or it is read to a different end the
+second time (`MEMBER CHANGED DURING READ`: it was edited meanwhile, or the
+read failed). The record of the transfer says which of the two
 happened (`OFTP SHOW`: `job submitted JOB00123`, or `job not submitted:
 ...`); a submitted job is `OFTP246P` in the log.
 

@@ -24,7 +24,9 @@ reason(char *why, const char *text, unsigned long n)
 }
 
 /* The next record as text in line (blanks off the end, NUL): its length,
-** or -1 at the end of the member, -2 for a record past 80 columns.
+** or -1 at the end of the member, -2 for a record past 80 columns. A read
+** error is -1 as well: rread() gives 1 for it as for the end, and sets no
+** errno, so the two cannot be told apart here (oftp_job_submit counts).
 */
 static int
 next_line(RFILE *rf, unsigned char *rec, char *line)
@@ -55,7 +57,7 @@ oftp_job_submit(const char *job, const OFTP_SUBCTX *x, char *jobid, char *why)
     char        line[OFTP_SUB_CARD + 1];
     char        card[OFTP_SUB_CARD + 1];
     unsigned char id[8];
-    unsigned long recs = 0;
+    unsigned long recs = 0, first = 0;
     size_t      size;
     int         pass, rc, n;
 
@@ -94,6 +96,10 @@ oftp_job_submit(const char *job, const OFTP_SUBCTX *x, char *jobid, char *why)
         }
         while ((n = next_line(rf, rec, line)) != -1) {
             recs++;
+            if (pass == 2 && recs > first) {
+                reason(why, "MEMBER CHANGED DURING READ", 0);
+                goto fail;
+            }
             if (n == -2) {
                 reason(why, "RECORD PAST COLUMN 80", recs);
                 goto fail;
@@ -116,13 +122,18 @@ oftp_job_submit(const char *job, const OFTP_SUBCTX *x, char *jobid, char *why)
         }
         rclose(rf);
         rf = NULL;
+        if (pass == 2 && recs != first) {
+            /* a read error ends the member early, and so does a member
+            ** that was rewritten between the passes */
+            reason(why, "MEMBER CHANGED DURING READ", 0);
+            goto fail;
+        }
         if (recs == 0) {
             reason(why, "MEMBER IS EMPTY", 0);
-            if (pass == 2)
-                goto fail;
             free(rec);
             return 1;
         }
+        first = recs;
     }
     free(rec);
     rec = NULL;

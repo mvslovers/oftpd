@@ -697,15 +697,15 @@ run_job(SESCTX *c, OFTP_SPREC *r)
         r->ppstate = 'S';
         snprintf(r->pptext, sizeof(r->pptext), "%s",
                  jobid[0] ? jobid : "(JOB NUMBER UNKNOWN)");
-        oftp_mon_msg("OFTP246P %s: %s JOB %s SUBMITTED FOR %s AS %s",
-                     r->partner, key, c->rule.job, r->local, r->pptext);
+        oftp_mon_msg("OFTP246P %s: %s SUBMITTED AS %s: JOB %s FOR %s",
+                     r->partner, key, r->pptext, c->rule.job, r->local);
         return;
     }
     r->ppstate = 'E';
     r->pprc = 8;
     snprintf(r->pptext, sizeof(r->pptext), "%s", why);
-    oftp_mon_msg("OFTP247W %s: %s JOB %s NOT SUBMITTED FOR %s: %s",
-                 r->partner, key, c->rule.job, r->local, why);
+    oftp_mon_msg("OFTP247W %s: %s NOT SUBMITTED, %s: JOB %s FOR %s",
+                 r->partner, key, why, c->rule.job, r->local);
 }
 
 static int

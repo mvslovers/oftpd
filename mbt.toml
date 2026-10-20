@@ -47,6 +47,7 @@ reus = false
 
 [build.host]
 sources = ["src/oftp#*.c"]   # host tests link the shared code as well
+cflags = ["-Itest/hostdbl"]  # <mvs/rfile.h> and <mvs/jes2.h> for TSTJOB
 
 # The ISPF dialog: a command under ISPF, from the ISPLLIB concatenation
 # (it loads ISPLINK from there), its panels in ispplib/.
@@ -64,6 +65,10 @@ sources = ["test/tstver.c"]
 
 [test.TSTPTN]            # maintaining the partner table in memory
 sources = ["test/tstptn.c"]
+
+[test.TSTJOB]            # src/mvs/oftp#job.c against test doubles of rfile and the internal reader
+sources = ["test/tstjob.c", "src/mvs/oftp#job.c"]
+mvs = false
 
 [test.TSTSESS]           # two engines joined by a socket pair; POSIX
 sources = ["test/tstsess.c"]

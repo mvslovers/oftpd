@@ -45,7 +45,10 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   why not; a line that grows past column 71 (a JCL statement) or 80 after
   the substitution, a member that is missing or empty, or a virtual file
   name with a character JCL must not get from a partner leaves the job
-  unsubmitted and the file received (`OFTP247W`).
+  unsubmitted and the file received (`OFTP247W`). So does a member that
+  has a different number of records the second time it is read. The
+  reason comes first in `OFTP246P` / `OFTP247W`, so the console and log
+  cut cannot remove it.
 - Project skeleton: the monitor `OFTPD` and the utility `OFTP` as stubs.
 - OFTPD writes its messages to a SYSOUT data set, `DD OFTPLOG` of the
   started task, each line with its date and time. A new message class `P`

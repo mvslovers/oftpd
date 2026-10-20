@@ -355,6 +355,20 @@ so they get no job.
 - **A symbol ends at a non-alphanumeric.** `?IDX`, `?PFILE1` and `?KEYS` are
   other names and stay as they are (tstsub.c); `?ID.X` and `?ID-?KEY` are
   symbols. The first version matched by prefix.
+- **Message order.** The console and the log cut a message at
+  `OFTP_MSG_MAX` (123). Partner, key, member and data set name can take 100
+  of them, so `OFTP247W` and `OFTP246P` put what happened (the reason, the
+  job id) before the names; the first version had it last and the cut took
+  the record number (`... LINE TOO LONG AFTER SUBSTITUTION>`, measured).
+- **A read error ends the member early, silently.** `rread()` returns 1 for
+  end of data and for an I/O error alike and sets no `errno` (libc370
+  `rread.c`; the assembler below it tells them apart, -1 and +1, and the C
+  wrapper throws that away). The submit counts the records of the first
+  pass and takes exactly that many in the second: fewer, or more, is
+  `MEMBER CHANGED DURING READ` and nothing goes to JES. What stays open: an
+  error that cuts the *first* pass short (and the same way again in the
+  second) is a shorter member to the code, and that job is submitted.
+  Telling the two apart needs `rread()` to report them differently.
 - **Width.** A record starting `//` has its text in columns 1 to 71, column
   72 is the continuation mark and 73 to 80 are sequence numbers (a comma
   that landed in 72 would be read by JES as a continuation mark, measured
@@ -380,7 +394,9 @@ so they get no job.
 - A file whose rule has `JOB=` is received, the job goes to the internal
   reader and runs in about the time the EERP takes: `OFTP246P TSTA:
   T0000028 JOB IBMUSER.TSTRCVM.JCL(RCVJOB) SUBMITTED FOR
-  IBMUSER.RCVTEST.JOB.ONE AS JOB00034` on the log, the copies named after
+  IBMUSER.RCVTEST.JOB.ONE AS JOB00034` on the log (the wording of that run;
+  the message now reads `SUBMITTED AS <jobid>: JOB <member> FOR <data set>`,
+  see "Message order" below), the copies named after
   `?ID` and `?VFILE` are there with the file's content. `SHOW` prints
   `100 job submitted JOB00036 (JES job id)`, `100 job not submitted: LINE
   TOO LONG AFTER SUBSTITUTION (RECORD 5)` and `100 job not submitted:
