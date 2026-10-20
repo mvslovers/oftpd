@@ -106,6 +106,15 @@ host = false
 sources = ["test/mvs/tstsvc.c"]
 host = false
 
+# A send from a caller without an ACEE, and on a system without a
+# security product (#54). It clears ASXBSENV of its own address space for
+# one SVC, so it must be APF-authorized (AC(1) and an authorized library),
+# the opposite of TSTSVC. Runs for real only from test/mvs/tstsec.jcl.
+[test.TSTSEC]
+sources = ["test/mvs/tstsec.c"]
+host = false
+ac = 1
+
 # The SMP installation package (mbt package): the load modules go to
 # OFTPD.LINKLIB (SMP's, distribution library OFTPD.AOFTPLOD), samplib/
 # and ispplib/ are received as text libraries beside it.

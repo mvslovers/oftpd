@@ -147,8 +147,8 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   - ~~**`SEND` reads the data set with OFTPD's authority**~~: over the
     SVC the caller's READ is checked at queue time (RACINIT PASSCHK=NO,
     RACHECK), measured in a TK5 container with a deny profile
-    (`internals/xmem.md` section 14). Not shown: a caller without an
-    ACEE, a system without a security product.
+    (`internals/xmem.md` section 14). A caller without an ACEE and a
+    system without a security product: `TSTSEC`, section 17 (#54).
   - A request over 255 bytes is refused by the client before the SVC
     (`TSTSVC` step 2b); the routine's own length check is still
     exercised by no test.
