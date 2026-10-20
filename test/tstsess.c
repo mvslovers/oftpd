@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <poll.h>
 #include <setjmp.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -99,7 +100,9 @@ typedef struct mfiles {
     int         erps_any;           /* EERPs received, for whatever file   */
     int         jump;               /* 'R' read, 'W' write: leave the
                                        engine by longjmp, as an abend
-                                       under try() does                 */
+                                       under try() does; 'C': the process
+                                       ends in its first write, which
+                                       cuts the connection              */
 } MFILES;
 
 static jmp_buf abend_jb;
@@ -193,6 +196,8 @@ m_write(void *ctx, OFTP_FH *fh, const unsigned char *b, unsigned n, int eor)
 
     if (((MFILES *)ctx)->jump == 'W')
         longjmp(abend_jb, 1);
+    if (((MFILES *)ctx)->jump == 'C')
+        _exit(0);
     memcpy(in->data + in->len, b, n);
     in->len += n;
     if (eor)
@@ -543,6 +548,55 @@ abend_scenario(int where)
     }
     close(sv[1]);
     waitpid(pid, &status, 0);
+}
+
+/* The partner's connection is cut in the middle of a file we send: the
+** monitor counts that as an attempt, and counts on three things here.
+** The session ends with a reason (not 0), by our side (esid_local); the
+** file is not reported done (out_done is not called: the monitor's
+** cleanup of the claimed file is what records the attempt); and no file
+** counts as sent (files_out), so that the monitor's wait before the next
+** call applies.
+*/
+static void
+cut_scenario(void)
+{
+    MFILES m, r;
+    int sv[2], status = -1, rc;
+    pid_t pid;
+
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) != 0) {
+        CHECK(0, "socketpair");
+        return;
+    }
+    signal(SIGPIPE, SIG_IGN);
+    pid = fork();
+    if (pid == 0) {
+        close(sv[0]);
+        resp_files(&r);
+        r.jump = 'C';
+        peer_init(&resp_view, "MVS1", "O0013000000MVS1", "O0013000000MVS2",
+                  5, 4096, 99, 0);
+        sess_init(&sess, &sv[1], &r, 0);
+        strcpy(sess.localcode, "O0013000000MVS2");
+        oftp_sess_run(&sess);
+        _exit(1);                       /* the cut did not come */
+    }
+    close(sv[1]);
+
+    init_files(&m);
+    sess_init(&sess, &sv[0], &m, 1);
+    peer_init(&sess.peer, "MVS2", "O0013000000MVS2", "O0013000000MVS1",
+              5, 4096, 99, 0);
+    rc = oftp_sess_run(&sess);
+    close(sv[0]);
+    waitpid(pid, &status, 0);
+    CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0,
+          "cut: the partner was cut in its first write");
+    CHECK(rc != 0 && sess.esid_local, "cut: the session ends with a reason");
+    CHECK(m.out[0].done == 0, "cut: the file is not reported done");
+    CHECK(sess.files_out == 0, "cut: no file counts as sent");
+    CHECK(sess.xbuf == NULL, "cut: no record buffer left");
 }
 
 /* The caller is refused by the lookup: -1 (unknown) ends the session
@@ -1058,6 +1112,7 @@ main(void)
         scenario(&sc[i]);
     abend_scenario('W');
     abend_scenario('R');
+    cut_scenario();
     refuse_scenario(-1, 3);
     refuse_scenario(8, 8);
     cut_scenario();
