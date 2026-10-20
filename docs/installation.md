@@ -401,8 +401,9 @@ included, one `OFTP290P` line each, such as
 the DATA buffers of a run are one line. With a partner name only that
 partner's sessions are traced; `TRACE OFF` without one ends all tracing.
 The lines carry the commands' fields, never a password and never file
-data; a character in a file name or an ID that cannot be printed shows as
-a dot. `F OFTPD,D` and `D P` show what is traced (`OFTP127I`): `D` names at
+data. In every message that quotes a file name or an ID from a partner,
+console and log alike, a character that cannot be printed shows as a dot.
+`F OFTPD,D` and `D P` show what is traced (`OFTP127I`): `D` names at
 most about ten partners, `D P` marks every traced partner.
 
 Tracing is a diagnostic: switch it off when you are done. Every protocol

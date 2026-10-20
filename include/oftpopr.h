@@ -19,4 +19,11 @@ extern void oftp_opr_split(const char *cmd, char *verb, size_t vsz,
 extern int  oftp_opr_extra(const char *verb, const char *arg2)
                                                         asm("OFTPOPXT");
 
+/* s into d (sz bytes, always terminated) with every character that is not
+** printable replaced by a dot, and d returned. What a partner sent -- an ID,
+** a file name -- goes into the log and onto the console through this.
+*/
+extern const char *oftp_printable(char *d, size_t sz, const char *s)
+                                                        asm("OFTPPRNT");
+
 #endif

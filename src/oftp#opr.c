@@ -1,4 +1,5 @@
 /* oftp#opr.c - the operator command line of F OFTPD,... */
+#include <ctype.h>
 #include <string.h>
 
 #include "oftpopr.h"
@@ -27,6 +28,19 @@ oftp_opr_split(const char *cmd, char *verb, size_t vsz, char *arg, size_t asz,
     p = field(p, verb, vsz);
     p = field(p, arg, asz);
     field(p, arg2, a2sz);
+}
+
+const char *
+oftp_printable(char *d, size_t sz, const char *s)
+{
+    size_t i;
+
+    if (sz == 0)
+        return d;
+    for (i = 0; i + 1 < sz && s[i]; i++)
+        d[i] = isprint((unsigned char)s[i]) ? s[i] : '.';
+    d[i] = '\0';
+    return d;
 }
 
 int

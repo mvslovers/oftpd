@@ -51,5 +51,20 @@ main(void)
     CHECK(strcmp(a, "ABCDEFG") == 0 && strcmp(b, "HIJKLMN") == 0
           && oftp_opr_extra("HOLD", b) == 1,
           "an operand too long for its field: the rest is a second operand");
+
+    /* what a partner sends reaches the log through oftp_printable() */
+    {
+        char d[32];
+
+        CHECK(strcmp(oftp_printable(d, sizeof(d), "PAY\x01ROLL\x1b[2J\x7f.X"),
+                     "PAY.ROLL.[2J..X") == 0,
+              "control characters become dots");
+        CHECK(strcmp(oftp_printable(d, sizeof(d), "PAYROLL.DATA"),
+                     "PAYROLL.DATA") == 0, "a clean name is unchanged");
+        CHECK(strcmp(oftp_printable(d, 6, "ABCDEFGH"), "ABCDE") == 0,
+              "a name too long for the buffer is cut, terminated");
+        CHECK(strcmp(oftp_printable(d, sizeof(d), ""), "") == 0,
+              "an empty name stays empty");
+    }
     return mbt_test_summary("TSTOPR");
 }

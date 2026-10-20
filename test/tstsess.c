@@ -1007,15 +1007,15 @@ printable_scenario(void)
     ** the ID; the trace of the SSID shows it as well */
     g_log = capture_all;
     g_traced = trace_always;
-    g_ocode = "O001300\x01\x1b[2JMVS1";
+    g_ocode = "O00130\x01\x1b[2JMVS1";
     nal = 0;
     refuse_scenario(-1, 3);
-    CHECK(al_count("unknown caller O001300") == 1, "ID with controls: unknown caller logged");
+    CHECK(al_count("unknown caller O00130..[2JMVS1") == 1, "ID with controls: unknown caller logged");
     CHECK(al_count("RECV SSID") == 1, "ID with controls: SSID traced");
     CHECK(!al_dirty(), "ID with controls: unknown caller, no control byte in the log");
     nal = 0;
     refuse_scenario(8, 8);
-    CHECK(al_count("caller O001300") == 1 && al_count("refused, reason 08") == 1,
+    CHECK(al_count("caller O00130..[2JMVS1") == 1 && al_count("refused, reason 08") == 1,
           "ID with controls: refused caller logged");
     CHECK(!al_dirty(), "ID with controls: refused caller, no control byte in the log");
     g_ocode = "O0013000000MVS1";

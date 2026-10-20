@@ -5,13 +5,13 @@
 ** ends the session with ESID 02, except an ESID, which ends it with the
 ** partner's reason. Rules: internals/protocol.md section 1.
 */
-#include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "oftpdata.h"
+#include "oftpopr.h"
 #include "oftpsess.h"
 #include "oftpwire.h"
 
@@ -78,21 +78,6 @@ slogw(OFTP_SESS *s, const char *fmt, ...)
     va_start(ap, fmt);
     slogv(s, 1, fmt, ap);
     va_end(ap);
-}
-
-/* s into d with every character that is not printable replaced by a dot.
-** What the partner sent goes into the log through this: a file name or an
-** ID may hold anything, the operator's console must not get it.
-*/
-static const char *
-printable(char *d, size_t sz, const char *s)
-{
-    size_t i;
-
-    for (i = 0; i + 1 < sz && s[i]; i++)
-        d[i] = isprint((unsigned char)s[i]) ? s[i] : '.';
-    d[i] = '\0';
-    return d;
 }
 
 /* The level commands are coded at; before negotiation the 1.3 layouts,
@@ -167,7 +152,7 @@ tr_ssid(char *d, size_t sz, const unsigned char *c, unsigned n)
         snprintf(d, sz, NODEC);
     else
         snprintf(d, sz, "level %d id %s sdeb %u mode %c cmpr %c cred %u",
-                 t.level, printable(id, sizeof(id), t.code), t.sdeb,
+                 t.level, oftp_printable(id, sizeof(id), t.code), t.sdeb,
                  t.sr, t.cmpr, t.cred);
 }
 
@@ -181,7 +166,7 @@ tr_sfid(OFTP_SESS *s, char *d, size_t sz, const unsigned char *c, unsigned n)
         snprintf(d, sz, NODEC);
     else
         snprintf(d, sz, "dsn %s fmt %c lrecl %u",
-                 printable(dsn, sizeof(dsn), t.dsn), t.fmt, t.lrecl);
+                 oftp_printable(dsn, sizeof(dsn), t.dsn), t.fmt, t.lrecl);
 }
 
 static void
@@ -243,9 +228,9 @@ tr_erp(OFTP_SESS *s, char code, char *d, size_t sz, const unsigned char *c,
         snprintf(d, sz, NODEC);
     else if (code == OFTP_NERP)
         snprintf(d, sz, "dsn %s reason %02d",
-                 printable(dsn, sizeof(dsn), t.dsn), t.reas);
+                 oftp_printable(dsn, sizeof(dsn), t.dsn), t.reas);
     else
-        snprintf(d, sz, "dsn %s", printable(dsn, sizeof(dsn), t.dsn));
+        snprintf(d, sz, "dsn %s", oftp_printable(dsn, sizeof(dsn), t.dsn));
 }
 
 /* The fields of a command that identify it, into d. The SSID is decoded
@@ -410,7 +395,7 @@ put_simple(OFTP_SESS *s, char code)
 static int
 get_simple(OFTP_SESS *s, char code, const char *name)
 {
-    unsigned n;
+    unsigned n = 0;
     int rc;
 
     if (get_cmd(s, &n) != OK)
@@ -487,7 +472,7 @@ start_initiator(OFTP_SESS *s)
     if (strcmp(t.code, s->peer.code) != 0) {
         char id[OFTP_IDLEN + 1];
 
-        slogw(s, "answered by %s, not %s", printable(id, sizeof(id), t.code),
+        slogw(s, "answered by %s, not %s", oftp_printable(id, sizeof(id), t.code),
               s->peer.code);
         return end_local(s, ESID_USER);
     }
@@ -552,11 +537,11 @@ start_responder(OFTP_SESS *s)
         trace_cmd(s, 1, s->ib + 4, n);
     if (rc > 0) {
         slog(s, "caller %s refused, reason %02d",
-             printable(id, sizeof(id), t.code), rc);
+             oftp_printable(id, sizeof(id), t.code), rc);
         return end_local(s, rc);
     }
     if (rc != 0) {
-        slogw(s, "unknown caller %s", printable(id, sizeof(id), t.code));
+        slogw(s, "unknown caller %s", oftp_printable(id, sizeof(id), t.code));
         return end_local(s, ESID_USER);
     }
     if (strcmp(t.pswd, s->peer.pswd_in) != 0) {
@@ -654,7 +639,7 @@ send_file(OFTP_SESS *s, OFTP_SFIDCMD *f, OFTP_FH *fh, int *turn)
     OFTP_REASCMD r;
     OFTP_DENC e;
     unsigned char *buf;
-    unsigned cap, n, credit;
+    unsigned cap, n = 0, credit;
     unsigned long acnt;
     int rc, last = 0;
     char cd, code;
@@ -855,7 +840,7 @@ recv_file(OFTP_SESS *s, unsigned n)
         return put_reas(s, OFTP_SFNA, 6, 'N');
     if (rc != 0)
         return end_local(s, ESID_DATA);
-    printable(shown, sizeof(shown), f.dsn);
+    oftp_printable(shown, sizeof(shown), f.dsn);
     if ((reas = refuse(s, &f)) != 0) {
         slog(s, "%s refused, SFNA %02d", shown, reas);
         return put_reas(s, OFTP_SFNA, reas, 'N');
