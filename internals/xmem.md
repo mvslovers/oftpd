@@ -1453,8 +1453,10 @@ T0000044 there once and in order, and no sweep message on the console.
 **`TSTSVC`** (`tstsvc.jcl`, from the `TESTLIB`, not authorized, JOB00057):
 **34/34**, step 2b included. Step 2b proves the *client's* refusal: a
 request over `REQMAX` gets `BADREQ` from `oftp_svc_call()` without
-the SVC being issued, so the routine's own length check is still not
-exercised by any test.
+the SVC being issued, so the routine's own length check was not
+exercised by any test at the time of this run. It is since (#55):
+`TSTSVC` step 2c issues the SVC directly with declared lengths the
+routine must refuse (`test/mvs/tstsvc.c`); measured on MVS/CE only.
 
 **Negative control** after `P OFTPD` (JOB00059): `LIST` CC 12,
 `OFTP010E OFTPD not reached: not running, or without SVC=`.
