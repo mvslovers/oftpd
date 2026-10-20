@@ -610,7 +610,7 @@ meantime keeps its new state. The single-key `HOLD`, `RELEASE` and
 sends or receives (`OFTP_SESS.traced`), so the operator's change reaches
 sessions already running. The monitor keeps the state in its block -- one
 flag for all sessions, one per partner, same index as the partner table --
-and the line goes out as `OFTP290I partner: TRACE SEND|RECV CMD len: fields`.
+and the line goes out as `OFTP290P partner: TRACE SEND|RECV CMD len: fields`.
 The fields are decoded for SSID (level, ID, buffer, mode, credit; the
 password is never formatted), SFID, SFPA, SFNA/EFNA/ESID, EFID, EFPA and
 EERP/NERP; DATA buffers are counted and reported as one line per run.

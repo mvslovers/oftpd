@@ -105,6 +105,10 @@ These answer a command, so they stay on the console.
 | `OFTP121I` | Console + log | `CALL OF <name> REQUESTED` |
 | `OFTP122E` | Console + log | `PURGE: DAYS MUST BE 0-9999` / `PURGE NEEDS DAYS: KEEPDAYS=0 KEEPS EVERYTHING` |
 | `OFTP123E` | Console + log | `<verb> NEEDS A PARTNER OR ALL` |
+| `OFTP124I` | Console + log | `TRACE ON\|OFF FOR ALL SESSIONS` / `FOR PARTNER <partner>`: the answer to `F OFTPD,TRACE` |
+| `OFTP125E` | Console + log | `TRACE IS ON FOR ALL SESSIONS, TRACE OFF WITHOUT A PARTNER ENDS IT` |
+| `OFTP126E` | Console + log | `TRACE NEEDS ON OR OFF, THEN A PARTNER OR NOTHING` |
+| `OFTP127I` | Console + log | `TRACE ON FOR ALL SESSIONS` / `TRACE OFF` / `TRACE ON FOR PARTNERS: <names>`: what `F OFTPD,D` shows |
 | `OFTP199E` | Console + log | `UNKNOWN COMMAND: <text>` |
 | `OFTP233I` | Console + log | `n SENDS FOR <partner> HELD` / `RELEASED BY OPERATOR`: the answer to `F OFTPD,HOLD` / `RELEASE` |
 | `OFTP235I` | Console + log | `n FINISHED TRANSFERS OLDER THAN n DAYS DELETED BY <who>`: after `F OFTPD,PURGE`, or the daily purge when it deleted something |
@@ -124,7 +128,7 @@ The ones that report a normal transfer are `P`.
 | `OFTP204W` | Console + log | `<address>: CALL REFUSED, n SESSIONS`: OFTPD is at `MAXSESS` |
 | `OFTP205P` | Log only | `<address>: CALL RECEIVED` |
 | `OFTP206P` | Log only | `<partner>: CALLING AT <host> PORT n` |
-| `OFTP207W` | Console + log | `<partner>: NOT REACHED`; repeated at each retry |
+| `OFTP207P` | Log only | `<partner>: NOT REACHED`; repeated at each retry. The message that needs action is `OFTP215W` |
 | `OFTP208W` | Console + log | `<partner>: SESSION WITHOUT ABEND RECOVERY, RC n` |
 | `OFTP209E` | Console + log | `<partner>: SESSION ABEND <code>, CLEANING UP` |
 | `OFTP210E` | Console + log | `<partner>: <key> <data set> CANNOT BE OPENED` |
@@ -146,7 +150,7 @@ The ones that report a normal transfer are `P`.
 | `OFTP241P` | Log only | `<partner>: <key> RELAY: <dsn> FROM <id> FOR <id> QUEUED FOR <partner>` |
 | `OFTP242W` | Console + log | `<partner>: <key> RELAY: <dsn> FOR <id> GIVEN UP AFTER n ATTEMPTS`: the originator gets a NERP |
 | `OFTP290W` | Console + log | `<partner>: <text>` for a failed identity or password check: `UNKNOWN CALLER <id>`, `WRONG PASSWORD FROM <partner>` (the engine's text, in lower case), `ANSWERED BY <id>, NOT <id>`, `PARTNER PASSWORD DOES NOT MATCH` |
-| `OFTP290P` | Log only | `<partner>: <text>`: any other line the protocol engine reports (a refusal reason, a timeout, a file sent or received, the session parameters) |
+| `OFTP290P` | Log only | `<partner>: <text>`: any other line the protocol engine reports (a refusal reason, a timeout, a file sent or received, the session parameters, and the `TRACE SEND|RECV ...` lines of `F OFTPD,TRACE`) |
 
 ## Requests from the utilities
 

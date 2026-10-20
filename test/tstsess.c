@@ -594,9 +594,10 @@ static char trlog[96][160];
 static int ntr;
 
 static void
-capture(void *ctx, const char *line)
+capture(void *ctx, int warn, const char *line)
 {
     (void)ctx;
+    (void)warn;
     if (strncmp(line, "TRACE ", 6) == 0 && ntr < 96)
         snprintf(trlog[ntr++], sizeof(trlog[0]), "%s", line);
 }

@@ -1294,7 +1294,7 @@ sched_thread(void *arg1, void *arg2)
             oftp_mon_msg("OFTP206P %s: CALLING AT %s PORT %d", p->peer.name,
                          p->host, p->port);
             if ((s = oftp_net_connect(p->host, p->port, 5)) < 0) {
-                oftp_mon_msg("OFTP207W %s: NOT REACHED", p->peer.name);
+                oftp_mon_msg("OFTP207P %s: NOT REACHED", p->peer.name);
                 lock(m, 0);
                 others = m->busy[i] - 1;
                 unlock(m, 0);
