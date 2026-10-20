@@ -32,6 +32,10 @@
 *   %YYYY %MM %DD %HH %MI %SS    the time the file arrived
 *   %CTR         the 4 digits of the sender's file counter
 *   %KEY         the spool key, T and 7 digits
+* %VFN and %Q1..%Q9 carry text the PARTNER chooses into the name: start
+* every DSN= with a fixed qualifier of your own (DSN=ACCT.IN.%VFN). A
+* pattern like DSN=%VFN with REPLACE=Y would let a partner create or
+* replace any data set this started task may write.
 * A qualifier is 1-8 characters and starts with a letter, so a date in
 * one needs a letter in front and no more than 7 characters after it:
 * Y%YYYY is 5, D%MM%DD is 5, T%HH%MI%SS is 7.

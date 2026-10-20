@@ -202,5 +202,15 @@ main(void)
                  "one more than OFTP_MAXRULE refused");
         CHECK_EQ(rs.n, OFTP_MAXRULE, "and the table unchanged");
     }
+    {
+        OFTP_RCVCTX nx;
+        char out[64];
+
+        memset(&nx, 0, sizeof(nx));
+        oftp_rcv_clear(&rs);
+        oftp_rcv_line(&rs, "RULE=N DSN=A.%Q2.B.%VFN", 1, count, NULL);
+        CHECK_EQ(oftp_rcv_name(&rs.r[0], &nx, out), -1,
+                 "a context with nothing in it gives no name, and no crash");
+    }
     return mbt_test_summary("TSTRCV");
 }

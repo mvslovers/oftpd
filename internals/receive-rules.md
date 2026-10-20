@@ -93,6 +93,13 @@ at the end with SFNA 12, and the old one stays). Section 7 has the
 mechanism: the old one is renamed aside, not deleted, until the new one
 has its name.
 
+A pattern that starts with `%VFN` or `%Qn` hands the partner the whole
+name space the started task may write, and `REPLACE=Y` on top of it the
+right to replace data sets there. The parser does not forbid it (an
+installation may mean it); `docs/installation.md` and the sample member
+warn. Whether the parser should refuse a first qualifier that is not
+literal is open for the security review.
+
 ## 4. The job after receipt
 
 `JOB=pds(member)`: once the file is under its final name and before the

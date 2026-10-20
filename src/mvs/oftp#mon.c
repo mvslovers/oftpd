@@ -2274,7 +2274,7 @@ int
 oftp_mon_rules(OFTP_MON *m, int refresh)
 {
     OFTP_RULES *n;
-    char line[256];
+    char line[256], ctx[] = "OFTPRCV";
     FILE *fp;
     int lineno = 0, errors;
 
@@ -2294,10 +2294,10 @@ oftp_mon_rules(OFTP_MON *m, int refresh)
         /* fixed records: columns 73-80 are sequence numbers */
         if (strlen(line) > 72)
             line[72] = '\0';
-        oftp_rcv_line(n, line, ++lineno, cfgmsg, (void *)"OFTPRCV");
+        oftp_rcv_line(n, line, ++lineno, cfgmsg, ctx);
     }
     fclose(fp);
-    errors = oftp_rcv_finish(n, &m->cfg, cfgmsg, (void *)"OFTPRCV");
+    errors = oftp_rcv_finish(n, &m->cfg, cfgmsg, ctx);
     if (errors > 0) {
         oftp_mon_msg("OFTP025E RECEIVE RULES NOT USED, %d ERRORS%s", errors,
                      refresh ? ", THE OLD RULES STAY" : "");

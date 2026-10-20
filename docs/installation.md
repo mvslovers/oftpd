@@ -144,7 +144,13 @@ name>`, and a name that already exists is refused. A rule changes that for
 the files it matches. Copy `OFTPD.SAMPLIB(OFTPRCV0)` to `SYS2.PARMLIB`
 (the procedure's `OFTPRCV` DD points at it) and add rules; the sample
 describes every keyword at the top and has two examples. A member with only
-comments changes nothing, and so does a missing DD.
+comments changes nothing, and so does a procedure without the DD.
+
+**Taking the new procedure over an older installation:** the sample
+procedure now names the member in a mandatory `//OFTPRCV` DD, so copy
+`OFTPRCV0` to your parmlib before you start OFTPD with it; otherwise the
+start fails with a JCL error for the missing member. (Or delete the DD
+from your copy of the procedure.)
 
 ```
 RULE=ORDERS  FROM=PARTNER1  VFN=ORDERS.*
@@ -200,6 +206,13 @@ data set that is in use makes the replace fail: the file is refused at the
 end (reason 12, `OFTP221E` or `OFTP226E`) and the old data set stays. If a crash leaves an old
 copy behind, it is `TMPPREFIX.B<key>` (`OFTP228W` names it); delete it by
 hand.
+
+**Take care with `%VFN` and `%Q1` to `%Q9`:** they carry text chosen by the
+partner into the data set name, and nothing restricts the high-level
+qualifier. `DSN=%VFN`, or `DSN=%Q1.X`, lets a partner create -- and with
+`REPLACE=Y` replace -- any data set the OFTPD started task may write. Start
+every pattern with a fixed qualifier of your own (`DSN=ACCT.IN.%VFN`), and
+use `REPLACE=Y` only for a partner and a name you trust.
 
 `F OFTPD,REFRESH` reads the rule member again together with the other two,
 and replaces the whole set. **A member with any error is not used at all**:

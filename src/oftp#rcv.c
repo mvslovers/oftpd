@@ -159,6 +159,60 @@ append(char *out, size_t cap, size_t *at, const char *s, size_t n)
     return 0;
 }
 
+static const char *
+nz(const char *s)
+{
+    return s == NULL ? "" : s;
+}
+
+/* The n-th qualifier of vfn (empty when there is none) */
+static void
+qualifier(const char *vfn, int n, const char **v, size_t *len)
+{
+    const char *q = nz(vfn), *e;
+    int i;
+
+    for (i = 1; i < n && q != NULL; i++) {
+        q = strchr(q, '.');
+        if (q != NULL)
+            q++;
+    }
+    if (q == NULL)
+        q = "";
+    e = strchr(q, '.');
+    *v = q;
+    *len = e == NULL ? strlen(q) : (size_t)(e - q);
+}
+
+/* What a symbol stands for: *v and *n */
+static void
+symvalue(int kind, int arg, const OFTP_RCVCTX *x, const char **v, size_t *n)
+{
+    switch (kind) {
+    case S_QUAL:
+        qualifier(x->vfn, arg, v, n);
+        return;
+    case S_ARR:
+        *v = nz(x->arrival) + arg;
+        *n = arg == 0 ? 4 : 2;
+        return;
+    case S_CTR:
+        *v = nz(x->sfidtime) + 6;
+        *n = 4;
+        return;
+    case S_ID:
+        *v = nz(x->partner);
+        break;
+    case S_KEY:
+        *v = nz(x->key);
+        break;
+    default:
+        *v = nz(x->vfn);
+        break;
+    }
+    *n = strlen(*v);
+}
+
 /* The pattern with its symbols replaced. -1: a symbol or a character that
 ** means nothing, -2: out is too small. With x NULL only the syntax is
 ** checked.
@@ -170,67 +224,24 @@ expand(const char *pat, const OFTP_RCVCTX *x, char *out, size_t cap)
 
     out[0] = '\0';
     while (*pat) {
-        const char *v = "";
+        const char *v = pat;
         size_t n = 1;
-        int kind, len, arg;
+        int kind, len = 1, arg;
 
-        if (*pat != '%') {
-            if (!literal_ok(*pat))
+        if (*pat == '%') {
+            kind = symbol(pat, &len, &arg);
+            if (kind == S_NONE)
                 return -1;
-            if (append(out, cap, &at, pat, 1) != 0)
-                return -2;
-            pat++;
-            continue;
-        }
-        kind = symbol(pat, &len, &arg);
-        if (kind == S_NONE)
+            if (x == NULL) {
+                pat += len;
+                continue;
+            }
+            symvalue(kind, arg, x, &v, &n);
+        } else if (!literal_ok(*pat))
             return -1;
-        pat += len;
-        if (x == NULL)
-            continue;
-        switch (kind) {
-        case S_VFN:
-            v = x->vfn;
-            n = strlen(v);
-            break;
-        case S_QUAL: {
-            const char *q = x->vfn, *e;
-            int i;
-
-            for (i = 1; i < arg; i++) {
-                q = strchr(q, '.');
-                if (q == NULL)
-                    break;
-                q++;
-            }
-            if (q == NULL) {
-                n = 0;
-                break;
-            }
-            e = strchr(q, '.');
-            v = q;
-            n = e == NULL ? strlen(q) : (size_t)(e - q);
-            break;
-        }
-        case S_ID:
-            v = x->partner;
-            n = strlen(v);
-            break;
-        case S_ARR:
-            v = x->arrival + arg;
-            n = arg == 0 ? 4 : 2;
-            break;
-        case S_CTR:
-            v = x->sfidtime + 6;
-            n = 4;
-            break;
-        case S_KEY:
-            v = x->key;
-            n = strlen(v);
-            break;
-        }
         if (append(out, cap, &at, v, n) != 0)
             return -2;
+        pat += len;
     }
     return 0;
 }
@@ -305,81 +316,99 @@ rule_kw(OFTP_RULE *r, const char *k, const char *v)
     return -2;
 }
 
+/* The next KEYWORD=VALUE token of text into tok, both upper-cased in
+** place. 0 at the end of the line, 1 with *eq at the '=', -1 when the
+** token has no '='.
+*/
+static int
+next_token(const char **pp, char *tok, size_t cap, char **eq)
+{
+    const char *p = *pp;
+    size_t n = 0;
+    char *c;
+
+    while (*p == ' ' || *p == '\t' || *p == ',')
+        p++;
+    if (*p == '\0' || *p == '\n' || *p == '\r') {
+        *pp = p;
+        return 0;
+    }
+    while (*p && *p != ' ' && *p != '\t' && *p != ',' && *p != '\n'
+           && *p != '\r') {
+        if (n < cap - 1)
+            tok[n++] = *p;
+        p++;
+    }
+    tok[n] = '\0';
+    *pp = p;
+    if ((*eq = strchr(tok, '=')) == NULL)
+        return -1;
+    **eq = '\0';
+    for (c = tok; *c; c++)
+        *c = up(*c);
+    for (c = *eq + 1; *c; c++)
+        *c = up(*c);
+    return 1;
+}
+
+/* RULE= or a keyword of the rule before: 0, or the error's text in m */
+static const char *
+apply(OFTP_RULES *s, const char *k, const char *v, int lineno, char *m,
+      size_t mcap)
+{
+    OFTP_RULE *r;
+    int rc;
+
+    if (strcmp(k, "RULE") != 0) {
+        if (s->n == 0) {
+            snprintf(m, mcap, "line %d: %s before the first RULE=", lineno, k);
+            return m;
+        }
+        rc = rule_kw(&s->r[s->n - 1], k, v);
+    } else if (s->n >= OFTP_MAXRULE) {
+        snprintf(m, mcap, "line %d: more than %d rules", lineno, OFTP_MAXRULE);
+        return m;
+    } else {
+        r = &s->r[s->n++];
+        memset(r, 0, sizeof(*r));
+        strcpy(r->from, "*");
+        strcpy(r->vfn, "*");
+        r->xlate = -1;
+        r->line = lineno;
+        rc = put(r->name, sizeof(r->name), v);
+    }
+    if (rc == 0)
+        return NULL;
+    s->r[s->n - 1].bad = 1;
+    if (rc == -2)
+        snprintf(m, mcap, "line %d: unknown keyword %s", lineno, k);
+    else
+        snprintf(m, mcap, "line %d: invalid value for %s", lineno, k);
+    return m;
+}
+
 int
 oftp_rcv_line(OFTP_RULES *s, const char *text, int lineno, OFTP_CFGMSG msg,
               void *ctx)
 {
     const char *p = text;
-    char m[160];
-    int errors = 0;
+    char m[160], tok[100], *eq;
+    int errors = 0, t;
 
     if (*p == '*')
         return 0;
-    for (;;) {
-        char tok[100], *eq, *v;
-        size_t n = 0;
-        int rc;
+    while ((t = next_token(&p, tok, sizeof(tok), &eq)) != 0) {
+        const char *err;
 
-        while (*p == ' ' || *p == '\t' || *p == ',')
-            p++;
-        if (*p == '\0' || *p == '\n' || *p == '\r')
-            break;
-        while (*p && *p != ' ' && *p != '\t' && *p != ',' && *p != '\n'
-               && *p != '\r') {
-            if (n < sizeof(tok) - 1)
-                tok[n++] = *p;
-            p++;
-        }
-        tok[n] = '\0';
-        if ((eq = strchr(tok, '=')) == NULL) {
+        if (t < 0) {
             snprintf(m, sizeof(m), "line %d: %s is not KEYWORD=VALUE", lineno, tok);
-            say(msg, ctx, m);
-            errors++;
-            continue;
-        }
-        *eq = '\0';
-        v = eq + 1;
-        for (eq = tok; *eq; eq++)
-            *eq = up(*eq);
-        for (eq = v; *eq; eq++)
-            *eq = up(*eq);
-
-        if (strcmp(tok, "RULE") == 0) {
-            OFTP_RULE *r;
-
-            if (s->n >= OFTP_MAXRULE) {
-                snprintf(m, sizeof(m), "line %d: more than %d rules", lineno,
-                         OFTP_MAXRULE);
-                say(msg, ctx, m);
-                errors++;
-                continue;
-            }
-            r = &s->r[s->n++];
-            memset(r, 0, sizeof(*r));
-            strcpy(r->from, "*");
-            strcpy(r->vfn, "*");
-            r->xlate = -1;
-            r->line = lineno;
-            rc = put(r->name, sizeof(r->name), v);
-        } else if (s->n == 0) {
-            snprintf(m, sizeof(m), "line %d: %s before the first RULE=", lineno, tok);
-            say(msg, ctx, m);
-            errors++;
-            continue;
+            err = m;
         } else
-            rc = rule_kw(&s->r[s->n - 1], tok, v);
-
-        if (rc == -2) {
-            snprintf(m, sizeof(m), "line %d: unknown keyword %s", lineno, tok);
-            say(msg, ctx, m);
-            errors++;
-        } else if (rc != 0) {
-            snprintf(m, sizeof(m), "line %d: invalid value for %s", lineno, tok);
-            say(msg, ctx, m);
+            err = apply(s, tok, eq + 1, lineno, m, sizeof(m));
+        if (err != NULL) {
+            say(msg, ctx, err);
             errors++;
         }
-        if (rc != 0 && s->n > 0)
-            s->r[s->n - 1].bad = 1;
     }
     s->errors += errors;
     return errors;

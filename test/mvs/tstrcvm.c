@@ -60,7 +60,8 @@ static const char *
 find(const char *prefix)
 {
     static char line[256];
-    unsigned n = (unsigned)strlen(prefix), i = 0;
+    unsigned n = (unsigned)strlen(prefix);
+    unsigned i = 0;
 
     while (i < rlen) {
         unsigned e = i;
@@ -81,18 +82,53 @@ static int
 send_file(const char *dsn, const char *vfn, char *key)
 {
     char req[200];
-    const char *l;
+    const char *l = NULL;
 
     snprintf(req, sizeof(req), "SEND PARTNER=" PARTNER " DSN=%s VFN=%s", dsn,
              vfn);
     key[0] = '\0';
-    if (ask(req) != OFTP_SVC_OK || (l = find("200 ")) == NULL) {
-        printf("    %s: %s\n", req, find("5") ? find("5") : "no 200");
+    if (ask(req) == OFTP_SVC_OK)
+        l = find("200 ");
+    if (l == NULL) {
+        const char *e = find("5");
+
+        printf("    %s: %s\n", req, e != NULL ? e : "no 200");
         return 0;
     }
     memcpy(key, l + 4, 8);
     key[8] = '\0';
     return 1;
+}
+
+/* The state of the transfer from the last SHOW reply into st[10]; 0 when
+** the reply has none
+*/
+static int
+state_of(char *st)
+{
+    const char *l = find("100 T");
+    char *c;
+
+    if (l == NULL)
+        return 0;
+    /* "100 T0000001 SEND DELIVERED, partner ..." */
+    snprintf(st, 10, "%s", l + 4 + 8 + 1 + 5);
+    c = strchr(st, ',');
+    if (c != NULL)
+        *c = '\0';
+    return 1;
+}
+
+/* A state the transfer stays in: ended, or waiting for a retry with its
+** reason in the reply
+*/
+static int
+settled(const char *st)
+{
+    if (strcmp(st, "DELIVERED") == 0 || strcmp(st, "REJECTED") == 0
+        || strcmp(st, "FAILED") == 0)
+        return 1;
+    return strcmp(st, "WAITING") == 0 && strstr(reply, "reason") != NULL;
 }
 
 /* Waits for the transfer to end or to wait for a retry; the state in
@@ -107,19 +143,8 @@ settle(const char *key, char *st, char *why)
     snprintf(req, sizeof(req), "SHOW KEY=%s", key);
     st[0] = why[0] = '\0';
     for (i = 0; i < 90; i++) {
-        const char *l;
-        char       *c;
-
-        if (ask(req) == OFTP_SVC_OK && (l = find("100 T")) != NULL) {
-            /* "100 T0000001 SEND DELIVERED, partner ..." */
-            snprintf(st, 10, "%s", l + 4 + 8 + 1 + 5);
-            if ((c = strchr(st, ',')) != NULL)
-                *c = '\0';
-            if (strcmp(st, "DELIVERED") == 0 || strcmp(st, "REJECTED") == 0
-                || strcmp(st, "FAILED") == 0
-                || (strcmp(st, "WAITING") == 0 && strstr(reply, "reason")))
-                break;
-        }
+        if (ask(req) == OFTP_SVC_OK && state_of(st) && settled(st))
+            break;
         sleep(2);
     }
     if (ask(req) == OFTP_SVC_OK) {
@@ -191,9 +216,13 @@ transfer(const char *dsn, const char *vfn, char *key, char *st, char *why)
 static void
 phase1(void)
 {
-    char key[16], st[16], why[100], dsn[60];
+    char key[16];
+    char st[16];
+    char why[100];
+    char dsn[60];
     time_t now = time(NULL);
-    struct tm *tm = localtime(&now);
+    struct tm tmv;
+    struct tm *tm = localtime_r(&now, &tmv);
 
     /* the pattern rule: DSN=IBMUSER.RCVTEST.%ID.%Q3 */
     CHECK(transfer(D1, "TSTRCV.PAT.ONE", key, st, why),
@@ -269,7 +298,9 @@ phase1(void)
 static void
 phase2(void)
 {
-    char key[16], st[16], why[100];
+    char key[16];
+    char st[16];
+    char why[100];
 
     CHECK(transfer(D1, "TSTRCV.PAT.TWO", key, st, why),
           "new set: the file is delivered");
@@ -286,7 +317,9 @@ phase2(void)
 static void
 phase3(void)
 {
-    char key[16], st[16], why[100];
+    char key[16];
+    char st[16];
+    char why[100];
 
     CHECK(transfer(D1, "TSTRCV.PAT.THREE", key, st, why),
           "after a bad member: the file is delivered");
