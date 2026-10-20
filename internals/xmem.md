@@ -1816,6 +1816,9 @@ X'940'.
 
 `CALL 'OFTPD.DEV.LINKLIB(OFTP)' 'LIST SLOW(40)'` from a TN3270 logon
 (`mbt test --tso`), `C U=HERC01` from the console while it was parked.
+There is no checked-in script for it: to repeat, log on over TN3270,
+run the `CALL`, and from the Hercules console read the slot with `v`
+and cancel the user (`C U=<userid>`) while slot 0 is PENDING.
 
 | | What was read |
 |---|---|
@@ -1831,9 +1834,9 @@ so that its request was not being served but waiting. Cancelled at
 THE OWNER OF SLOT 1 IS GONE, REQUEST NOT CARRIED OUT`, both slots FREE,
 `inflight` 0, the batch job CC 0 with its own answer.
 
-**So a cancelled TSO user does not take a slot for five minutes, as a
-batch caller does (section 15 case 3), and the pool is whole
-afterwards; but its slot is not freed at the moment of the cancel.** It
+**So a cancelled TSO user does not take a slot for the sweep's five
+minutes (the batch caller of section 15 case 3, before section 16 told
+a gone job apart), and the pool is whole afterwards; but its slot is not freed at the moment of the cancel.** It
 is freed when the slot thread next reaches it: `oftp_svc_take` when the
 request was waiting, `oftp_svc_answer` when it was being served. The
 sweep never touches PENDING. The time is whatever the slot thread is
@@ -1875,17 +1878,19 @@ Result, JOB00047 and again JOB00050 after the checks were added, 62 of
 **No program check.** Afterwards `inflight` 0, every slot FREE, `STATUS`
 answers.
 
-Why: `FREEMAIN` gives the block back to the region's free list, not to
-the system, and the page stays valid; the copy-out is `SPKA` to the
-caller's key and `MVC`, and a key-8 store into key-8 storage of the
-caller's own address space is permitted. So the answer is written into
-a block the caller no longer owns. That is the caller's own bug, with
-the caller's own authority: the routine stores nothing the caller could
-not store itself, and nothing outside the caller's address space. If
-the block has been reused in the meantime the answer overwrites its new
-contents (at most 2048 bytes of OFTPD's reply to the caller's own
-request); if it has been reused under another key the store is a
-protection exception, which is the next case.
+What is measured, and what is not: the subtask frees the block and then
+**ends**, which releases its subpool; the copy-out follows about three
+seconds later. All that was measured is that the store succeeds after the
+`FREEMAIN` and after the end of the owning TCB. The mechanism is
+**unchecked**: it may be that the page stayed valid in the region, or
+that the storage was not yet reused, and nothing here tells the two
+apart. What follows from the code is limited to this: the copy-out is
+`SPKA` to the caller's key and `MVC`, so the routine stores nothing the
+caller could not store itself, and nothing outside the caller's address
+space. If the block has been reused in the meantime the answer would
+overwrite its new contents (at most 2048 bytes of OFTPD's reply to the
+caller's own request); if it were reused under another key the store
+would be a protection exception, which is the next case.
 
 The other outcome, a program check in the copy-out, was **not
 provoked**: from problem state there is no way found to make storage

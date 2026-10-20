@@ -16,7 +16,6 @@
 ** is not a SLOW build), not a skip.
 */
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -144,11 +143,12 @@ main(int argc, char **argv)
         else if (c.rc == OFTP_SVC_OK)
             answers++;
         /* The two outcomes the routine can have: the copy-out lands in
-        ** the freed block, which stays addressable in the caller's own
-        ** region (measured: that is what happens), or it program-checks
-        ** with S0C4 in the caller's own task.
+        ** the freed block (measured: that is what happens), or it
+        ** program-checks with S0C4 in the caller's own task. try()
+        ** reports a system abend as 0x00sssuuu, so S0C4 is 0x000C4000.
         */
-        CHECK(ab == 0 || ab == 0x4000, "the call ends cleanly or with S0C4");
+        CHECK(ab == 0 || ab == 0x000C4000,
+              "the call ends cleanly or with S0C4");
         if (ab == 0) {
             CHECK_EQ(c.rc, OFTP_SVC_OK, "the answer came back OK");
             CHECK(c.len > 0 && x.buf[0] != '.',
