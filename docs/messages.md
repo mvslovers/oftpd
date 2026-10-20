@@ -46,7 +46,8 @@ different messages share the number; each is listed.
 | `OFTP004P` | Log only | `AUTHORIZED BY LIBRARY` or `BY SVC`: how OFTPD got authorization |
 | `OFTP005W` | Console + log | `NOT AUTHORIZED, RC=n, CONTINUING` |
 | `OFTP006W` | Console + log | `NO ABEND RECOVERY (ESTAE FAILED)`: an abend of OFTPD will not close its sockets |
-| `OFTP010W` | Console + log | `<member>: <line>`: a line of `OFTPPRM` or `OFTPPTN` that was not understood, for example `line 12: a word is longer than 99 characters` (such a word is refused, never cut, and the partner entry being read is disabled; `OFTP` stops an operand that long earlier, with `OFTP003E`); the entry is skipped or disabled |
+| `OFTP010W` | Console + log | `<member>: <line>`: a line of `OFTPPRM` or `OFTPPTN` that was not understood; the entry is skipped or disabled |
+| `OFTP010W` | Console + log | for example `OFTPPTN: line 12: a word is longer than 99 characters`: such a word is refused, never cut. In `OFTPPTN` the partner entry being read is disabled; `OFTPPRM` has no partner entry. `OFTP` stops an operand that long earlier, with `OFTP003E` |
 | `OFTP011E` | Console + log | `DD OFTPPRM CANNOT BE OPENED`; OFTPD ends |
 | `OFTP012E` | Console + log | `OFTPPRM HAS NO ODETTEID`; OFTPD ends |
 | `OFTP013W` | Console + log | `DD OFTPPTN CANNOT BE OPENED, NO PARTNERS` |

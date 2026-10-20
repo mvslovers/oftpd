@@ -78,8 +78,11 @@ host name included) are upper case. `SHOW` never prints a password: it says
 **A password is as secret as the place you type it.** In batch `OFTP`
 echoes each command of `SYSIN` to `SYSPRINT` and prints the value of
 `PASSWORD` and of `OURPASSWORD` as eight stars (`PASSWORD(********)`),
-whatever its length and however you wrote it: `PASSWORD(x)`, `PASSWORD=x`
-or `PASSWORD('x y')`. The echo is cut into lines of at most 72 columns; a
+whatever its length, when you write it `PASSWORD(x)`, `PASSWORD=x` or
+`PASSWORD('x y')`. **A value separated from its keyword by a blank is not
+masked** (`PASSWORD secret`, `PASSWORD (secret)`, `PASSWORD = secret`): the
+echo shows it, and only then is the command refused. Write every value
+directly after `=` or in parentheses. The echo is cut into lines of at most 72 columns; a
 line that goes on ends in ` -`, as it does in `SYSIN`. But the password is
 in your JCL, and under TSO it is on your terminal and in your session's
 history. Keep the JCL in a data set only you can read.
