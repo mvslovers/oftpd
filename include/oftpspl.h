@@ -6,7 +6,9 @@
 ** One thread owns the cluster and is the only one that issues VSAM
 ** requests; every other thread calls the functions below, which queue a
 ** request and wait for it (internals/design.md 3.4). Keys are 8 octets:
-** X'00'*8 the control record, 'T' + 7 digits a transfer.
+** X'00'*8 the control record, 'T' + 7 digits a transfer, 'P' + 7 digits
+** a partner kept by command (internals/design.md 4). A walk over the
+** transfers starts at 'T' and never meets a 'P'.
 **
 ** The record is this struct, fixed length; the cluster is defined with
 ** KEYS(8 0) RECORDSIZE(512 512).
@@ -74,6 +76,15 @@ typedef struct oftp_sprec {
     unsigned short winfrom, winto;      /* minutes of the day, local      */
 } OFTP_SPREC;
 
+/* A partner kept by command: the entry as KEYWORD=VALUE text, the syntax
+** of OFTPPTN (oftp_cfg_text() writes it, oftp_cfg_apply() reads it).
+** Blank-padded with nulls to the end of the record.
+*/
+typedef struct oftp_spptn {
+    char        key[8];                 /* 'P' + 7 digits                 */
+    char        text[OFTP_SPLRECL - 8];
+} OFTP_SPPTN;
+
 typedef struct oftp_spool OFTP_SPOOL;
 
 /* Opens the cluster behind DD ddname and starts the spool thread. An
@@ -113,6 +124,20 @@ extern int  oftp_spl_putif(OFTP_SPOOL *sp, const OFTP_SPREC *rec, char was)
 /* The first transfer with a key above key ("" for the first of all) */
 extern int  oftp_spl_next(OFTP_SPOOL *sp, const char *key, OFTP_SPREC *rec)
                                                         asm("OFTPSPNX");
+
+/* Partners kept by command. next: the first one with a key above key
+** ("" for the first of all). add assigns the key: one above the highest.
+** put replaces the record with rec->key, del removes it. 0 or a negative
+** error; next says NOTFOUND at the end.
+*/
+extern int  oftp_spl_ptn_next(OFTP_SPOOL *sp, const char *key,
+                              OFTP_SPPTN *rec)          asm("OFTPSPPN");
+extern int  oftp_spl_ptn_add(OFTP_SPOOL *sp, OFTP_SPPTN *rec)
+                                                        asm("OFTPSPPA");
+extern int  oftp_spl_ptn_put(OFTP_SPOOL *sp, const OFTP_SPPTN *rec)
+                                                        asm("OFTPSPPU");
+extern int  oftp_spl_ptn_del(OFTP_SPOOL *sp, const char *key)
+                                                        asm("OFTPSPPD");
 
 /* Housekeeping (KEEPDAYS= in OFTPPRM). Deletes every transfer that
 ** oftp_spl_purgeable() says may go, in one request of the spool thread,

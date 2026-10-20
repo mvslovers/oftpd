@@ -175,7 +175,7 @@ partner_kw(OFTP_PARTNER *p, const char *k, const char *v)
     if (strcmp(k, "ENABLED") == 0)
         return (b = yesno(v)) < 0 ? -1 : (p->enabled = b, 0);
     if (strcmp(k, "CALL") == 0)
-        return (b = yesno(v)) < 0 ? -1 : (p->call = b, 0);
+        return (b = yesno(v)) < 0 ? -1 : (p->callwant = b, 0);
     if (strcmp(k, "ADDRESS") == 0)
         return put(p->address, sizeof(p->address), v);
     if (strcmp(k, "XLATE") == 0)
@@ -185,6 +185,43 @@ partner_kw(OFTP_PARTNER *p, const char *k, const char *v)
     if (strcmp(k, "SESSIONS") == 0)
         return (n = num(v, 1, OFTP_MAXSESS)) < 0 ? -1 : (p->sessions = (int)n, 0);
     return -2;
+}
+
+/* The next KEYWORD=VALUE of *pp into tok[100]: tok the keyword, upper-cased,
+** *v the value, upper-cased except HOST. 1 for a pair, 0 at the end, -1
+** for a word without '=' (tok holds it).
+*/
+static int
+next_kv(const char **pp, char *tok, char **v)
+{
+    const char *p = *pp;
+    char *eq;
+    size_t n = 0;
+
+    while (*p == ' ' || *p == '\t' || *p == ',')
+        p++;
+    if (*p == '\0' || *p == '\n' || *p == '\r') {
+        *pp = p;
+        return 0;
+    }
+    while (*p && *p != ' ' && *p != '\t' && *p != ',' && *p != '\n'
+           && *p != '\r') {
+        if (n < 99)
+            tok[n++] = *p;
+        p++;
+    }
+    tok[n] = '\0';
+    *pp = p;
+    if ((eq = strchr(tok, '=')) == NULL)
+        return -1;
+    *eq = '\0';
+    *v = eq + 1;
+    for (eq = tok; *eq; eq++)
+        *eq = (char)toupper((unsigned char)*eq);
+    if (strcmp(tok, "HOST") != 0)
+        for (eq = *v; *eq; eq++)
+            *eq = (char)toupper((unsigned char)*eq);
+    return 1;
 }
 
 int
@@ -197,33 +234,17 @@ oftp_cfg_line(OFTP_CONFIG *c, int partner, const char *text, int lineno,
     if (*p == '*')
         return 0;
     for (;;) {
-        char tok[100], *eq, *v;
-        size_t n = 0;
-        int rc;
+        char tok[100], *v = NULL;
+        int rc, got;
 
-        while (*p == ' ' || *p == '\t' || *p == ',')
-            p++;
-        if (*p == '\0' || *p == '\n' || *p == '\r')
+        got = next_kv(&p, tok, &v);
+        if (got == 0)
             break;
-        while (*p && *p != ' ' && *p != '\t' && *p != ',' && *p != '\n'
-               && *p != '\r') {
-            if (n < sizeof(tok) - 1)
-                tok[n++] = *p;
-            p++;
-        }
-        tok[n] = '\0';
-        if ((eq = strchr(tok, '=')) == NULL) {
+        if (got < 0) {
             say(msg, ctx, "line %d: %s is not KEYWORD=VALUE", lineno, tok);
             errors++;
             continue;
         }
-        *eq = '\0';
-        v = eq + 1;
-        for (eq = tok; *eq; eq++)
-            *eq = (char)toupper((unsigned char)*eq);
-        if (strcmp(tok, "HOST") != 0)
-            for (eq = v; *eq; eq++)
-                *eq = (char)toupper((unsigned char)*eq);
 
         if (!partner)
             rc = monitor_kw(c, tok, v);
@@ -236,9 +257,7 @@ oftp_cfg_line(OFTP_CONFIG *c, int partner, const char *text, int lineno,
                 continue;
             }
             np = &c->ptn[c->nptn++];
-            memset(np, 0, sizeof(*np));
-            np->enabled = 1;
-            np->call = 1;
+            oftp_cfg_newptn(np, "");
             np->line = lineno;
             rc = put(np->peer.name, sizeof(np->peer.name), v);
             if (rc == 0 && v[0] == '\0')
@@ -264,6 +283,66 @@ oftp_cfg_line(OFTP_CONFIG *c, int partner, const char *text, int lineno,
     return errors;
 }
 
+void
+oftp_cfg_newptn(OFTP_PARTNER *p, const char *name)
+{
+    memset(p, 0, sizeof(*p));
+    p->enabled = 1;
+    p->call = 1;
+    p->callwant = 1;
+    snprintf(p->peer.name, sizeof(p->peer.name), "%s", name);
+}
+
+int
+oftp_cfg_apply(OFTP_PARTNER *p, const char *text, char *why, int whylen)
+{
+    const char *t = text;
+
+    for (;;) {
+        char tok[100], *v = NULL;
+        int rc, got;
+
+        if ((got = next_kv(&t, tok, &v)) == 0)
+            return 0;
+        if (got < 0) {
+            snprintf(why, (size_t)whylen, "%s is not KEYWORD=VALUE", tok);
+            return -1;
+        }
+        if (strcmp(tok, "PARTNER") == 0)
+            rc = strcmp(v, p->peer.name) == 0 ? 0 : -3;
+        else
+            rc = partner_kw(p, tok, v);
+        if (rc == -3)
+            snprintf(why, (size_t)whylen, "a partner cannot be renamed");
+        else if (rc == -2)
+            snprintf(why, (size_t)whylen, "unknown keyword %s", tok);
+        else if (rc != 0)
+            snprintf(why, (size_t)whylen, "invalid value for %s", tok);
+        if (rc != 0)
+            return -1;
+    }
+}
+
+void
+oftp_cfg_complete(const OFTP_CONFIG *c, OFTP_PARTNER *p)
+{
+    if (p->peer.ourcode[0] == '\0')
+        strcpy(p->peer.ourcode, c->odetteid);
+    if (p->peer.level == 0)
+        p->peer.level = OFTP_LEV20;
+    if (p->peer.sdeb == 0)
+        p->peer.sdeb = c->sdeb;
+    if (p->peer.cred == 0)
+        p->peer.cred = c->cred;
+    if (p->peer.mode == 0)
+        p->peer.mode = 'B';
+    if (p->port == 0)
+        p->port = 3305;
+    if (p->sessions == 0)
+        p->sessions = 1;
+    p->call = p->callwant && p->host[0] != '\0' && p->via[0] == '\0';
+}
+
 int
 oftp_cfg_finish(OFTP_CONFIG *c, OFTP_CFGMSG msg, void *ctx)
 {
@@ -284,22 +363,7 @@ oftp_cfg_finish(OFTP_CONFIG *c, OFTP_CFGMSG msg, void *ctx)
                     p->line, p->peer.name);
                 p->enabled = 0;
             }
-        if (p->peer.ourcode[0] == '\0')
-            strcpy(p->peer.ourcode, c->odetteid);
-        if (p->peer.level == 0)
-            p->peer.level = OFTP_LEV20;
-        if (p->peer.sdeb == 0)
-            p->peer.sdeb = c->sdeb;
-        if (p->peer.cred == 0)
-            p->peer.cred = c->cred;
-        if (p->peer.mode == 0)
-            p->peer.mode = 'B';
-        if (p->port == 0)
-            p->port = 3305;
-        if (p->sessions == 0)
-            p->sessions = 1;
-        if (p->host[0] == '\0' || p->via[0])
-            p->call = 0;
+        oftp_cfg_complete(c, p);
         if (p->enabled)
             on++;
     }
@@ -387,4 +451,159 @@ oftp_cfg_admin(const OFTP_CONFIG *c, const char *user)
         if (strcmp(c->admin[i], user) == 0)
             return 1;
     return 0;
+}
+
+int
+oftp_cfg_slot(const OFTP_CONFIG *c, const char *name)
+{
+    int i;
+
+    if (name == NULL || name[0] == '\0')
+        return -1;
+    for (i = 0; i < c->nptn; i++)
+        if (strcmp(c->ptn[i].peer.name, name) == 0)
+            return i;
+    return -1;
+}
+
+int
+oftp_cfg_alloc(OFTP_CONFIG *c)
+{
+    int i;
+
+    for (i = 0; i < c->nptn; i++)
+        if (c->ptn[i].peer.name[0] == '\0') {
+            memset(&c->ptn[i], 0, sizeof(c->ptn[i]));
+            return i;
+        }
+    if (c->nptn >= OFTP_MAXPTN)
+        return -1;
+    memset(&c->ptn[c->nptn], 0, sizeof(c->ptn[0]));
+    return c->nptn++;
+}
+
+void
+oftp_cfg_free(OFTP_CONFIG *c, int i)
+{
+    memset(&c->ptn[i], 0, sizeof(c->ptn[i]));
+}
+
+int
+oftp_cfg_count(const OFTP_CONFIG *c, int *enabled)
+{
+    int i, n = 0, on = 0;
+
+    for (i = 0; i < c->nptn; i++) {
+        if (c->ptn[i].peer.name[0] == '\0')
+            continue;
+        n++;
+        if (c->ptn[i].enabled)
+            on++;
+    }
+    if (enabled != NULL)
+        *enabled = on;
+    return n;
+}
+
+int
+oftp_cfg_check(const OFTP_CONFIG *c, const OFTP_PARTNER *p, int self,
+               char *why, int whylen)
+{
+    int j;
+
+    if (p->peer.name[0] == '\0') {
+        snprintf(why, (size_t)whylen, "no partner name");
+        return -1;
+    }
+    if (p->peer.code[0] == '\0') {
+        snprintf(why, (size_t)whylen, "ODETTEID is required");
+        return -1;
+    }
+    for (j = 0; j < c->nptn; j++) {
+        const OFTP_PARTNER *q = &c->ptn[j];
+
+        if (j == self || q->peer.name[0] == '\0')
+            continue;
+        if (strcmp(q->peer.name, p->peer.name) == 0) {
+            snprintf(why, (size_t)whylen, "partner %s exists", q->peer.name);
+            return -1;
+        }
+        if (strcmp(q->peer.code, p->peer.code) == 0) {
+            snprintf(why, (size_t)whylen,
+                     "ODETTEID is partner %s's already", q->peer.name);
+            return -1;
+        }
+        if (q->via[0] && strcmp(q->via, p->peer.name) == 0 && p->via[0]) {
+            snprintf(why, (size_t)whylen,
+                     "partner %s is reached through it: it cannot have a VIA",
+                     q->peer.name);
+            return -1;
+        }
+    }
+    if (p->via[0]) {
+        int v = oftp_cfg_slot(c, p->via);
+
+        if (v < 0 || v == self || !c->ptn[v].enabled || c->ptn[v].via[0]) {
+            snprintf(why, (size_t)whylen,
+                     "VIA names no enabled direct partner");
+            return -1;
+        }
+    }
+    return 0;
+}
+
+int
+oftp_cfg_text(const OFTP_CONFIG *c, const OFTP_PARTNER *p, char *out,
+              size_t cap)
+{
+    size_t n;
+    int w;
+
+#define ADD(...) \
+    do { \
+        w = snprintf(out + n, cap - n, __VA_ARGS__); \
+        if (w < 0 || (size_t)w >= cap - n) \
+            return -1; \
+        n += (size_t)w; \
+    } while (0)
+
+    if (cap == 0)
+        return -1;
+    n = 0;
+    out[0] = '\0';
+    ADD("PARTNER=%s ODETTEID=%s", p->peer.name, p->peer.code);
+    if (p->peer.pswd_in[0])
+        ADD(" PASSWORD=%s", p->peer.pswd_in);
+    if (p->peer.pswd_out[0])
+        ADD(" OURPASSWORD=%s", p->peer.pswd_out);
+    if (p->peer.ourcode[0] && strcmp(p->peer.ourcode, c->odetteid) != 0)
+        ADD(" OURID=%s", p->peer.ourcode);
+    if (p->host[0])
+        ADD(" HOST=%s", p->host);
+    if (p->port && p->port != 3305)
+        ADD(" PORT=%d", p->port);
+    if (p->peer.level && p->peer.level != OFTP_LEV20)
+        ADD(" LEVEL=%d", p->peer.level);
+    if (p->peer.sdeb && p->peer.sdeb != c->sdeb)
+        ADD(" SDEB=%u", p->peer.sdeb);
+    if (p->peer.cred && p->peer.cred != c->cred)
+        ADD(" CREDIT=%u", p->peer.cred);
+    if (p->peer.mode && p->peer.mode != 'B')
+        ADD(" MODE=%c", p->peer.mode);
+    if (p->peer.cmpr)
+        ADD(" COMPRESS=Y");
+    if (!p->enabled)
+        ADD(" ENABLED=N");
+    if (!p->callwant)
+        ADD(" CALL=N");
+    if (p->address[0])
+        ADD(" ADDRESS=%s", p->address);
+    if (p->xlate)
+        ADD(" XLATE=Y");
+    if (p->via[0])
+        ADD(" VIA=%s", p->via);
+    if (p->sessions > 1)
+        ADD(" SESSIONS=%d", p->sessions);
+#undef ADD
+    return (int)n;
 }
