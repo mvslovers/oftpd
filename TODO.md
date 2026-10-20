@@ -235,7 +235,7 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   (`internals/interop.md`). V from mendelson is not measured.
 - ~~The control port answers one of several requests that arrive at
   once~~ -- moot, the port is gone (#32).
-- `F OFTPD,D P`: name the `VIA` partner instead of `-:3305`.
+- ~~`F OFTPD,D P`: name the `VIA` partner instead of `-:3305`~~ -- `VIA name` (#61).
 - ~~mendelson: the M38 nodes as partners there~~ — 2026-10-14, with
   the rename DEV1 -> `O0000000000DEV1`, MENDEL -> MAC1
   (`O0000000000MAC1`): M38R -> MAC1 and MAC1 -> M38R (DEV1 as

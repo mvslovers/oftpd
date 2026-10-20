@@ -136,6 +136,16 @@ main(void)
           "ACME via MVS2, never called itself");
     CHECK(oftp_cfg_byid(&c, "O0013000000ACME") == NULL,
           "a partner behind another is not accepted as a caller");
+    {
+        char where[32];
+
+        oftp_cfg_where(p, where, sizeof(where));
+        CHECK(strcmp(where, "VIA MVS2") == 0, "D P names the partner ACME goes through");
+        oftp_cfg_where(oftp_cfg_find(&c, "MVS2"), where, sizeof(where));
+        CHECK(strcmp(where, "mvs2.Example.org:13305") == 0, "a direct partner shows host:port");
+        oftp_cfg_where(oftp_cfg_byid(&c, "O0013000000PC"), where, sizeof(where));
+        CHECK(strcmp(where, "-:3305") == 0, "a partner without HOST shows -:port");
+    }
     CHECK(oftp_cfg_find(&c, "LOOP") == NULL, "VIA to a routed partner disabled");
     CHECK(oftp_cfg_find(&c, "GHOST") == NULL, "VIA to an unknown partner disabled");
     CHECK(msgs == 5, "five messages for the partner member");
