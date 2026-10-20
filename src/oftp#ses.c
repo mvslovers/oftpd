@@ -100,6 +100,7 @@ cmd_name(char code)
     case OFTP_SECD: return "SECD";
     case OFTP_AUCH: return "AUCH";
     case OFTP_AURP: return "AURP";
+    default:        break;
     }
     return "UNKNOWN";
 }
@@ -120,10 +121,118 @@ trace_flush(OFTP_SESS *s)
     }
 }
 
-/* One command as a line: direction, name, length and the fields that
-** identify it. The SSID is decoded only to show the level and the
-** buffer; its password, like all file data, is never formatted.
+#define NODEC   "(not decodable)"
+
+static void
+tr_ssid(char *d, size_t sz, const unsigned char *c, unsigned n)
+{
+    OFTP_SSIDCMD t;
+
+    if (oftp_dec_ssid(c, n, &t) != 0)
+        snprintf(d, sz, NODEC);
+    else
+        snprintf(d, sz, "level %d id %s sdeb %u mode %c cmpr %c cred %u",
+                 t.level, t.code, t.sdeb, t.sr, t.cmpr, t.cred);
+}
+
+static void
+tr_sfid(OFTP_SESS *s, char *d, size_t sz, const unsigned char *c, unsigned n)
+{
+    OFTP_SFIDCMD t;
+
+    if (oftp_dec_sfid(lev(s), c, n, &t) != 0)
+        snprintf(d, sz, NODEC);
+    else
+        snprintf(d, sz, "dsn %s fmt %c lrecl %u", t.dsn, t.fmt, t.lrecl);
+}
+
+static void
+tr_sfpa(OFTP_SESS *s, char *d, size_t sz, const unsigned char *c, unsigned n)
+{
+    unsigned long acnt;
+
+    if (oftp_dec_sfpa(lev(s), c, n, &acnt) != 0)
+        snprintf(d, sz, NODEC);
+    else
+        snprintf(d, sz, "restart %lu", acnt);
+}
+
+static void
+tr_reas(OFTP_SESS *s, char code, char *d, size_t sz, const unsigned char *c,
+        unsigned n)
+{
+    OFTP_REASCMD t;
+
+    if (oftp_dec_reas(lev(s), code, c, n, &t) != 0
+        && oftp_dec_reas(OFTP_LEV13, code, c, n, &t) != 0)
+        snprintf(d, sz, NODEC);
+    else if (code == OFTP_SFNA)
+        snprintf(d, sz, "reason %02d retry %c", t.reas, t.retry);
+    else
+        snprintf(d, sz, "reason %02d", t.reas);
+}
+
+static void
+tr_efid(OFTP_SESS *s, char *d, size_t sz, const unsigned char *c, unsigned n)
+{
+    OFTP_EFIDCMD t;
+
+    if (oftp_dec_efid(lev(s), c, n, &t) != 0)
+        snprintf(d, sz, NODEC);
+    else
+        snprintf(d, sz, "records %lu octets %lu", t.rcnt, t.ucnt);
+}
+
+static void
+tr_efpa(char *d, size_t sz, const unsigned char *c, unsigned n)
+{
+    char cd;
+
+    if (oftp_dec_efpa(c, n, &cd) != 0)
+        snprintf(d, sz, NODEC);
+    else
+        snprintf(d, sz, "cd %c", cd);
+}
+
+static void
+tr_erp(OFTP_SESS *s, char code, char *d, size_t sz, const unsigned char *c,
+       unsigned n)
+{
+    OFTP_ERPCMD t;
+
+    if (oftp_dec_erp(lev(s), code, c, n, &t) != 0)
+        snprintf(d, sz, NODEC);
+    else if (code == OFTP_NERP)
+        snprintf(d, sz, "dsn %s reason %02d", t.dsn, t.reas);
+    else
+        snprintf(d, sz, "dsn %s", t.dsn);
+}
+
+/* The fields of a command that identify it, into d. The SSID is decoded
+** only to show the level and the buffer; its password, like all file
+** data, is never formatted.
 */
+static void
+trace_fields(OFTP_SESS *s, char code, const unsigned char *c, unsigned n,
+             char *d, size_t sz)
+{
+    d[0] = '\0';
+    switch (code) {
+    case OFTP_SSID: tr_ssid(d, sz, c, n); break;
+    case OFTP_SFID: tr_sfid(s, d, sz, c, n); break;
+    case OFTP_SFPA: tr_sfpa(s, d, sz, c, n); break;
+    case OFTP_SFNA:
+    case OFTP_EFNA:
+    case OFTP_ESID: tr_reas(s, code, d, sz, c, n); break;
+    case OFTP_EFID: tr_efid(s, d, sz, c, n); break;
+    case OFTP_EFPA: tr_efpa(d, sz, c, n); break;
+    case OFTP_EERP:
+    case OFTP_NERP: tr_erp(s, code, d, sz, c, n); break;
+    default: break;
+    }
+}
+
+/* One command as a line: direction, name, length and its fields */
 static void
 trace_cmd(OFTP_SESS *s, int in, const unsigned char *c, unsigned n)
 {
@@ -136,84 +245,7 @@ trace_cmd(OFTP_SESS *s, int in, const unsigned char *c, unsigned n)
         return;
     }
     trace_flush(s);
-    d[0] = '\0';
-    switch (code) {
-    case OFTP_SSID: {
-        OFTP_SSIDCMD t;
-
-        if (oftp_dec_ssid(c, n, &t) != 0)
-            strcpy(d, "(not decodable)");
-        else
-            snprintf(d, sizeof(d), "level %d id %s sdeb %u mode %c cmpr %c cred %u",
-                     t.level, t.code, t.sdeb, t.sr, t.cmpr, t.cred);
-        break;
-    }
-    case OFTP_SFID: {
-        OFTP_SFIDCMD t;
-
-        if (oftp_dec_sfid(lev(s), c, n, &t) != 0)
-            strcpy(d, "(not decodable)");
-        else
-            snprintf(d, sizeof(d), "dsn %s fmt %c lrecl %u", t.dsn, t.fmt,
-                     t.lrecl);
-        break;
-    }
-    case OFTP_SFPA: {
-        unsigned long acnt;
-
-        if (oftp_dec_sfpa(lev(s), c, n, &acnt) != 0)
-            strcpy(d, "(not decodable)");
-        else
-            snprintf(d, sizeof(d), "restart %lu", acnt);
-        break;
-    }
-    case OFTP_SFNA:
-    case OFTP_EFNA:
-    case OFTP_ESID: {
-        OFTP_REASCMD t;
-
-        if (oftp_dec_reas(lev(s), code, c, n, &t) != 0
-            && oftp_dec_reas(OFTP_LEV13, code, c, n, &t) != 0)
-            strcpy(d, "(not decodable)");
-        else if (code == OFTP_SFNA)
-            snprintf(d, sizeof(d), "reason %02d retry %c", t.reas, t.retry);
-        else
-            snprintf(d, sizeof(d), "reason %02d", t.reas);
-        break;
-    }
-    case OFTP_EFID: {
-        OFTP_EFIDCMD t;
-
-        if (oftp_dec_efid(lev(s), c, n, &t) != 0)
-            strcpy(d, "(not decodable)");
-        else
-            snprintf(d, sizeof(d), "records %lu octets %lu", t.rcnt, t.ucnt);
-        break;
-    }
-    case OFTP_EFPA: {
-        char cd;
-
-        if (oftp_dec_efpa(c, n, &cd) != 0)
-            strcpy(d, "(not decodable)");
-        else
-            snprintf(d, sizeof(d), "cd %c", cd);
-        break;
-    }
-    case OFTP_EERP:
-    case OFTP_NERP: {
-        OFTP_ERPCMD t;
-
-        if (oftp_dec_erp(lev(s), code, c, n, &t) != 0)
-            strcpy(d, "(not decodable)");
-        else if (code == OFTP_NERP)
-            snprintf(d, sizeof(d), "dsn %s reason %02d", t.dsn, t.reas);
-        else
-            snprintf(d, sizeof(d), "dsn %s", t.dsn);
-        break;
-    }
-    default:
-        break;
-    }
+    trace_fields(s, code, c, n, d, sizeof(d));
     slog(s, "TRACE %s %s %u%s%s", in ? "RECV" : "SEND", cmd_name(code), n,
          d[0] ? ": " : "", d);
 }
@@ -920,8 +952,8 @@ listen(OFTP_SESS *s)
 
 /* ---- the session ------------------------------------------------- */
 
-int
-oftp_sess_run(OFTP_SESS *s)
+static int
+run_session(OFTP_SESS *s)
 {
     int speaker, unsolicited = 0, rc;
 
@@ -971,6 +1003,15 @@ oftp_sess_run(OFTP_SESS *s)
             unsolicited = 1;            /* we never ask for the turn */
         }
     }
+}
+
+int
+oftp_sess_run(OFTP_SESS *s)
+{
+    int rc = run_session(s);
+
+    trace_flush(s);
+    return rc;
 }
 
 void

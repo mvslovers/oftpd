@@ -45,7 +45,7 @@ oftp_mon_msg(const char *fmt, ...)
 /* ---- helpers ----------------------------------------------------- */
 
 static int
-ptn_index(OFTP_MON *m, const OFTP_PARTNER *p)
+ptn_index(const OFTP_MON *m, const OFTP_PARTNER *p)
 {
     return (int)(p - m->cfg.ptn);
 }
@@ -174,6 +174,8 @@ failed(OFTP_MON *m, OFTP_SPREC *r)
 typedef struct sesctx {
     OFTP_MON   *m;
     OFTP_PARTNER *pt;
+    const OFTP_PARTNER *tp;             /* the caller's entry, even when
+                                        ** disabled: for TRACE only    */
     char        ip[16];
     int         sock;
     int         slot;                   /* in m->ssock, or -1            */
@@ -665,6 +667,9 @@ p_lookup(void *ctx, const char *code, OFTP_PEER *peer)
     OFTP_PARTNER *p = oftp_cfg_byid(&c->m->cfg, code);
     int i, n;
 
+    for (i = 0; c->tp == NULL && i < c->m->cfg.nptn; i++)
+        if (strcmp(c->m->cfg.ptn[i].peer.code, code) == 0)
+            c->tp = &c->m->cfg.ptn[i];
     if (p == NULL)
         return -1;
     if (p->address[0] && strcmp(p->address, c->ip) != 0) {
@@ -701,7 +706,9 @@ s_trace(void *ctx)
     SESCTX *c = ctx;
     OFTP_MON *m = c->m;
 
-    return m->trace_all || (c->pt != NULL && m->trace[ptn_index(m, c->pt)]);
+    const OFTP_PARTNER *p = c->pt != NULL ? c->pt : c->tp;
+
+    return m->trace_all || (p != NULL && m->trace[ptn_index(m, p)]);
 }
 
 /* The session itself, for try(): which keeps only the abend code */
@@ -2374,7 +2381,7 @@ largest_free(void)
 
 /* What F OFTPD,TRACE has switched on, for D */
 static void
-show_trace(OFTP_MON *m)
+show_trace(const OFTP_MON *m)
 {
     char list[100];
     size_t n = 0;
@@ -2390,7 +2397,7 @@ show_trace(OFTP_MON *m)
 
         if (!m->trace[i] || n + strlen(name) + 2 > sizeof(list))
             continue;
-        n += (size_t)sprintf(list + n, " %s", name);
+        n += (size_t)snprintf(list + n, sizeof(list) - n, " %s", name);
     }
     if (list[0] == '\0')
         oftp_mon_msg("OFTP127I TRACE OFF");
@@ -2420,8 +2427,11 @@ cmd_trace(OFTP_MON *m, const char *onoff, const char *ptn)
         return;
     }
     {
-        OFTP_PARTNER *p = oftp_cfg_find(&m->cfg, ptn);
+        OFTP_PARTNER *p = NULL;
 
+        for (i = 0; p == NULL && i < m->cfg.nptn; i++)
+            if (strcmp(m->cfg.ptn[i].peer.name, ptn) == 0)
+                p = &m->cfg.ptn[i];
         if (p == NULL) {
             oftp_mon_msg("OFTP120E %s IS NOT A PARTNER", ptn);
             return;

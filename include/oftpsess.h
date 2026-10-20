@@ -123,7 +123,7 @@ typedef struct oftp_sess {
     OFTP_LOGFN  log;
     void       *logctx;
     OFTP_TRACEFN traced;                /* NULL: never traced            */
-    int         initiator;             /* 1: we called                  */
+    int         initiator;              /* 1: we called                  */
     OFTP_PEER   peer;                   /* initiator: the partner called */
     char        localcode[OFTP_IDLEN + 1];  /* responder: our ID         */
     int         timeout;                /* seconds per expected answer   */
