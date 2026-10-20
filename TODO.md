@@ -168,10 +168,19 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   record buffer is freed after an abend too (it kept about 38 KB per
   abend, measured on dev1 2026-10-18), and the spool's lock is given back
   (hardening: the session holds it for a few pointer stores, an abend
-  there needs a damaged spool block). Left open: a session abended while its spool
-  request is queued is possible only when its attaching thread gives up
-  at stop after 60 s; whether `try()` still recovers there is not
-  measured.
+  there needs a damaged spool block).
+- ~~A session aborted while its spool request is queued~~ (#56) -- that can
+  only happen when the thread that attached the session ends at stop with
+  the session still running (it used to give up after 60 s). Measured in
+  a container with a debug-only spool stall: `try()` does **not** recover
+  there. The S0A03 runs it as cleanup only (retry suppressed), so none of
+  `session_thread`'s cleanup runs, the step is abended, the queued request
+  is left on a dead stack and the spool thread dies POSTing it (S202); the
+  sched thread's next spool request then waits for good and `P OFTPD`
+  never ends. The attaching threads no longer give up: they wait for the
+  sessions and say `OFTP096W` every minute. With the spool stalled for
+  80 s and 150 s across a `P OFTPD` the session ended normally and
+  `P OFTPD` completed; a wedged session is ended by CANCEL.
 - ~~The spool thread runs without recovery~~ (#49): an abend in `serve()`
   ended the thread, and every spool request after that waited for good,
   `P OFTPD` included. `serve()` runs under `try()` now; the request gets

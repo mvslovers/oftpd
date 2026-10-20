@@ -64,7 +64,7 @@ different messages share the number; each is listed.
 | `OFTP090E` | Console + log | `COM AREA NOT AVAILABLE`; OFTPD ends |
 | `OFTP091E` | Console + log | `NO STORAGE`; OFTPD ends |
 | `OFTP095I` | Console + log | `WAITING FOR n SESSIONS` at stop (every 10 seconds) |
-| `OFTP096W` | Console + log | `<who>: n SESSION SUBTASKS STILL RUNNING` when the stop gave up waiting |
+| `OFTP096W` | Console + log | `<who>: n SESSION SUBTASKS STILL RUNNING`: the stop has waited a minute or more for sessions (repeated every minute; it keeps waiting, the operator's CANCEL ends OFTPD) |
 | `OFTP098E` | Console + log | `OFTPD ABEND, n SOCKETS CLOSED, SVC <state>`: OFTPD abended; written even when the log is busy, then to the console only |
 
 ## Cross memory (the SVC)

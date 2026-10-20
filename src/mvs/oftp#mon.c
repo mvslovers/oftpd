@@ -1035,24 +1035,29 @@ reap(CTHDTASK **own)
 
 /* When the attaching thread stops: a task that ends with a subtask still
 ** running takes it down with it (S0A03), so wait for the sessions, which
-** end on m->stop, then free them. Bounded: what is left after a minute
-** stays, and OFTPD's own end takes it.
+** end on m->stop, then free them. There is no giving up: the S0A03 does not
+** leave the sessions to OFTPD's own end, it abends the step with the
+** recovery of try() cleaning up only (nothing of session_thread's cleanup
+** runs), and a spool request queued by such a session stays behind with an
+** ECB nobody waits on -- the spool thread dies POSTing it, and every later
+** spool request hangs (#56). So a session that does not end is reported
+** every minute and waited for; the operator's CANCEL ends it.
 */
 static void
 reap_all(CTHDTASK **own, const char *who)
 {
     int i, live;
 
-    for (i = 0; (live = reap(own)) > 0 && i < 600; i++) {
+    for (i = 0; (live = reap(own)) > 0; i++) {
         ECB e = 0;
 
         if (i % 100 == 0)
             oftp_mon_msg("OFTP095I %s: WAITING FOR %d SESSIONS", who, live);
+        if (i > 0 && i % 600 == 0)
+            oftp_mon_msg("OFTP096W %s: %d SESSION SUBTASKS STILL RUNNING", who,
+                         live);
         ecb_timed_wait(&e, 10, 0);
     }
-    if (live > 0)
-        oftp_mon_msg("OFTP096W %s: %d SESSION SUBTASKS STILL RUNNING", who,
-                     live);
 }
 
 static int
