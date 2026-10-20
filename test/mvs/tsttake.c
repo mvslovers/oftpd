@@ -26,7 +26,7 @@
 #define ASCB_ASID   0x24                /* ASCBASID, halfword */
 
 void
-oftp_mon_msg(const char *fmt, ...)
+oftp_mon_msg(const char *fmt, ...)      // NOSONAR: must match the prototype
 {
     (void)fmt;
 }

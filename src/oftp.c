@@ -109,11 +109,15 @@ static const char *const verbs[][2] = {
 static void
 mask(char *line, size_t cap)
 {
-    char *p, *s, *e;
+    char *p;
+    char *s;
+    char *e;
 
     for (p = line; strlen(p) > 8; p++) {
         char k[9];
-        size_t head, stars, tail;
+        size_t head;
+        size_t stars;
+        size_t tail;
 
         memcpy(k, p, 8);
         k[8] = '\0';
@@ -158,7 +162,8 @@ put_echo(FILE *out, const char *text)
     const char *lead = "OFTP ";
 
     for (;;) {
-        size_t room = 72 - 5, cut;
+        size_t room = 72 - 5;
+        size_t cut;
 
         if (strlen(p) <= room) {
             fprintf(out, "%s%s\n", lead, p);
@@ -194,9 +199,15 @@ too_long(FILE *out, const char *arg)
 static int
 command(int argc, char **argv, FILE *out)
 {
-    char req[256], final[256], verb[12], psub[10];
+    char req[256];
+    char final[256];
+    char verb[12];
+    char psub[10];
     const char *pos = NULL, *setting = NULL;
-    int i, rc, mine = 0, named = 0;
+    int i;
+    int rc;
+    int mine = 0;
+    int named = 0;
     size_t n;
 
     snprintf(verb, sizeof(verb), "%s", argv[0]);
@@ -246,7 +257,8 @@ command(int argc, char **argv, FILE *out)
         argc--;
     }
     for (i = 1; i < argc; i++) {
-        char key[16], val[80];
+        char key[16];
+        char val[80];
         const char *a = argv[i];
 
         if (operand(a, key, sizeof(key), val, sizeof(val)) != 0) {
@@ -266,8 +278,9 @@ command(int argc, char **argv, FILE *out)
                 snprintf(val, sizeof(val), "%s", key);
                 snprintf(key, sizeof(key), "%s", pos);
             } else if (strcmp(key, "XLATE") != 0 && strcmp(key, "HOLD") != 0) {
-                fprintf(out, "OFTP007E OPERAND %s NEEDS A VALUE: WRITE "
-                        "%s(VALUE)\n", key, key);
+                /* the word itself may be a password: its place only */
+                fprintf(out, "OFTP007E OPERAND %d HAS NO VALUE: WRITE "
+                        "KEYWORD(VALUE)\n", i);
                 return 8;
             }
         }

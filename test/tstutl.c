@@ -34,14 +34,19 @@ oftp_cli_request(const char *req, OFTP_CLILINE line, void *ctx, char *final,
 static int
 run(const char *text, char *buf, size_t cap)
 {
-    char copy[512], *w[20];
+    char copy[512];
+    char *w[20];
+    char *save = NULL;
     FILE *f = tmpfile();
     size_t n;
-    int rc, argc = 0;
+    int rc;
+    int argc = 0;
 
+    if (f == NULL)
+        return -1;
     snprintf(copy, sizeof(copy), "%s", text);
-    for (w[argc] = strtok(copy, " "); w[argc] != NULL && argc < 19; )
-        w[++argc] = strtok(NULL, " ");
+    for (w[argc] = strtok_r(copy, " ", &save); w[argc] != NULL && argc < 19; )
+        w[++argc] = strtok_r(NULL, " ", &save);
     rc = command(argc, w, f);
     rewind(f);
     n = fread(buf, 1, cap - 1, f);
@@ -57,7 +62,9 @@ run(const char *text, char *buf, size_t cap)
 static int
 batch(const char *input, char *buf, size_t cap)
 {
-    char dir[] = "/tmp/tstutlXXXXXX", here[512], path[600];
+    char dir[] = "tstutlXXXXXX";    /* under the build directory */
+    char here[512];
+    char path[600];
     FILE *f;
     size_t n = 0;
     int rc;
@@ -66,8 +73,8 @@ batch(const char *input, char *buf, size_t cap)
         || chdir(dir) != 0)
         return -1;
     f = fopen("in", "w");
-    fputs(input, f);
-    fclose(f);
+    if (f == NULL || fputs(input, f) == EOF || fclose(f) != 0)
+        return -1;
     if (freopen("in", "r", stdin) == NULL)
         return -1;
     rc = oftp_util_main(1, (char *[]){ "OFTP", NULL });
@@ -89,7 +96,8 @@ batch(const char *input, char *buf, size_t cap)
 static int
 longest_line(const char *s)
 {
-    int best = 0, len = 0;
+    int best = 0;
+    int len = 0;
 
     for (; *s; s++) {
         if (*s == '\n')
@@ -103,7 +111,9 @@ longest_line(const char *s)
 int
 main(void)
 {
-    char out[4096], big[200], cmd[512];
+    char out[4096];
+    char big[200];
+    char cmd[512];
     int rc;
 
     printf("=== TSTUTL the OFTP utility ===\n");
@@ -116,9 +126,11 @@ main(void)
     rc = run("PARTNER CHANGE ACME OURPASS", out, sizeof(out));
     CHECK_EQ(rc, 8, "a keyword without value: an error in the command");
     CHECK_EQ(nreq, 0, "and nothing is sent");
-    CHECK(strstr(out, "OFTP007E") != NULL && strstr(out, "OURPASS") != NULL,
-          "the message names the operand");
-    CHECK(strstr(out, "OURPASS(VALUE)") != NULL, "and says how to write it");
+    CHECK(strstr(out, "OFTP007E OPERAND 2 HAS NO VALUE") != NULL,
+          "the message names the operand's place");
+    CHECK(strstr(out, "KEYWORD(VALUE)") != NULL, "and says how to write it");
+    CHECK(strstr(out, "OURPASS") == NULL,
+          "but not the word: it may be a password");
 
     /* a flag on a PARTNER command is a flag, not a name */
     nreq = 0;

@@ -775,8 +775,10 @@ p_lookup(void *ctx, const char *code, OFTP_PEER *peer)
 {
     SESCTX *c = ctx;
     OFTP_PARTNER *p;
-    char name[sizeof(p->peer.name)], addr[sizeof(p->address)];
-    int i, n;
+    char name[sizeof(p->peer.name)];
+    char addr[sizeof(p->address)];
+    int i;
+    int n;
 
     /* The partner is found, checked and counted under one lock: a
     ** command deletes a slot and a later ADD may reuse it for another
@@ -2821,30 +2823,23 @@ oftp_mon_maint(OFTP_MON *m)
     return n;
 }
 
-int
-oftp_mon_refresh(OFTP_MON *m)
+typedef struct {
+    char name[9];
+    int wasen;
+    int uses;
+} REFLEFT;
+
+/* A partner that left the member is looked for in the spool, and the walk
+** takes time in proportion to it: it is made without the lock, which every
+** session waits for (#113). The partner is disabled first, so that nothing
+** new comes for it meanwhile.
+*/
+static void
+refresh_mark(OFTP_MON *m, OFTP_CONFIG *n, REFLEFT *left)
 {
-    OFTP_CONFIG *n;
-    struct { char name[9]; int wasen, uses; } left[OFTP_MAXPTN];
-    int i, j, on = 0, added = 0, dropped = 0, removed = 0;
+    int i;
 
-    if ((n = malloc(sizeof(*n))) == NULL)
-        return -1;
-    *n = m->cfg;                        /* the monitor settings as they are */
-    n->nptn = 0;
-    n->errors = 0;
-    if (oftp_mon_load(n, "OFTPPTN", 1) != 0) {
-        free(n);
-        return -1;
-    }
-    oftp_cfg_finish(n, cfgmsg, "OFTPPTN");
-
-    /* A partner that left the member is looked for in the spool, and the
-    ** walk takes time in proportion to it: it is made without the lock,
-    ** which every session waits for (#113). Disabled first, so that
-    ** nothing new comes for it meanwhile.
-    */
-    memset(left, 0, sizeof(left));
+    memset(left, 0, sizeof(*left) * OFTP_MAXPTN);
     lock(m, 0);
     for (i = 0; i < m->cfg.nptn; i++) {
         OFTP_PARTNER *o = &m->cfg.ptn[i];
@@ -2861,37 +2856,47 @@ oftp_mon_refresh(OFTP_MON *m)
     for (i = 0; i < OFTP_MAXPTN; i++)
         if (left[i].name[0] != '\0')
             left[i].uses = spool_uses(m, left[i].name);
+}
 
-    lock(m, 0);
-    for (i = 0; i < m->cfg.nptn; i++) {
-        OFTP_PARTNER *o = &m->cfg.ptn[i];
-        int same;
+/* One slot of the table against the member just read. Called with the lock. */
+static void
+refresh_slot(OFTP_MON *m, OFTP_CONFIG *n, const REFLEFT *left, int i,
+             int *dropped, int *removed)
+{
+    OFTP_PARTNER *o = &m->cfg.ptn[i];
+    int same = strcmp(left[i].name, o->peer.name) == 0;
+    int j = oftp_cfg_slot(n, o->peer.name);
 
-        if (o->peer.name[0] == '\0')
-            continue;
-        same = strcmp(left[i].name, o->peer.name) == 0;
-        j = oftp_cfg_slot(n, o->peer.name);
-        if (o->skey[0] != '\0') {
-            /* kept by command: the spool wins, the member's entry of the
-            ** name is not used */
-            o->ovr = j >= 0;
-            if (j >= 0)
-                n->ptn[j].peer.name[0] = '\0';
-        } else if (j >= 0) {
-            *o = n->ptn[j];
-            m->tcall[i] = 0;                    /* perhaps a new HOST */
-            n->ptn[j].peer.name[0] = '\0';     /* taken */
-        } else if (same && left[i].uses == 0 && m->busy[i] == 0
-                   && m->calling[i] == 0) {
-            oftp_cfg_free(&m->cfg, i);
-            ptn_slot_reset(m, i);
-            removed++;
-        } else {
-            if (o->enabled || (same && left[i].wasen))
-                dropped++;
-            o->enabled = 0;
-        }
+    if (o->skey[0] != '\0') {
+        /* kept by command: the spool wins, the member's entry of the
+        ** name is not used */
+        o->ovr = j >= 0;
+        if (j >= 0)
+            n->ptn[j].peer.name[0] = '\0';
+    } else if (j >= 0) {
+        *o = n->ptn[j];
+        m->tcall[i] = 0;                        /* perhaps a new HOST */
+        n->ptn[j].peer.name[0] = '\0';         /* taken */
+    } else if (same && left[i].uses == 0 && m->busy[i] == 0
+               && m->calling[i] == 0) {
+        oftp_cfg_free(&m->cfg, i);
+        ptn_slot_reset(m, i);
+        (*removed)++;
+    } else {
+        if (o->enabled || (same && left[i].wasen))
+            (*dropped)++;
+        o->enabled = 0;
     }
+}
+
+/* The member's partners that the table does not have yet. */
+static int
+refresh_add(OFTP_MON *m, OFTP_CONFIG *n)
+{
+    int added = 0;
+    int i;
+    int j;
+
     for (j = 0; j < n->nptn; j++) {
         if (n->ptn[j].peer.name[0] == '\0')
             continue;
@@ -2904,6 +2909,37 @@ oftp_mon_refresh(OFTP_MON *m)
         ptn_slot_reset(m, i);
         added++;
     }
+    return added;
+}
+
+int
+oftp_mon_refresh(OFTP_MON *m)
+{
+    OFTP_CONFIG *n;
+    REFLEFT left[OFTP_MAXPTN];
+    int i;
+    int on = 0;
+    int added;
+    int dropped = 0;
+    int removed = 0;
+
+    if ((n = malloc(sizeof(*n))) == NULL)
+        return -1;
+    *n = m->cfg;                        /* the monitor settings as they are */
+    n->nptn = 0;
+    n->errors = 0;
+    if (oftp_mon_load(n, "OFTPPTN", 1) != 0) {
+        free(n);
+        return -1;
+    }
+    oftp_cfg_finish(n, cfgmsg, "OFTPPTN");
+
+    refresh_mark(m, n, left);
+    lock(m, 0);
+    for (i = 0; i < m->cfg.nptn; i++)
+        if (m->cfg.ptn[i].peer.name[0] != '\0')
+            refresh_slot(m, n, left, i, &dropped, &removed);
+    added = refresh_add(m, n);
     ptn_dups(&m->cfg);
     oftp_cfg_vias(&m->cfg, cfgmsg, "OFTPPTN");
     oftp_cfg_count(&m->cfg, &on);
