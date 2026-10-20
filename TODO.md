@@ -149,9 +149,11 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
     RACHECK), measured in a TK5 container with a deny profile
     (`internals/xmem.md` section 14). Not shown: a caller without an
     ACEE, a system without a security product.
-  - A request over 255 bytes is refused by the client before the SVC
-    (`TSTSVC` step 2b); the routine's own length check is still
-    exercised by no test.
+  - ~~A request over 255 bytes is refused by the client before the SVC
+    (`TSTSVC` step 2b); the routine's own length check is exercised by
+    no test~~ (#55): `TSTSVC` step 2c issues the SVC directly with
+    declared lengths of 256 and up, zero and negative. Measured in an
+    MVS/CE container: 30/30; with the check disabled it fails (28/30).
   - The dialog's profile on dev1 still holds `127.0.0.1`: clear the host
     under option 5 when the SVC is on there.
 - ~~Before 0.2.0: the spool after an abend~~ (#2) -- OFTPD runs VERIFY
