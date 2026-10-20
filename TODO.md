@@ -170,8 +170,17 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   request is queued is possible only when its attaching thread gives up
   at stop after 60 s; whether `try()` still recovers there is not
   measured.
-- The spool thread runs without recovery: an abend in `serve()` ends it,
-  and every spool request after that waits for good, `P OFTPD` included.
+- ~~The spool thread runs without recovery~~ (#49): an abend in `serve()`
+  ended the thread, and every spool request after that waited for good,
+  `P OFTPD` included. `serve()` runs under `try()` now; the request gets
+  `OFTP_SPL_ERROR` (`OFTP219E` on the console) and the thread goes on.
+  Measured in a container with `-DOFTP_DEBUG_ABEND`: without the fix
+  TSTSPL hangs (cancelled after 49 s, S222); with it 51 abends were each
+  answered, each followed by a good request, the close completed, and the
+  region's free storage was 3,766,184 bytes after the first abend and
+  after the 51st. Not measured: an abend inside VSAM's own code (the
+  trigger is in `serve()` before any VSAM call), and the stop of a
+  running OFTPD (the close is the same call).
 - ~~Every OFTPD end writes a SYSUDUMP~~ (#12): `S30A` in VSAM's CLOSE
   (SVC 20 issuing SVC 10), because the spool thread closed a cluster the
   main task had opened. The main task closes it now. In an MVS/CE
@@ -262,10 +271,13 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   `REPLACE=Y` by renaming the old data set aside, unit/volume/space/XLATE;
   measured between two OFTPDs in a container (`TSTRCVM`). Open from it:
   the job after receipt (MVS-42, its identity decided there), `TO=`
-  forwarding, GDG, SYSOUT, tape; not measured on MVS: a receive failing
-  midway with `REPLACE=Y`, `XLATE=`, `SPACE=` with no size in the SFID.
-- Log to a SYSOUT data set instead of every line by WTO; a log-only
-  message class (design 8).
+  forwarding, GDG, SYSOUT, tape; security review fixes (first qualifier fixed, `%CTR`,
+  PS-only `REPLACE=Y`, restore of the backup at start); not measured on MVS:
+  a receive failing midway with `REPLACE=Y`, `XLATE=`, `SPACE=` with no size
+  in the SFID.
+- ~~Log to a SYSOUT data set instead of every line by WTO; a log-only
+  message class (design 8)~~ -- #47: `DD OFTPLOG`, class `P`,
+  `docs/messages.md`. Not done: a log viewer, log switching, size limits.
 - `docs/`: a configuration guide beside `docs/installation.md`.
 - ~~GitHub repository, CI~~ — `mvslovers/oftpd` (2026-10-13).
 

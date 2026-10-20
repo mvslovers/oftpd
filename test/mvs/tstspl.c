@@ -4,11 +4,137 @@
 ** (test/mvs/tstspl.jcl). Without PARM='RUN' it reports itself skipped.
 */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <mbtcheck.h>
 
 #include "oftpspl.h"
+
+#ifdef OFTP_DEBUG_ABEND
+/* ---- the spool thread's recovery (#49) -----------------------------
+** Needs a build with -DOFTP_DEBUG_ABEND: a lookup of key TABEND00 then
+** ends in an S0C4 inside the spool thread. The region's free storage in
+** total is measured as the monitor's former debug display did: the
+** largest piece left is taken again and again, then all are given back.
+** A bare GETMAIN RC: libc370's getmain() writes a WTO on each failure.
+*/
+static void *
+raw_get(unsigned lv)
+{
+    unsigned rc;
+    void *a;
+
+    __asm__ __volatile__("GETMAIN RC,LV=(%2),SP=0\n\t"
+                         "LR\t%0,15\n\t"
+                         "LR\t%1,1"
+                         : "=r"(rc), "=r"(a)
+                         : "r"(lv)
+                         : "0", "1", "14", "15", "memory");
+    return rc == 0 ? a : NULL;
+}
+
+static void
+raw_free(void *a, unsigned lv)
+{
+    __asm__ __volatile__("FREEMAIN RU,LV=(%0),A=(%1),SP=0"
+                         :
+                         : "r"(lv), "r"(a)
+                         : "0", "1", "14", "15", "memory");
+}
+
+typedef struct piece {
+    struct piece *next;
+    unsigned      len;
+} PIECE;
+
+static unsigned
+largest_piece(void)
+{
+    unsigned lo = 0;
+    unsigned hi = 16u * 1024 * 1024;
+
+    while (hi - lo > 8) {
+        unsigned mid = (lo + (hi - lo) / 2) & ~7u;
+        void *q = raw_get(mid);
+
+        if (q != NULL) {
+            raw_free(q, mid);
+            lo = mid;
+        } else
+            hi = mid;
+    }
+    return lo;
+}
+
+static unsigned
+total_free(void)
+{
+    PIECE *head = NULL;
+    PIECE *p;
+    unsigned sum = 0;
+    unsigned n = 0;
+
+    while (n < 4096) {
+        unsigned lo = largest_piece();
+
+        if (lo < 64 || (p = raw_get(lo)) == NULL)
+            break;
+        p->next = head;
+        p->len = lo;
+        head = p;
+        sum += lo;
+        n++;
+    }
+    while (head != NULL) {
+        p = head;
+        head = p->next;
+        raw_free(p, p->len);
+    }
+    return sum;
+}
+
+static void
+abend_recovery(OFTP_SPOOL *sp)
+{
+    OFTP_SPREC g;
+    unsigned before, after, held;
+    void *hold;
+    int i, bad = 0;
+
+    CHECK_EQ(oftp_spl_get(sp, "TABEND00", &g), OFTP_SPL_ERROR,
+             "the request that abends is answered with an error");
+    CHECK_EQ(oftp_spl_get(sp, "T0000002", &g), 0,
+             "and the next request is served");
+    CHECK_EQ(oftp_spl_abends(sp), 1, "one abend counted");
+
+    before = total_free();
+    for (i = 0; i < 50; i++) {
+        if (oftp_spl_get(sp, "TABEND00", &g) != OFTP_SPL_ERROR)
+            bad++;
+        if (oftp_spl_get(sp, "T0000002", &g) != 0)
+            bad++;
+    }
+    after = total_free();
+    CHECK_EQ(bad, 0, "50 more abends, each answered, each followed by a good get");
+    CHECK_EQ(oftp_spl_abends(sp), 51, "51 abends counted");
+    printf("    region free storage: %u after the first abend, %u after 51\n",
+           before, after);
+    CHECK(before == after, "the same free storage after 51 abends as after 1");
+
+    /* the measure itself: 100 KB held must show */
+    hold = malloc(100u * 1024);
+    held = total_free();
+    free(hold);
+    CHECK(hold != NULL && held < after && after - held >= 100u * 1024,
+          "calibration: 100 KB held lowers the total by at least 100 KB");
+    printf("    held 100 KB: %u free (%u less)\n", held, after - held);
+
+    CHECK_EQ(oftp_spl_put(sp, &g), 0, "an update after the abends");
+    CHECK_EQ(oftp_spl_del(sp, "T0000099"), OFTP_SPL_NOTFOUND,
+             "a miss is still NOTFOUND, not an error");
+}
+#endif
 
 int
 main(int argc, char **argv)
@@ -122,7 +248,14 @@ main(int argc, char **argv)
         memcpy(g.key, "T0000099", 8);
         CHECK_EQ(oftp_spl_putif(sp, &g, SPL_SENT), OFTP_SPL_NOTFOUND,
                  "putif of a key not there: NOTFOUND");
+#ifdef OFTP_DEBUG_ABEND
+        abend_recovery(sp);
         oftp_spl_close(sp);
+        printf("  the spool thread ended and closed after the abends\n");
+#else
+        printf("  SKIP: the abend recovery needs -DOFTP_DEBUG_ABEND\n");
+        oftp_spl_close(sp);
+#endif
     }
     return mbt_test_summary("TSTSPL");
 }

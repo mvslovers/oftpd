@@ -24,3 +24,17 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   two renames of a replace leaves the old data set only under its backup
   name, the next start renames it back.
 - Project skeleton: the monitor `OFTPD` and the utility `OFTP` as stubs.
+- OFTPD writes its messages to a SYSOUT data set, `DD OFTPLOG` of the
+  started task, each line with its date and time. A new message class `P`
+  goes to the log only: every single transfer, session start and end, and
+  the start-up detail. The console receives only what an operator must act
+  on. Every session message starts with the partner name. Without the DD,
+  or if a write fails, everything goes to the console and OFTPD says so
+  once (`OFTP022W`, `OFTP023E`). `docs/messages.md` lists every message with
+  its destination.
+
+### Changed
+
+- Messages that moved to the log only changed their class letter (for
+  example `OFTP211I` is now `OFTP211P`) and, where the key came first,
+  now begin with the partner name.

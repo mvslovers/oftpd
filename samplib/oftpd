@@ -9,6 +9,10 @@
 //*   Copy OFTPPRM0, OFTPPTN0 and OFTPRCV0 to SYS2.PARMLIB and edit them
 //*   Define the spool once with the job in member OFTPSPL
 //*
+//* The log:     DD OFTPLOG gets every message with a date and time in
+//*              front (the console only the ones an operator must act
+//*              on); RECFM=F or FB, LRECL 143 or more keeps a line whole.
+//*              Without the DD everything goes to the console.
 //* Starting:    /S OFTPD
 //*              /S OFTPD,M=OFTPPRM1     (another monitor member)
 //*              /S OFTPD,P=OFTPPTN1     (another partner member)
@@ -34,6 +38,7 @@
 //OFTPPTN  DD  DSN=&D(&P),DISP=SHR
 //OFTPRCV  DD  DSN=&D(&R),DISP=SHR
 //OFTPSPL  DD  DSN=&S,DISP=OLD
+//OFTPLOG  DD  SYSOUT=*,DCB=(RECFM=FB,LRECL=160,BLKSIZE=160)
 //SYSPRINT DD  SYSOUT=*
 //STDOUT   DD  SYSOUT=*
 //STDERR   DD  SYSOUT=*

@@ -398,7 +398,7 @@ reserve(OFTP_MON *m, unsigned n, void *epa)
 
     memcpy(&found0, slot, 4);
     memcpy(&found1, (char *)slot + 4, 4);
-    oftp_mon_msg("OFTP031I SVC %u ENTRY FOUND %08X %08X", n, found0, found1);
+    oftp_mon_msg("OFTP031P SVC %u ENTRY FOUND %08X %08X", n, found0, found1);
 
     /* "Free" is the modal entry point AND no lock request: the FLIH
     ** takes the locks named at +6 before it enters the routine, and
@@ -451,7 +451,7 @@ oftp_svc_start(OFTP_MON *m)
     ** the first thing anyone does on a new stand is forget the keyword.
     */
     if (m->cfg.svc == 0) {
-        oftp_mon_msg("OFTP038I NO SVC= IN OFTPPRM, NO CROSS MEMORY");
+        oftp_mon_msg("OFTP038P NO SVC= IN OFTPPRM, NO CROSS MEMORY");
         return -1;
     }
     if (!__isauth()) {
@@ -529,7 +529,7 @@ oftp_svc_start(OFTP_MON *m)
     }
     __prob(savekey, NULL);
 
-    oftp_mon_msg("OFTP030I CROSS MEMORY ON SVC %u, ANCHOR=%08X MODULE=%08X"
+    oftp_mon_msg("OFTP030P CROSS MEMORY ON SVC %u, ANCHOR=%08X MODULE=%08X"
                  " (%u BYTES), NOT ACTIVE", n, (unsigned)m->anchor,
                  (unsigned)epa, size);
     return 0;
@@ -580,7 +580,7 @@ oftp_svc_activate(OFTP_MON *m)
     }
     m->anchor->flags |= OFTP_ANC_ACTIVE;
     __prob(savekey, NULL);
-    oftp_mon_msg("OFTP039I CROSS MEMORY ACTIVE ON SVC %u, SUBSYSTEM %s",
+    oftp_mon_msg("OFTP039P CROSS MEMORY ACTIVE ON SVC %u, SUBSYSTEM %s",
                  (unsigned)m->cfg.svc, OFTP_SVC_SSNAME);
 }
 
@@ -972,7 +972,7 @@ oftp_svc_stop(OFTP_MON *m)
                          " %08X, CSA RETAINED", n, back0, back1);
             return;
         }
-        oftp_mon_msg("OFTP032I SVC %u RESTORED, ENTRY READS %08X %08X",
+        oftp_mon_msg("OFTP032P SVC %u RESTORED, ENTRY READS %08X %08X",
                      n, back0, back1);
     }
 
