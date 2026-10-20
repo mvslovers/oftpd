@@ -99,6 +99,7 @@ ac = 1
 # OFTPD's first tick. Runs for real only from test/mvs/tstkeep.jcl.
 [test.TSTKEEP]
 sources = ["test/mvs/tstkeep.c"]
+host = false
 
 # Maintaining the partner table at run time against two RUNNING OFTPDs;
 # runs for real only from test/mvs/tstptm.jcl (PARM='RUN ...').
