@@ -91,6 +91,13 @@ host = false
 # job still answered __isauth() == 0 until this line existed.
 ac = 1
 
+# The daily KEEPDAYS run on MVS (#59): seeds old and young finished
+# transfers into the spool of a stopped OFTPD, and reads it back after
+# OFTPD's first tick. Runs for real only from test/mvs/tstkeep.jcl.
+[test.TSTKEEP]
+sources = ["test/mvs/tstkeep.c"]
+host = false
+
 # The cross-memory transport end to end: an unauthorized, problem-state
 # program against a RUNNING OFTPD that has SVC= in OFTPPRM. Needs no
 # authorization of its own -- that it needs none is the point. Runs for
