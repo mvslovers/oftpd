@@ -27,7 +27,7 @@
 *              their EERP/NERP back to the sender               (N)
 * SVC          the SVC number the cross-memory transport takes at
 *              start, 200-255, NO DEFAULT: without it there is no
-*              transport, and OFTPD says so (OFTP038I). OFTPD's
+*              transport, and OFTPD says so (OFTP038P). OFTPD's
 *              number is 237, assigned once for the whole ecosystem
 *              -- never scan for a free one, because two products
 *              that each pick "a free one" take the same slot on the

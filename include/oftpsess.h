@@ -99,8 +99,11 @@ typedef struct oftp_files {
                           const OFTP_ERPCMD *erp);
 } OFTP_FILES;
 
-/* Log callback: one line, without the newline */
-typedef void (*OFTP_LOGFN)(void *ctx, const char *line);
+/* Log callback: one line, without the newline. warn is 1 for a line the
+** operator should see (a caller or an answer that failed the identity
+** or password check), else 0.
+*/
+typedef void (*OFTP_LOGFN)(void *ctx, int warn, const char *line);
 
 /* Trace switch: asked before each command, with logctx; non-zero logs
 ** that command (never a password, never file data) through the log

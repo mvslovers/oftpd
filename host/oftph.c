@@ -328,9 +328,10 @@ lookup(void *ctx, const char *code, OFTP_PEER *peer)
 }
 
 static void
-logline(void *ctx, const char *line)
+logline(void *ctx, int warn, const char *line)
 {
     (void)ctx;
+    (void)warn;
     fprintf(stderr, "oftp: %s\n", line);
 }
 
