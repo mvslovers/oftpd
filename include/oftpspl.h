@@ -107,6 +107,10 @@ extern void oftp_spl_release(OFTP_SPOOL *sp)            asm("OFTPSPRL");
 ** abend): the return code of the open that failed.
 */
 extern int  oftp_spl_verified(const OFTP_SPOOL *sp)     asm("OFTPSPVF");
+/* How many requests of the spool thread ended in an abend. Each was
+** answered with OFTP_SPL_ERROR and the thread went on (OFTP219E).
+*/
+extern unsigned oftp_spl_abends(const OFTP_SPOOL *sp)   asm("OFTPSPAB");
 
 /* 0 or a negative error. add assigns rec->key. */
 extern int  oftp_spl_add(OFTP_SPOOL *sp, OFTP_SPREC *rec) asm("OFTPSPAD");

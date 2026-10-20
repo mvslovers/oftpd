@@ -93,6 +93,9 @@ typedef struct mfiles {
     int         nerps;              /* NERPs received                     */
     int         nreas;              /* the last one's reason and creator  */
     char        ncrea[OFTP_IDLEN + 1];
+    int         cut;                /* drop the line when an EERP arrives,
+                                       before the RTR goes out          */
+    int         erps_any;           /* EERPs received, for whatever file   */
     int         jump;               /* 'R' read, 'W' write: leave the
                                        engine by longjmp, as an abend
                                        under try() does                 */
@@ -250,6 +253,9 @@ m_erp_recv(void *ctx, const OFTP_PEER *peer, char code, const OFTP_ERPCMD *e)
     int i;
 
     (void)peer;
+    if (m->cut)
+        _exit(0);
+    m->erps_any++;
     if (code == OFTP_NERP) {
         m->nerps++;
         m->nreas = e->reas;
@@ -286,9 +292,10 @@ lookup(void *ctx, const char *code, OFTP_PEER *peer)
 }
 
 static void
-quiet(void *ctx, const char *line)
+quiet(void *ctx, int warn, const char *line)
 {
     (void)ctx;
+    (void)warn;
     (void)line;
 }
 
@@ -587,15 +594,92 @@ refuse_scenario(int lrc, int esid)
     CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0, msg);
 }
 
+/* One session between an initiator (in the child) and the responder
+** that keeps its files across sessions. The initiator sends the files
+** in im, receives what the responder owes, and exits with the number of
+** EERPs it received (after a cut: 0). The child's exit code goes to
+** *crc, the responder's session result is returned.
+*/
+static int
+pair_session(MFILES *im, MFILES *rm, int *crc)
+{
+    int sv[2], status = -1, rc;
+    pid_t pid;
+
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) != 0) {
+        CHECK(0, "socketpair");
+        *crc = -1;
+        return -1;
+    }
+    pid = fork();
+    if (pid == 0) {
+        close(sv[1]);
+        sess_init(&sess, &sv[0], im, 1);
+        peer_init(&sess.peer, "MVS2", "O0013000000MVS2", "O0013000000MVS1",
+                  5, 4096, 99, 0);
+        oftp_sess_run(&sess);
+        close(sv[0]);
+        _exit(im->erps_any);
+    }
+    close(sv[0]);
+    peer_init(&resp_view, "MVS1", "O0013000000MVS1", "O0013000000MVS2",
+              5, 4096, 99, 0);
+    sess_init(&sess, &sv[1], rm, 0);
+    strcpy(sess.localcode, "O0013000000MVS2");
+    rc = oftp_sess_run(&sess);
+    close(sv[1]);
+    waitpid(pid, &status, 0);
+    *crc = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    return rc;
+}
+
+/* A session cut while its EERP is out and the RTR has not come (#57):
+** the engine must not report the EERP as sent, so the owner of the
+** record (the monitor, which holds a claim on it for the session) still
+** has it to give back. The next session offers it again and, once the
+** RTR has come, the one after that does not; the file was received once.
+*/
+static void
+cut_scenario(void)
+{
+    MFILES im, rm;
+    int crc, rc;
+
+    memset(&rm, 0, sizeof(rm));
+    memset(&im, 0, sizeof(im));
+    im.nout = 1;
+    im.out[0].dsn = "POEM.TXT";
+    im.out[0].fmt = 'T';
+    im.out[0].recs[0] = "It is an ancient Mariner,\r\n";
+    im.cut = 1;
+    rc = pair_session(&im, &rm, &crc);
+    CHECK(rm.nin == 1 && rm.in[0].closed == 1,
+          "cut at the EERP: the file arrived and was kept");
+    CHECK(rc != 0, "cut at the EERP: the responder's session ends in error");
+    CHECK(rm.erp_pending[0] == 1,
+          "cut at the EERP: no erp_sent without the RTR, the EERP is still owed");
+
+    memset(&im, 0, sizeof(im));
+    rc = pair_session(&im, &rm, &crc);
+    CHECK(rc == 0 && crc == 1,
+          "next session: the owed EERP arrives once, normal end");
+    CHECK(rm.erp_pending[0] == 0, "next session: erp_sent after the RTR");
+
+    rc = pair_session(&im, &rm, &crc);
+    CHECK(rc == 0 && crc == 0, "third session: no EERP again");
+    CHECK(rm.nin == 1, "three sessions: the file was delivered once");
+}
+
 /* ---- trace ---------------------------------------------------------- */
 
 static char trlog[96][160];
 static int ntr;
 
 static void
-capture(void *ctx, const char *line)
+capture(void *ctx, int warn, const char *line)
 {
     (void)ctx;
+    (void)warn;
     if (strncmp(line, "TRACE ", 6) == 0 && ntr < 96)
         snprintf(trlog[ntr++], sizeof(trlog[0]), "%s", line);
 }
@@ -696,6 +780,7 @@ main(void)
     abend_scenario('R');
     refuse_scenario(-1, 3);
     refuse_scenario(8, 8);
+    cut_scenario();
     trace_scenario("trace off", NULL, 5);
     trace_scenario("trace on 2.0", trace_always, 5);
     trace_scenario("trace on 1.4", trace_always, 4);

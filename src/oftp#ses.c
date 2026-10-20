@@ -48,17 +48,35 @@
 #define ESID_OTHER      99
 
 static void
-slog(OFTP_SESS *s, const char *fmt, ...)
+slogv(OFTP_SESS *s, int warn, const char *fmt, va_list ap)
 {
     char line[160];
-    va_list ap;
 
     if (s->log == NULL)
         return;
-    va_start(ap, fmt);
     vsnprintf(line, sizeof(line), fmt, ap);
+    s->log(s->logctx, warn, line);
+}
+
+static void
+slog(OFTP_SESS *s, const char *fmt, ...)
+{
+    va_list ap;
+
+    va_start(ap, fmt);
+    slogv(s, 0, fmt, ap);
     va_end(ap);
-    s->log(s->logctx, line);
+}
+
+/* the same for a line that is a security failure: the operator sees it */
+static void
+slogw(OFTP_SESS *s, const char *fmt, ...)
+{
+    va_list ap;
+
+    va_start(ap, fmt);
+    slogv(s, 1, fmt, ap);
+    va_end(ap);
 }
 
 /* The level commands are coded at; before negotiation the 1.3 layouts,
@@ -445,11 +463,11 @@ start_initiator(OFTP_SESS *s)
 
     s->level = known_level(t.level) && t.level <= o.level ? t.level : 0;
     if (strcmp(t.code, s->peer.code) != 0) {
-        slog(s, "answered by %s, not %s", t.code, s->peer.code);
+        slogw(s, "answered by %s, not %s", t.code, s->peer.code);
         return end_local(s, ESID_USER);
     }
     if (strcmp(t.pswd, s->peer.pswd_in) != 0) {
-        slog(s, "partner password does not match");
+        slogw(s, "partner password does not match");
         return end_local(s, ESID_PASSWORD);
     }
     if (s->level == 0 || t.sdeb < 128 || t.sdeb > o.sdeb || t.cred < 1
@@ -512,11 +530,11 @@ start_responder(OFTP_SESS *s)
         return end_local(s, rc);
     }
     if (rc != 0) {
-        slog(s, "unknown caller %s", t.code);
+        slogw(s, "unknown caller %s", t.code);
         return end_local(s, ESID_USER);
     }
     if (strcmp(t.pswd, s->peer.pswd_in) != 0) {
-        slog(s, "wrong password from %s", s->peer.name);
+        slogw(s, "wrong password from %s", s->peer.name);
         return end_local(s, ESID_PASSWORD);
     }
 

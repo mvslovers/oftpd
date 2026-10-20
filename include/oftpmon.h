@@ -11,6 +11,7 @@
 #include <mvs/thread.h>
 
 #include "oftpcfg.h"
+#include "oftplog.h"
 #include "oftpspl.h"
 #include "oftpsvc.h"
 
@@ -18,6 +19,7 @@ typedef struct oftp_mon {
     char        eye[8];
     OFTP_CONFIG cfg;
     OFTP_SPOOL *spool;
+    OFTP_LOG    log;                    /* DD OFTPLOG (oftplog.h)        */
     volatile int stop;                  /* 1: P OFTPD received           */
     int         lsock;                  /* OFTP listener                 */
     volatile int nsess;
@@ -91,8 +93,23 @@ typedef struct oftp_mon {
     unsigned     sw_copyout[OFTP_SVC_NSLOT];
 } OFTP_MON;
 
-/* Console and log: one line, already carrying its message id */
+/* One message line, already carrying its id: the console and the log,
+** or the log only for class P (oftplog.h). Cut at OFTP_MSG_MAX.
+*/
 extern void oftp_mon_msg(const char *fmt, ...)          asm("OFTPMMSG");
+/* The same for the ESTAE: if the log cannot be locked at once, the line
+** goes to the console and the log is left alone
+*/
+extern void oftp_mon_msg_nowait(const char *fmt, ...)   asm("OFTPMMSN");
+
+/* Opens DD OFTPLOG and makes the monitor block the one oftp_mon_msg()
+** writes through. -1 (said on the console) when it will not open: the
+** messages then go to the console. Call it before the first message
+** that should reach the log.
+*/
+extern int  oftp_mon_logopen(OFTP_MON *m)               asm("OFTPMLGO");
+/* Closes the log; later messages go to the console */
+extern void oftp_mon_logclose(OFTP_MON *m)              asm("OFTPMLGC");
 
 /* Starts listener and scheduler; 0 or -1 */
 extern int  oftp_mon_start(OFTP_MON *m)                 asm("OFTPMSTR");

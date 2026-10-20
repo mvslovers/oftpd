@@ -33,7 +33,9 @@ cfgmsg(const void *ctx, const char *line)
 ** port until Hercules is restarted; so close them all, then percolate
 ** for the dump. SDWAPARM is the {routine, udata} pair estae() keeps,
 ** not udata itself (ufsd#49). One message: in an S222 only the first and
-** the last WTO are sure to reach the console.
+** the last WTO are sure to reach the console. The message waits for no
+** lock (the abend may have come inside a log write), so it goes to the
+** console when the log is busy.
 */
 static void
 recover(SDWA *sdwa)
@@ -55,11 +57,11 @@ recover(SDWA *sdwa)
         int had = m->svc_taken;
         int n   = oftp_mon_abend(m);
 
-        oftp_mon_msg("OFTP098E OFTPD ABEND, %d SOCKETS CLOSED, SVC %s", n,
-                     !had ? "NOT TAKEN"
-                          : m->svc_taken ? "NOT RESTORED" : "RESTORED");
+        oftp_mon_msg_nowait("OFTP098E OFTPD ABEND, %d SOCKETS CLOSED, SVC %s",
+                            n, !had ? "NOT TAKEN"
+                               : m->svc_taken ? "NOT RESTORED" : "RESTORED");
     } else
-        oftp_mon_msg("OFTP098E OFTPD ABEND, MONITOR BLOCK NOT FOUND");
+        oftp_mon_msg_nowait("OFTP098E OFTPD ABEND, MONITOR BLOCK NOT FOUND");
     sdwa->SDWARCDE = SDWACWT;
 }
 
@@ -87,6 +89,13 @@ main(int argc, char **argv)
         return 8;
     }
     __cibset(5);
+    if ((m = calloc(1, sizeof(*m))) == NULL) {
+        oftp_mon_msg("OFTP091E NO STORAGE");
+        return 8;
+    }
+    memcpy(m->eye, "OFTPMON ", 8);
+    /* the log before the first message that belongs in it */
+    oftp_mon_logopen(m);
     /* Authorized at entry means an APF library; clib_apf_setup() erases
     ** the difference, so measure first. Nothing needs it yet (RACINIT and
     ** cross-memory come later): report the route and carry on. */
@@ -94,17 +103,12 @@ main(int argc, char **argv)
     apf_rc = clib_apf_setup(argv[0]);
     oftp_mon_msg("OFTP000I %s STARTING", oftp_version());
     if (apf_entry)
-        oftp_mon_msg("OFTP004I AUTHORIZED BY LIBRARY");
+        oftp_mon_msg("OFTP004P AUTHORIZED BY LIBRARY");
     else if (apf_rc == 0 && __isauth())
-        oftp_mon_msg("OFTP004I AUTHORIZED BY SVC");
+        oftp_mon_msg("OFTP004P AUTHORIZED BY SVC");
     else
         oftp_mon_msg("OFTP005W NOT AUTHORIZED, RC=%d, CONTINUING", apf_rc);
 
-    if ((m = calloc(1, sizeof(*m))) == NULL) {
-        oftp_mon_msg("OFTP091E NO STORAGE");
-        return 8;
-    }
-    memcpy(m->eye, "OFTPMON ", 8);
     if ((stae = estae(ESTAE_CREATE, recover, m) == 0) == 0)
         oftp_mon_msg("OFTP006W NO ABEND RECOVERY (ESTAE FAILED)");
     oftp_cfg_defaults(&m->cfg);
@@ -119,7 +123,7 @@ main(int argc, char **argv)
     if (oftp_mon_load(&m->cfg, "OFTPPTN", 1) != 0)
         oftp_mon_msg("OFTP013W DD OFTPPTN CANNOT BE OPENED, NO PARTNERS");
     on = oftp_cfg_finish(&m->cfg, cfgmsg, "OFTPPTN");
-    oftp_mon_msg("OFTP014I ODETTE ID %s, %d OF %d PARTNERS ENABLED",
+    oftp_mon_msg("OFTP014P ODETTE ID %s, %d OF %d PARTNERS ENABLED",
                  m->cfg.odetteid, on, m->cfg.nptn);
 
     if ((m->spool = oftp_spl_open("OFTPSPL", why, sizeof(why))) == NULL) {
@@ -198,6 +202,7 @@ out:
     /* the ESTAE points at m: delete it before m goes */
     if (stae)
         estae(ESTAE_DELETE, NULL, NULL);
+    oftp_mon_logclose(m);
     free(m);
     return rc;
 }

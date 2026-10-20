@@ -600,8 +600,31 @@ while it was connecting waited for the next 10-second tick (five
 files released in the second of the call all went in that one session);
 and a side that had received files opened a second session for the
 EERPs while the first still ran, which ended with nothing to send. Not covered by
-a trial: a session that ends, or abends, while it holds a claim. That
-path is the session's cleanup, read, not measured.
+a trial there: a session that ends, or abends, while it holds a claim.
+The EERP claim has been measured since (below); a send claim has not.
+
+A session cut while it holds an EERP claim, measured on 2026-10-20 (#57)
+in a throwaway MVS/CE container, OFTPD `90f6008` (the same `src/` as
+`main` at `9e90051`), with `host/oftph -X` as the partner: it drops the
+line when the first EERP arrives, before the RTR. The claim is
+`m->erpheld[slot]`, in the monitor's memory only; the spool record stays
+RECEIVED until the RTR has come.
+
+| Step | What happened |
+|---|---|
+| 1. partner sends a file, cuts at the EERP | `OFTP222I` once; `SEND EERP`, then `connection lost`, session ended with ESID 99; record `R R` (received, EERP owed); `D S`: no session |
+| 2. the monitor's next call to the partner (30 s, RETRY) | `SEND EERP`, `RECV RTR`, `OFTP203I` ESID 00; record `R C` (confirmed) |
+| 3. another session of the partner, then a call by the monitor | no EERP, no file; the monitor did not call within 75 s |
+| 4. two files in one session, cut at the first EERP, then cut again at the same EERP in the next session, then the monitor's call | records `R R`, `R R` after both cuts; the first EERP offered again in session two (the partner had it once already, no RTR: at-least-once); the monitor's call sends the two EERPs once each, each with its RTR, both `R C` |
+
+The partner's data sets: `HELLO`, `HELLO2`, `HELLO3` once each under the
+input prefix; `OFTP222I` once per file over the whole run. An EERP that
+was sent and whose RTR was lost is sent again; that is the protocol's,
+not a double delivery of the file. Not measured: an abend of the session
+(the cleanup that frees the claim is the same one) and a cut between
+claiming the record and sending the EERP. The engine side is checked on
+the host by `TSTSESS` (`cut_scenario`): `erp_sent` does not run without
+the RTR.
 
 ## 7. How the utilities reach OFTPD
 
@@ -700,7 +723,7 @@ meantime keeps its new state. The single-key `HOLD`, `RELEASE` and
 sends or receives (`OFTP_SESS.traced`), so the operator's change reaches
 sessions already running. The monitor keeps the state in its block -- one
 flag for all sessions, one per partner, same index as the partner table --
-and the line goes out as `OFTP290I partner: TRACE SEND|RECV CMD len: fields`.
+and the line goes out as `OFTP290P partner: TRACE SEND|RECV CMD len: fields`.
 The fields are decoded for SSID (level, ID, buffer, mode, credit; the
 password is never formatted), SFID, SFPA, SFNA/EFNA/ESID, EFID, EFPA and
 EERP/NERP; DATA buffers are counted and reported as one line per run.
@@ -718,6 +741,43 @@ to the log only and never to the console. Number ranges per component
 starts with the partner name, so a log of several sessions can be read.
 The log is a SYSOUT data set; the console sees only what an operator must
 act on.
+
+How it is built (#47, `src/oftp#log.c`, `src/mvs/oftp#mon.c`):
+
+- **Routing is one function** (`oftp_log_route()`), host-tested with a
+  fake data set and console (`test/tstlog.c`); the MVS side only supplies
+  `rwrite()` and `wto()`. The class is read from the message text itself,
+  the letter after the three digits, so a call site cannot disagree with
+  the text. `P` goes to the log, the rest to both.
+- **The log is `DD OFTPLOG`**, opened with `ropen()` as RECFM=F (the
+  record is padded; a SYSOUT data set with a variable format is refused
+  with `OFTP022W`). The record is `YYYY-MM-DD HH:MM:SS ` and the
+  message; a message is at most 123 characters (a WTO line), so the
+  record is 143. The cut is explicit: `vsnprintf()` into a 124 byte
+  buffer, and a line that did not fit ends in `>`; the partner name is
+  first, so it is never what is cut. A record length below 143 cuts the
+  same way. Nothing is wrapped: one message, one record.
+- **No writable static.** The `OFTP_LOG` state is in the `OFTP_MON` block
+  and found through `grtapp2` (FTPD's way); the GRT is the process's, so
+  every session subtask sees it. Before `oftp_mon_logopen()` and after
+  `oftp_mon_logclose()` the slot is empty and a message goes to the
+  console.
+- **Serialized with `lock()`** on the log block: sessions are subtasks,
+  and two `rwrite()` calls on one RFILE must not overlap. The ESTAE
+  (`OFTP098E`) uses `trylock()`: the abend may have come inside a log
+  write of the same task, where waiting for the lock would wait for
+  itself. When the lock is not free the line goes to the console.
+- **Failure is loud, once.** No DD, or an open that fails: `OFTP022W`,
+  everything on the console, class `P` too, so nothing is lost. A write or
+  close that fails: `OFTP023E`, once, and the log is given up for the rest
+  of the run. Open, every write and the close are checked.
+- **Out of scope**: a log viewer, switching to a new data set, size
+  limits.
+- **Class changes keep the number and change the letter** (`OFTP211I` is
+  now `OFTP211P`); a number is never reused for something else.
+  `OFTP215`, `OFTP216` and `OFTP233` exist with two letters because the
+  two messages of one number differ in who needs to see them. The list is
+  `docs/messages.md`.
 
 ## 9. Phases
 

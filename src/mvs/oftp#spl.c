@@ -20,8 +20,10 @@
 #include <mvs/ecb.h>
 #include <mvs/idcams.h>
 #include <mvs/lock.h>
+#include <mvs/recovery.h>
 #include <mvs/thread.h>
 #include <mvs/vsam.h>
+#include <mvs/wto.h>
 
 #include "oftpspl.h"
 
@@ -54,6 +56,7 @@ struct oftp_spool {
     CTHDTASK   *task;
     int         lastrc, lastrsn;        /* VSAM codes of the last failure */
     int         verified;               /* open rc that made us VERIFY    */
+    unsigned    abends;                 /* requests that ended in an abend */
     unsigned char buf[OFTP_SPLRECL];
 };
 
@@ -233,6 +236,17 @@ serve(OFTP_SPOOL *sp, SPL_REQ *r)
         r->rc = OFTP_SPL_NOTFOUND;
         return;
     }
+#ifdef OFTP_DEBUG_ABEND
+    /* Test builds only (-DOFTP_DEBUG_ABEND), never shipped: a lookup of
+    ** this key ends in an S0C4, to measure the recovery in spool_thread()
+    ** on MVS (#49).
+    */
+    if (r->op == OP_GET && memcmp(r->key, "TABEND00", 8) == 0) {
+        volatile int *trap = (volatile int *)0;
+
+        *trap = 1;
+    }
+#endif
     switch (r->op) {
     case OP_ADD:
         r->rc = do_add(sp, r->rec);
@@ -291,6 +305,55 @@ serve(OFTP_SPOOL *sp, SPL_REQ *r)
     }
 }
 
+/* One request for try(), which keeps only the abend code */
+typedef struct serve_ctx {
+    OFTP_SPOOL *sp;
+    SPL_REQ    *r;
+} SERVE_CTX;
+
+static int
+serve_req(SERVE_CTX *c)
+{
+    serve(c->sp, c->r);
+    return 0;
+}
+
+/* Serves r under try(). cthread runs a subtask without recovery, and an
+** abend that ended this thread would leave r's caller and every later
+** one waiting for good. So an abend answers r with an error and the
+** thread goes on. VSAM's state is unknown after it, as after a failed
+** request: the flags are cleared, and every request positions afresh.
+** Locks are not in play: serve() runs outside the queue's lock.
+*/
+static void
+serve_safely(OFTP_SPOOL *sp, SPL_REQ *r)
+{
+    SERVE_CTX c;
+    int ab;
+    char msg[80];
+
+    c.sp = sp;
+    c.r = r;
+    if ((ab = try(serve_req, &c)) < 0) {
+        /* no ESTAE: run it as before, unprotected */
+        wto("OFTP219W SPOOL THREAD WITHOUT ABEND RECOVERY");
+        serve(sp, r);
+        return;
+    }
+    if (ab == 0)
+        return;
+    r->rc = OFTP_SPL_ERROR;
+    sp->abends++;
+    vsclear(sp->vs);
+    if (ab > 0xFFF)
+        snprintf(msg, sizeof(msg), "OFTP219E SPOOL REQUEST %d ABEND S%03X, "
+                 "ANSWERED WITH AN ERROR", r->op, (unsigned)(ab >> 12) & 0xFFF);
+    else
+        snprintf(msg, sizeof(msg), "OFTP219E SPOOL REQUEST %d ABEND U%04u, "
+                 "ANSWERED WITH AN ERROR", r->op, (unsigned)ab);
+    wto(msg);
+}
+
 static int
 spool_thread(void *arg1, void *arg2)
 {
@@ -317,7 +380,7 @@ spool_thread(void *arg1, void *arg2)
             if (r->op == OP_STOP)
                 stop = 1;
             else
-                serve(sp, r);
+                serve_safely(sp, r);
             ecb_post(&r->done, 0);
         }
     }
@@ -432,6 +495,12 @@ int
 oftp_spl_verified(const OFTP_SPOOL *sp)
 {
     return sp->verified;
+}
+
+unsigned
+oftp_spl_abends(const OFTP_SPOOL *sp)
+{
+    return sp->abends;
 }
 
 OFTP_SPOOL *

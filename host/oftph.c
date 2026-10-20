@@ -13,6 +13,8 @@
 **   -z         offer buffer compression      -d DIR   where received files go
 **   -f FMT     format of the files sent: T (default), U, F, V
 **   -r LRECL   record length for F and V
+**   -X         drop the line when the first EERP or NERP arrives, before
+**              the RTR: a session cut while the other side waits for it
 **   -D ID      address the files to ID (SFIDDEST), not to the partner:
 **              for a partner reached through the one called
 **
@@ -100,6 +102,7 @@ typedef struct hfiles {
     char        erp_orig[OFTP_IDLEN + 1];
     char        erp_user[OFTP_USRLEN + 1];
     int         erp_pending;
+    int         cut;            /* -X: drop the line at the first EERP/NERP */
 } HFILES;
 
 static void
@@ -107,11 +110,12 @@ stamp(char *date, char *tim)
 {
     time_t t = time(NULL);
     struct tm *tm = localtime(&t);
-    static int counter;
+    static unsigned counter;
 
     strftime(date, OFTP_DATLEN + 1, "%Y%m%d", tm);
-    snprintf(tim, OFTP_TIMLEN + 1, "%02d%02d%02d%04d", tm->tm_hour,
-             tm->tm_min, tm->tm_sec, ++counter % 10000);
+    snprintf(tim, OFTP_TIMLEN + 1, "%02u%02u%02u%04u",
+             (unsigned)tm->tm_hour % 100, (unsigned)tm->tm_min % 100,
+             (unsigned)tm->tm_sec % 100, ++counter % 10000);
 }
 
 static int
@@ -306,10 +310,17 @@ h_erp_sent(void *ctx, OFTP_FH *hh)
 static void
 h_erp_recv(void *ctx, const OFTP_PEER *peer, char code, const OFTP_ERPCMD *e)
 {
-    (void)ctx;
+    HFILES *h = ctx;
+
     (void)peer;
     printf("%s  %s %s %s from %s\n", code == OFTP_EERP ? "eerp got" : "nerp got",
            e->dsn, e->date, e->time, e->orig);
+    if (h->cut) {
+        /* the engine would answer RTR next: the line goes away instead */
+        printf("cut: line dropped, no RTR sent\n");
+        fflush(stdout);
+        _exit(3);
+    }
 }
 
 /* ---- partners ---------------------------------------------------- */
@@ -328,9 +339,10 @@ lookup(void *ctx, const char *code, OFTP_PEER *peer)
 }
 
 static void
-logline(void *ctx, const char *line)
+logline(void *ctx, int warn, const char *line)
 {
     (void)ctx;
+    (void)warn;
     fprintf(stderr, "oftp: %s\n", line);
 }
 
@@ -341,7 +353,7 @@ usage(void)
             "usage: oftph call HOST PORT [options] [FILE ...]\n"
             "       oftph listen PORT [options]\n"
             "options: -i ourID -I partnerID -p ourPW -P partnerPW -l level\n"
-            "         -b sdeb -c credit -z -d dir -f T|U|F|V -r lrecl -D destID\n");
+            "         -b sdeb -c credit -z -d dir -f T|U|F|V -r lrecl -D destID -X\n");
     exit(2);
 }
 
@@ -389,7 +401,7 @@ main(int argc, char **argv)
     h.dir = ".";
 
     optind = argi;
-    while ((opt = getopt(argc, argv, "i:I:p:P:l:b:c:zd:f:r:D:")) != -1) {
+    while ((opt = getopt(argc, argv, "i:I:p:P:l:b:c:zd:f:r:D:X")) != -1) {
         switch (opt) {
         case 'i': copy(config.ourcode, optarg, sizeof(config.ourcode)); break;
         case 'I': copy(config.code, optarg, sizeof(config.code)); break;
@@ -403,6 +415,7 @@ main(int argc, char **argv)
         case 'f': h.fmt = (char)toupper((unsigned char)optarg[0]); break;
         case 'r': h.lrecl = (unsigned)atoi(optarg); break;
         case 'D': h.dest = optarg; break;
+        case 'X': h.cut = 1; break;
         default: usage();
         }
     }

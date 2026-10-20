@@ -149,9 +149,11 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
     RACHECK), measured in a TK5 container with a deny profile
     (`internals/xmem.md` section 14). Not shown: a caller without an
     ACEE, a system without a security product.
-  - A request over 255 bytes is refused by the client before the SVC
-    (`TSTSVC` step 2b); the routine's own length check is still
-    exercised by no test.
+  - ~~A request over 255 bytes is refused by the client before the SVC
+    (`TSTSVC` step 2b); the routine's own length check is exercised by
+    no test~~ (#55): `TSTSVC` step 2c issues the SVC directly with
+    declared lengths of 256 and up, zero and negative. Measured in an
+    MVS/CE container: 30/30; with the check disabled it fails (28/30).
   - The dialog's profile on dev1 still holds `127.0.0.1`: clear the host
     under option 5 when the SVC is on there.
 - ~~Before 0.2.0: the spool after an abend~~ (#2) -- OFTPD runs VERIFY
@@ -166,12 +168,30 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   record buffer is freed after an abend too (it kept about 38 KB per
   abend, measured on dev1 2026-10-18), and the spool's lock is given back
   (hardening: the session holds it for a few pointer stores, an abend
-  there needs a damaged spool block). Left open: a session abended while its spool
-  request is queued is possible only when its attaching thread gives up
-  at stop after 60 s; whether `try()` still recovers there is not
-  measured.
-- The spool thread runs without recovery: an abend in `serve()` ends it,
-  and every spool request after that waits for good, `P OFTPD` included.
+  there needs a damaged spool block).
+- ~~A session aborted while its spool request is queued~~ (#56) -- that can
+  only happen when the thread that attached the session ends at stop with
+  the session still running (it used to give up after 60 s). Measured in
+  a container with a debug-only spool stall: `try()` does **not** recover
+  there. The S0A03 runs it as cleanup only (retry suppressed), so none of
+  `session_thread`'s cleanup runs, the step is abended, the queued request
+  is left on a dead stack and the spool thread dies POSTing it (S202); the
+  sched thread's next spool request then waits for good and `P OFTPD`
+  never ends. The attaching threads no longer give up: they wait for the
+  sessions and say `OFTP096W` every minute. With the spool stalled for
+  80 s and 150 s across a `P OFTPD` the session ended normally and
+  `P OFTPD` completed; a wedged session is ended by CANCEL.
+- ~~The spool thread runs without recovery~~ (#49): an abend in `serve()`
+  ended the thread, and every spool request after that waited for good,
+  `P OFTPD` included. `serve()` runs under `try()` now; the request gets
+  `OFTP_SPL_ERROR` (`OFTP219E` on the console) and the thread goes on.
+  Measured in a container with `-DOFTP_DEBUG_ABEND`: without the fix
+  TSTSPL hangs (cancelled after 49 s, S222); with it 51 abends were each
+  answered, each followed by a good request, the close completed, and the
+  region's free storage was 3,766,184 bytes after the first abend and
+  after the 51st. Not measured: an abend inside VSAM's own code (the
+  trigger is in `serve()` before any VSAM call), and the stop of a
+  running OFTPD (the close is the same call).
 - ~~Every OFTPD end writes a SYSUDUMP~~ (#12): `S30A` in VSAM's CLOSE
   (SVC 20 issuing SVC 10), because the spool thread closed a cluster the
   main task had opened. The main task closes it now. In an MVS/CE
@@ -194,8 +214,9 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   files and EERPs claimed by one session~~ -- PR #20: 20 files over two
   parallel sessions and 12 each way at once, each sent, received and
   confirmed once; with `SESSIONS=1` the collision resolves as before.
-  `MAXSESS` reached keeps the silent close. Open: a session ending while
-  it holds a claim is read, not measured.
+  `MAXSESS` reached keeps the silent close. A session ending while it
+  holds an EERP claim: measured (#57, `internals/design.md` 6.1); claims
+  of other kinds are not.
 - ~~A file over about 750 KB between two OFTPDs ends EFNA 12~~ (#21):
   the SFID now carries the tracks used at the volume's track length, and
   a size of 0 gets `TRK(15,15)` instead of `TRK(5,3)`. Measured in two
@@ -257,8 +278,9 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   was called at 17:03:02, not before); `TSTSCH` 32/32. libc370#392
   (`mktime()` ignores the zone) is worked around. Later from rvs: a
   deadline (`ENDDATE`/`ENDTIME`) and `ERRJOB`.
-- Log to a SYSOUT data set instead of every line by WTO; a log-only
-  message class (design 8).
+- ~~Log to a SYSOUT data set instead of every line by WTO; a log-only
+  message class (design 8)~~ -- #47: `DD OFTPLOG`, class `P`,
+  `docs/messages.md`. Not done: a log viewer, log switching, size limits.
 - `docs/`: a configuration guide beside `docs/installation.md`
   (`docs/partners.md` is the first part of it).
 - ~~Partner maintenance by command and ISPF~~ (#46): `PARTNER
@@ -279,10 +301,16 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 - ~~#13: about 520 bytes per session abend~~ -- libc370's `try()`
   retried without `SDWAFREE` and nobody freed the SDWA (the 6 KB of
   dev1 were the largest-block probe, not a loss). Fixed in libc370
-  2.23.0 (mvslovers/libc370#640), now the floor; measured again in a
+  2.23.0 (mvslovers/libc370#640); measured again in a
   container 2026-10-19: 50 abends and 50 normal sessions, the region's
   free storage the same to the byte. The `OFTP103I`/`D MH` instrument
   is gone with it.
+- ~~#66: raise the libc370 floor~~ -- now **2.24.1** (cc370 stays 1.6.1).
+  Measured in a container 2026-10-20: host tests 363/363, `TSTSPL` 33/33,
+  an inbound and an outbound transfer byte for byte, `module-data` with
+  the same output as on 2.23.0. `TSTSCH` fails 8 of 32 assertions on
+  MVS/CE with 2.23.0 and with 2.24.1 alike, so the bump did not cause it
+  (the test reads the zone through `localtime_r()`); not yet understood.
 
 ## After the MVP
 
