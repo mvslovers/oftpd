@@ -294,10 +294,10 @@ builds its name from #cmd("INPREFIX") and the virtual file name of the
 transfer, one qualifier at a time:
 
 - Letters are changed to upper case. Letters, digits, and the characters
-  #cmd("@"), #cmd("\#"), #cmd("$") and #cmd("-") are kept\; any other character
+  #cmd("@"), #cmd("#"), #cmd("$") and #cmd("-") are kept\; any other character
   is dropped.
 - A qualifier is cut to 8 characters. If it does not start with a letter or
-  one of #cmd("@"), #cmd("\#") and #cmd("$"), an #cmd("X") is put in front of it.
+  one of #cmd("@"), #cmd("#") and #cmd("$"), an #cmd("X") is put in front of it.
 - Empty qualifiers are left out. A name that has none left becomes
   #cmd("DATA").
 - Qualifiers are dropped from the end of the name until #cmd("INPREFIX") and
@@ -350,3 +350,145 @@ the size in kilobytes that the sender announces: 15 and 15 if the size is 0, oth
 primary of the size divided by 15 plus 1, but at least 5, and a secondary of
 half the primary plus 1. The disposition is #cmd("NEW,CATLG,DELETE"). A name
 that is already cataloged is refused.
+
+== A Job After Receipt <cfg-job>
+
+#idx("JOB")#idx("job after receipt")#idx("internal reader")#idx("symbols", "in a job")
+A receive rule can carry the keyword #cmd("JOB=pds(member)"). OFTPD then reads
+that member once the file is under its final name, puts the symbols of
+@cfg-job-sym-tab into it, and gives it to its own internal reader. The job is
+submitted before OFTPD owes the receipt (EERP) to the partner, but the receipt
+does not wait for the job. It says that the file has arrived, not that anything
+was done with it.
+
+#cmd("JOB=") names a partitioned data set and a member, for example
+#cmd("JOB=ACCT.JCL(ORDERS)"). The data set name is up to 44 characters and
+must be a valid data set name\; the member has 1 to 8 characters, letters,
+digits and the national characters #cmd("@"), #cmd("#") and #cmd("$"), and does
+not start with a digit. Neither part may hold a symbol. A rule with a
+#cmd("JOB=") that is not of this form is in error like any other error in the
+rule member: the member is not used at all. The data set and the member are
+read when a file arrives, so the member can be changed at any time without a
+refresh\; the #cmd("JOB=") keyword itself is read with the rule, and
+#cmd("F OFTPD,REFRESH") reads it again.
+
+=== The Symbols <cfg-job-sym>
+
+OFTPD replaces the symbols of @cfg-job-sym-tab in every record of the member, also
+in a comment or in data that follows a #cmd("DD *") statement.
+
+#tab(caption: [Symbols in the member of a job])[
+  #table(columns: (1.1in, 1fr),
+    [Symbol], [Value],
+    [#cmd("?PFILE")], [The data set the file was received as. It is the name that
+      OFTPD built from the #cmd("DSN=") of the rule (or from #cmd("INPREFIX")),
+      so a #cmd("DSN=") with #cmd("%VFN") in it makes it carry text of the
+      partner.],
+    [#cmd("?VFILE")], [The virtual file name, as the partner sent it.],
+    [#cmd("?ID")], [The name of the partner.],
+    [#cmd("?KEY")], [The spool key of the transfer: #cmd("T") and 7 digits.],
+  )
+] <cfg-job-sym-tab>
+
+The names are in upper case. A name ends at the first character that is neither
+a letter nor a digit. #cmd("?ID.X") and #cmd("?ID-?KEY") hold the symbols
+#cmd("?ID") and #cmd("?KEY"), but #cmd("?IDX"), #cmd("?PFILE1") and
+#cmd("?KEYS") are other names and stay as they are. A #cmd("?") that starts
+anything else stays as it is too, so a member is not damaged by a question mark
+in its text.
+
+=== The Width of a Card <cfg-job-width>
+
+The job goes to the internal reader as 80-column cards. In a record that
+starts with #cmd("//") the text of the statement ends in column 71: column 72
+tells JES whether the statement is continued, and columns 73 to 80 are the
+sequence number. Characters from column 72 on stay where they are, and the
+symbols make only the text grow. Any other record has 80 columns. Blanks at the
+end of a record do not count.
+
+A record that grows past its columns after the symbols went in is *not* cut.
+The job is not submitted instead (see below).
+
+=== When a Job Is Not Submitted <cfg-job-not>
+
+OFTPD reads the member twice. The first pass checks every record and opens no
+reader\; the second pass sends the cards. A member that fails a check therefore
+never leaves a half-written job in JES. No job is submitted when:
+
+- the data set or the member cannot be opened, or it has no records\;
+- a record is longer than 80 columns (#cmd("RECORD PAST COLUMN 80"))\;
+- a record grows past its columns after the symbols went in
+  (#cmd("LINE TOO LONG AFTER SUBSTITUTION"))\;
+- #cmd("?VFILE") is used and the virtual file name holds a character that is
+  not allowed (#cmd("?VFILE NOT ALLOWED IN JCL")). These are letters, digits and
+  the characters #cmd("."), #cmd("-"), #cmd("_"), #cmd("@"), #cmd("#") and
+  #cmd("$"). A quote, a blank, a comma or an ampersand is not\;
+- the record format is undefined (#cmd("RECFM=U")) or the record length is not
+  positive (#cmd("RECORD FORMAT NOT SUPPORTED"))\;
+- there is no storage for the record, or the internal reader cannot be opened,
+  written or closed.
+
+The file is kept and acknowledged all the same. The receipt tells the partner
+that the file has arrived\; whether a job came of it concerns only you.
+
+=== What OFTPD Reports <cfg-job-report>
+
+#idx("OFTP246P")#idx("OFTP247W")
+A submitted job is reported by #cmd("OFTP246P") in the log, with the job
+number. A job that is not submitted is reported by #cmd("OFTP247W") on the
+console and in the log, with the reason and, for a fault in a record, the number
+of the record. #cmd("OFTP246P") comes before the #cmd("OFTP222P") of the same
+file.
+
+The result is also kept in the record of the transfer, and #cmd("OFTP SHOW key")
+prints it as one line: #cmd("job submitted JOBnnnnn (JES job id)"), or
+#cmd("job not submitted:") followed by the reason. #cmd("LIST") does not show it.
+A transfer of a rule without #cmd("JOB=") has no such line.
+
+#note[*What "submitted" proves.* The line says that JES took the job. It does not say
+that the member was read to its end: the routine that reads the member does not
+tell a read error from the end of the member. A job that fails when it runs fails
+in the JES log of that job and not in OFTPD.]
+
+=== Who Decides What the Job Does <cfg-job-safe>
+
+#idx("security", "job after receipt")#idx("?VFILE")
+The virtual file name is chosen by the partner and ends up in the JCL. The
+character check of @cfg-job-not protects the card, not its meaning:
+#cmd("SYS1.PARMLIB"), #cmd("IEFBR14") and #cmd("A.B.C") pass it, and each is a
+valid name in JCL. The name of the partner's file must therefore never decide
+by itself what the job touches or runs.
+
+- Use #cmd("?VFILE") only behind a fixed high-level qualifier that the partner
+  cannot leave, as in #cmd("DSN=ACCT.IN.?VFILE").
+- Never use it as a whole name (#cmd("DSN=?VFILE")), as #cmd("PGM=?VFILE"),
+  inside #cmd("PARM="), on the job card, or in any operand that names an
+  identity: #cmd("USER="), #cmd("PASSWORD=") and #cmd("GROUP=").
+- Keep the #cmd("VFN=") pattern of the rule as narrow as the application allows:
+  #cmd("VFN=INV?????.DATA"), not #cmd("VFN=*").
+
+A partner can have one job queued for every file it may send under a rule that
+matches, so #cmd("VFN=") also limits how many. A partner name that is used with
+#cmd("?ID") should be a plain name: OFTPD does not restrict the characters of a
+name in #cmd("OFTPPTN"), and it does not check #cmd("?ID") as it checks
+#cmd("?VFILE").
+
+=== Whose Job It Is <cfg-job-whose>
+
+The job goes through the internal reader of the OFTPD started task, but it does
+not run as that task. OFTPD sets no #cmd("USER="), and with RAKF a job without
+one runs as the default user of RAKF, #cmd("PROD"). It can do what that user
+may do under your RAKF profiles, and that can be a lot. What the default user
+may do on your system is not known to OFTPD and not stated in this book. Before
+you write #cmd("JOB="), look it up in your profiles and give that user only the
+access that the jobs need.
+
+Apart from the symbols, OFTPD passes the cards of the member on as they are,
+so the job card may carry a #cmd("USER=") and a #cmd("PASSWORD="). The password is then plain text in the
+member. OFTPD checks nothing about what the job does: the member is named in the
+rule member, so whoever may change the rule member or the job member decides
+what runs. Protect both, and the library that holds the job members, as you
+protect the library of the other OFTPD members, #cmd("SYS2.PARMLIB") by default.
+
+Not part of the job after receipt: a job after a send, a job when a send fails,
+and a job for a file that was refused.

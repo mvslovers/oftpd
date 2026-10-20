@@ -239,6 +239,12 @@ messages are in the Reference.
     [A change to a partner does not take effect], [Partners change with
       #cmd("F OFTPD,REFRESH"). The settings change only after a restart. If the
       table is full (#cmd("OFTP015W")), restart the monitor.],
+    [A file is received, but no job runs (#cmd("OFTP247W"))], [The receive rule of
+      the file has a #cmd("JOB="), and the job was not submitted. The message gives
+      the reason, for instance a member that is missing or empty, or a line that is
+      too long after the symbols went in. The file is kept and was acknowledged.
+      #cmd("OFTP SHOW key") shows the same reason. Correct the member\; the next
+      file uses the corrected one.],
     [A line of the members is reported (#cmd("OFTP010W"))], [Correct the line. The
       partner it belongs to is disabled until then.],
     [The messages are on the console only (#cmd("OFTP022W"),
