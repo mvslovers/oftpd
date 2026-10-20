@@ -396,12 +396,12 @@ allocates them, usually in the CLIST that starts ISPF:
 - `OFTPD.ISPPLIB` to the `ISPPLIB` allocation,
 - `OFTPD.LINKLIB` to the `ISPLLIB` allocation.
 
-Mind the block sizes (`LISTDS 'name'` shows them). ISPF abends
-(`FUNCTION HAS ABENDED` on the first panel it reads) when a library with
-a smaller block size comes before one with a larger block size in a
-concatenation. `OFTPD.ISPPLIB` has 3120, less than the user panel
-libraries of most systems, so it goes last; so does `OFTPD.LINKLIB` when
-its block size is not above that of the `ISPLLIB` libraries already there.
+Add both at the end of the concatenation. Measured on TK5: with
+`OFTPD.ISPPLIB` (block size 3120) in front of `HERC01.ISP.PLIB` (block
+size 27920), ISPF ended with `FUNCTION HAS ABENDED` on the next panel it
+read. The cause is not known (no dump was analysed); with the library at
+the end the dialog ran. `LISTDS 'name'` shows the block sizes of your
+libraries. `OFTPD.LINKLIB` in `ISPLLIB` was only ever tried at the end.
 
 Then start it with
 
@@ -445,9 +445,9 @@ EXIT
 
 and log on again. The menu entry goes into the "Additional applications"
 panel (option `M` of the primary menu), `TSOAPPLS` in `SYS2.ISP.PLIB`. Do
-not change that library: copy the member to your own panel library, the
-first in `ISPPLIB` (`userid.ISP.PLIB`), and add the line and the `TRANS`
-entry there:
+not change that library: copy the member to a panel library of your own that
+comes before `SYS2.ISP.PLIB` in `ISPPLIB` (check with `LISTA STATUS`),
+and add the line and the `TRANS` entry there:
 
 ```
 %   O @OFTPD       + Odette file transfer
