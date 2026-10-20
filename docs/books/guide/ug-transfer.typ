@@ -225,7 +225,7 @@ The main panel has these options.
     state, or your own. Type a letter in front of a line: S to show it, H to
     hold, R to release, T to retry, D to delete.],
   [3 Partners], [Shows the partner table as OFTPD has it, with the name, the
-    Odette ID, the state, the sessions, the level and where the partner is
+    Odette ID, the state, the busy sessions, the level and where the partner is
     reached. An administrator can also maintain the table here (see below).],
   [4 Configure], [Lets an administrator edit the member of the partner table.
     When the edit ends, OFTPD reads the member again. The partners kept by
@@ -258,8 +258,8 @@ the passwords as *(set)* or *(none)*, never as text. A blank password keeps the
 password as it is\; type a new one to replace it. Another field that you leave
 as it is stays as it is, and a blank Host, Address or Via is cleared. Enter
 saves, and END leaves the panel without saving. If OFTPD refuses the change, the
-reason is on the panel, and you can correct the entry. The message line of the
-dialog has 80 columns, and a longer answer is cut\; the answer of a refused
+reason is on the panel, and you can correct the entry. On an 80-column screen
+the message line has 80 columns, and a longer answer is cut\; the answer of a refused
 #cmd("DELETE") is one of these. The command #cmd("OFTP PARTNER DELETE") gives
 the whole answer.
 

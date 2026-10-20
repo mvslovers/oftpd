@@ -243,11 +243,13 @@ messages are in the Reference.
       @ptn-cmd). If the table is full (#cmd("OFTP015W")), delete a partner
       that is kept by command or take an entry out of the member, and use
       #cmd("REFRESH").],
-    [A #cmd("PARTNER") command is refused], [The answer says why. The user must
-      be an administrator (code 507)\; a partner with a session cannot be
-      changed (code 450) or deleted\; a partner with transfers in the spool
-      cannot be deleted (code 512). The Reference lists the answers, in the
-      chapter “The OFTP Command”.],
+    [A #cmd("PARTNER") command is refused], [The answer, the last line of the
+      output, says why. #cmd("needs ADMIN= in OFTPRM") means that the user is
+      not an administrator\; #cmd("the partner has a session now, try again")
+      means that a partner with a session cannot be changed or deleted\; and
+      #cmd("transfers in the spool name partner") means that a partner with
+      transfers in the spool cannot be deleted. The Reference lists the
+      answers, in the chapter “The OFTP Command”.],
     [A file is received, but no job runs (#cmd("OFTP247W"))], [The receive rule of
       the file has a #cmd("JOB="), and the job was not submitted. The message gives
       the reason, for instance a member that is missing or empty, or a line that is

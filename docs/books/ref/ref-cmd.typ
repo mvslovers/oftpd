@@ -362,42 +362,58 @@ in these cases, checking them in this order.
 
 If the partner is enabled, OFTPD disables it before it looks through the
 spool, so that nothing new is queued for it or accepted from it meanwhile.
-When a transfer in the spool names the partner, the partner stays disabled\;
-the answer says so with #cmd("(it is disabled now)"). Enable it again if it
-should work.
+When a transfer in the spool names the partner, the partner stays disabled.
+If it was enabled before, the answer says so with #cmd("(it is disabled now)").
+Enable it again if it should work.
 
 If the partner was kept by command and has an entry of the same name in
 #cmd("OFTPPTN") as well, deleting it brings that entry back at once, and the
 answer ends with #cmd("the OFTPPTN entry is back"). If OFTPD cannot read
-#cmd("OFTPPTN") then, the answer ends with #cmd("OFTPPTN cannot be read, its
-entry is back after the next REFRESH").
+#cmd("OFTPPTN") then, the answer ends with #cmd("OFTPPTN cannot be read, its entry is back after the next REFRESH").
 
 === Answers and Messages <cmd-partner-ans>
 
-The answer of OFTPD is the last line of the command. The utility does not
-show the code at its start. The codes that the #cmd("PARTNER") command uses are
-in @cmd-partner-tab.
+The answer of OFTPD is the last line of the command. The utility and the
+dialog do not show the code at its start, so a refused command is found by its
+text. @cmd-partner-tab lists the codes that the #cmd("PARTNER") command uses,
+and the text that goes with each\; in these texts #cmd("name") stands for the
+partner of the command, #cmd("other") for another partner, and #cmd("n") for a
+number.
 
 #tab(caption: [Answers of the PARTNER command])[
-  #table(columns: (0.7in, 1fr),
-    [Code], [Meaning],
-    [200], [Done: #cmd("partner name added"), #cmd("partner name changed"),
-      #cmd("partner name unchanged"), #cmd("partner name deleted") (with the
-      endings above), or the end of a #cmd("SHOW").],
-    [450], [The partner has a session now, try again.],
-    [451], [The spool is not available. Nothing was changed, except that a
-      partner that was being deleted may have been disabled.],
-    [501], [There is no such partner.],
-    [507], [The user is not an administrator.],
-    [508], [The partner name or an operand is not valid, or the entry is too
-      long. The answer gives the reason.],
-    [509], [The partner exists\; #cmd("ADD") is refused. Use #cmd("CHANGE").],
-    [512], [Another partner is reached through this one, or transfers in the
-      spool name it.],
-    [513], [The partner is in #cmd("OFTPPTN") only, and cannot be deleted by
+  #table(columns: (0.5in, 1.7fr, 1.3fr),
+    [Code], [Text the utility prints], [Meaning],
+    [200], [#cmd("partner name added") \
+      #cmd("partner name changed") \
+      #cmd("partner name unchanged") \
+      #cmd("partner name deleted") (with the endings above) \
+      #cmd("partner") at the end of a #cmd("SHOW")],
+      [Done.],
+    [450], [#cmd("the partner has a session now, try again")],
+      [The partner has a session, or OFTPD is calling it.],
+    [451], [#cmd("spool not available")],
+      [Nothing was changed, except that a partner that was being deleted may
+      have been disabled.],
+    [501], [#cmd("no such partner")], [The partner is not in the table.],
+    [507], [#cmd("needs ADMIN= in OFTPRM")],
+      [The user is not an administrator. (The text spells the member
+      name #cmd("OFTPPRM") as #cmd("OFTPRM").)],
+    [508], [The reason, for example #cmd("the entry is too long")],
+      [The partner name or an operand is not valid, or the entry is too long.],
+    [509], [#cmd("partner exists: use CHANGE")],
+      [The partner exists\; #cmd("ADD") is refused.],
+    [512], [#cmd("partner other is reached through it") \
+      #cmd("partner other is reached through it: disable that first") \
+      #cmd("n transfers in the spool name partner name: PURGE or DELETE them first") \
+      (with #cmd("(it is disabled now)") after the name, if OFTPD disabled the
+      partner)],
+      [Another partner is reached through this one, or transfers in the spool
+      name it.],
+    [513], [#cmd("the partner is in OFTPPTN: remove it there, then REFRESH")],
+      [The partner is in #cmd("OFTPPTN") only, and cannot be deleted by
       command.],
-    [514], [The partner table is full. It holds 32 partners, from both
-      sources.],
+    [514], [#cmd("the partner table is full")],
+      [The table holds 32 partners, from both sources.],
   )
 ] <cmd-partner-tab>
 

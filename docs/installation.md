@@ -270,8 +270,14 @@ its module in the `ISPLLIB` concatenation, because it loads `ISPLINK` from
 there. This ISPF has no `LIBDEF`, so add the libraries where your system
 allocates them, usually in the CLIST that starts ISPF:
 
-- `OFTPD.ISPPLIB` to the `ISPPLIB` allocation,
+- `OFTPD.ISPPLIB` to the `ISPPLIB` allocation, as the **last** library of the
+  concatenation,
 - `OFTPD.LINKLIB` to the `ISPLLIB` allocation.
+
+`OFTPD.ISPPLIB` is received with the block size 3120, smaller than that of
+the ISPF panel libraries. In a test, ISPF with `OFTPD.ISPPLIB` in front of a
+library of the block size 19040 ended at `READY` without a screen; with it
+behind the large one it worked.
 
 Then start it with
 

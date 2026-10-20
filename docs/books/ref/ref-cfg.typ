@@ -178,9 +178,10 @@ owner, and may use the #cmd("CALL"), #cmd("REFRESH") and #cmd("PURGE")
 requests. Only an administrator may add, change, enable, disable or delete a
 partner with the #cmd("PARTNER") command or in the ISPF dialog\; showing and
 listing partners is open to every user. Without any #cmd("ADMIN") keyword,
-these requests are refused with the answer #cmd("507"). For #cmd("CALL"),
-#cmd("REFRESH") and #cmd("PURGE") the text is #cmd("needs ADMIN= in
-OFTPPRM").
+these requests are refused. For #cmd("CALL"), #cmd("REFRESH") and
+#cmd("PURGE") the text is #cmd("needs ADMIN= in OFTPPRM")\; for #cmd("PARTNER")
+it is #cmd("needs ADMIN= in OFTPRM"), with the member name as the source
+spells it.
 
 == The Partner Table: OFTPPTN <cfg-ptn>
 
@@ -314,7 +315,7 @@ command stays, and of two of one source the first. A change by command is
 checked first, and is refused when it would make the second.
 
 A partner takes a place in the table of 32, whichever source it comes from.
-When the table is full, #cmd("PARTNER ADD") is refused with the code 514.
+When the table is full, #cmd("PARTNER ADD") is refused with #cmd("the partner table is full").
 
 == Refreshing the Partner Table <cfg-refresh>
 

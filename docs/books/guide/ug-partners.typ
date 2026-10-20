@@ -243,7 +243,7 @@ Four points matter in daily use.
   never shows a password. To change a password, give the new one.
 - *A partner in use.* While a partner has a session, or OFTPD is calling it,
   you can enable and disable it, but not change anything else. The command is
-  refused with the answer #cmd("450 the partner has a session now, try again").
+  refused with the answer #cmd("the partner has a session now, try again").
   Repeat it later.
 - *Deleting.* OFTPD deletes a partner only if no transfer in the spool names
   it, and none is running. The transfers that count are all of them, finished
