@@ -177,6 +177,12 @@ extern int  oftp_svc_answer(OFTP_MON *m, unsigned i, const char *reply,
                                                         asm("OFTPSANS");
 extern void oftp_svc_sweep(OFTP_MON *m)                 asm("OFTPSSWP");
 
+/* oftp_svc_scrub() wipes the request and the reply of every slot. The
+** stop calls it before the anchor is freed; nothing may be inside the
+** routine by then.
+*/
+extern void oftp_svc_scrub(OFTP_MON *m)                 asm("OFTPSSCR");
+
 /* The slot thread itself lives with the request handlers, because
 ** that is all it does: take a request out of a slot, run the same
 ** ctl_* handlers every request goes through, write the answer back.

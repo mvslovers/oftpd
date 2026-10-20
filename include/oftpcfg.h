@@ -138,6 +138,16 @@ extern OFTP_PARTNER *oftp_cfg_byid(OFTP_CONFIG *c, const char *odetteid)
 extern OFTP_PARTNER *oftp_cfg_route(OFTP_CONFIG *c, const char *odetteid,
                                     OFTP_PARTNER **final) asm("OFTPCFGR");
 
+/* The route of oftp_cfg_route() looked up without the lock; this asks
+** again with it. 1 when next is still enabled under the name it had
+** (nextname) and, if the final partner is another one, that is still
+** enabled with the ID dest. *tname gets the final partner's name, read
+** here under the caller's lock, or "" when next is the final partner.
+*/
+extern int oftp_cfg_relay_live(const OFTP_PARTNER *next, const char *nextname,
+                               const OFTP_PARTNER *final, const char *dest,
+                               char *tname, size_t tcap) asm("OFTPCFGU");
+
 /* After a failed attempt to send a file -- refused with retry Y, cut off
 ** in the session, or the partner not reached -- with attempts the
 ** attempts made so far, the first one included: 0 and *tnext the time of

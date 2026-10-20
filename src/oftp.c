@@ -102,9 +102,25 @@ static const char *const verbs[][2] = {
     { "PURGE", "DAYS" }, { "PARTNER", "PARTNER" },
 };
 
+/* The end of the word that starts at from, cut where words() cuts it: at
+** a blank outside '...'. q says whether from is inside quotes.
+*/
+static const char *
+word_end(const char *from, int q)
+{
+    const char *p;
+
+    for (p = from; *p && (q || *p != ' '); p++)
+        if (*p == '\'')
+            q = !q;
+    return p;
+}
+
 /* A password does not belong in a listing: the value of PASSWORD(x),
-** OURPASSWORD=x or PASSWORD('x y') in an echoed line becomes eight stars,
-** whatever its own length. cap is the size of line.
+** PASSWORD=x, PASSWORD x, PASSWORD = x, OURPASSWORD=x or PASSWORD('x y')
+** in an echoed line becomes eight stars, whatever its own length. The
+** value is the whole word, as operand() takes it, less the closing
+** parenthesis of a PASSWORD(...). cap is the size of line.
 */
 static void
 mask(char *line, size_t cap)
@@ -115,25 +131,34 @@ mask(char *line, size_t cap)
 
     for (p = line; strlen(p) > 8; p++) {
         char k[9];
+        char open;
         size_t head;
         size_t stars;
         size_t tail;
+        int q = 0;
 
         memcpy(k, p, 8);
         k[8] = '\0';
         upcase(k);
-        if (strcmp(k, "PASSWORD") != 0 || (p[8] != '(' && p[8] != '='))
+        if (strcmp(k, "PASSWORD") != 0)
             continue;
-        s = p + 9;
-        if (*s == '\'') {
-            for (e = s + 1; *e && *e != '\''; e++)
-                ;
-            if (*e)
-                e++;
-        } else {
-            for (e = s; *e && *e != ')' && *e != ' '; e++)
-                ;
+        s = p + 8;
+        while (*s == ' ')
+            s++;
+        open = *s == '(' || *s == '=' ? *s : '\0';
+        if (open != '\0') {
+            s++;
+            while (*s == ' ')
+                s++;
+        } else if (s == p + 8) {
+            continue;
         }
+        for (e = line; e < s; e++)
+            if (*e == '\'')
+                q = !q;
+        e = word_end(s, q);
+        if (open == '(' && e > s && e[-1] == ')')
+            e--;
         if (e == s)
             continue;
         head = (size_t)(s - line);
