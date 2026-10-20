@@ -13,6 +13,13 @@ A partner in both layers is the one kept by command: it wins by name.
 alone. To get the parmlib entry of a name back, delete the partner kept by
 command; the entry in `OFTPPTN` is in force again at once.
 
+**Protect the spool like `OFTPPTN`.** A partner kept by command is stored
+in the spool with everything you gave it, **both passwords in clear text**,
+exactly as `OFTPPTN` holds them. The spool cluster, and every backup, copy
+or dump of it, therefore needs the same protection as the parmlib member:
+give it a profile that only OFTPD's userid and the administrators may read.
+This is also why `PARTNER SHOW` never prints a password.
+
 Anyone may look at the table (`PARTNERS`, `PARTNER SHOW`). Adding,
 changing, enabling, disabling and deleting is for the userids named in
 `ADMIN=` in `OFTPPRM0`; anyone else gets RC 8 (`needs ADMIN=`).
@@ -58,7 +65,8 @@ can read.
 | `ADD` of a name that exists | RC 8, use `CHANGE` |
 | `CHANGE` or `DELETE` of a name that is not there | RC 12 |
 | `CHANGE` while a session with the partner runs (or OFTPD is calling it) | RC 4, try again; only `ENABLE` and `DISABLE` are taken at once |
-| `CHANGE` that changes nothing | RC 8 |
+| `CHANGE`, `ENABLE` or `DISABLE` that changes nothing (the partner is as asked) | RC 0, "unchanged" |
+| `ADD` when the table holds 32 partners | RC 8 |
 | `DISABLE` or `DELETE` of a partner that another partner is reached through (`VIA`) | RC 8 |
 | `DELETE` of a partner that is only in `OFTPPTN` | RC 8: remove it from the member and `REFRESH` |
 | `DELETE` while a session with it runs | RC 4, try again |

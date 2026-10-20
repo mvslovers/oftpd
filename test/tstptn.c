@@ -44,7 +44,7 @@ add(const char *text, char *why, int whylen)
 int
 main(void)
 {
-    char why[80], text[300];
+    char why[80], text[300], again[300];
     OFTP_PARTNER n, back;
     int a, b, i, cnt, on;
 
@@ -156,7 +156,8 @@ main(void)
     CHECK_EQ(oftp_cfg_apply(&back, text, why, sizeof(why)), 0,
              "the text is read back");
     oftp_cfg_complete(&c, &back);
-    CHECK(memcmp(&back.peer, &n.peer, sizeof(back.peer)) == 0
+    CHECK(oftp_cfg_text(&c, &back, again, sizeof(again)) == i
+          && strcmp(again, text) == 0
           && strcmp(back.host, n.host) == 0 && back.port == n.port
           && back.sessions == n.sessions && back.xlate == n.xlate
           && strcmp(back.address, n.address) == 0 && back.call == n.call

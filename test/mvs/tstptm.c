@@ -15,6 +15,17 @@
 **                                again: the partner is still there, as
 **                                changed; the transfer is deleted, then
 **                                the partner is
+**   PARM='RUN P1'                the two partners of the OFTPPTN member:
+**                                one cannot be deleted, one is changed
+**                                (it then overrides the member) and
+**                                deleted again (the member's entry is
+**                                back)
+**   PARM='RUN P2'                after the member lost GONEPTN and
+**                                REFRESH: GONEPTN is gone, PARMPTN stays
+**   PARM='RUN C'                 against an OFTPD started with this job's
+**                                userid NOT in ADMIN=: ADD, CHANGE,
+**                                DELETE and REFRESH are refused (507),
+**                                SHOW and PARTNERS are not
 **
 ** The partner TSTPTM is in no parmlib member: it exists only because of
 ** the commands, so its being there after the restart is the proof that
@@ -115,8 +126,10 @@ transfer(char *key, char *state)
     const char *l;
     int         n;
 
-    if (ask("LIST PARTNER=" NAME) != OFTP_SVC_OK
-        || (l = find("100 T", NULL)) == NULL)
+    if (ask("LIST PARTNER=" NAME) != OFTP_SVC_OK)
+        return 0;
+    l = find("100 T", NULL);
+    if (l == NULL)
         return 0;
     memcpy(key, l + 4, 8);                  /* key 0-7, state 14-22 */
     key[8] = '\0';
@@ -180,8 +193,9 @@ phase_a(const char *host, const char *port, const char *dsn)
     CHECK(show_has(req), "SHOW reads the new port");
     CHECK(show_has("ENABLED=Y"), "and that it is enabled");
     CHECK(show_has("PASSWORD=SET"), "the passwords were not touched");
-    CHECK(answers("PARTNER CHANGE PARTNER=" NAME " ENABLED=Y", "508"),
-          "a change that changes nothing is refused");
+    CHECK(answers("PARTNER CHANGE PARTNER=" NAME " ENABLED=Y", "200")
+          && find("200", "unchanged") != NULL,
+          "a change that changes nothing is told, not refused");
 
     /* 6. send a file to it, without a restart in between */
     snprintf(req, sizeof(req), "SEND PARTNER=" NAME " DSN=%s", dsn);
@@ -203,6 +217,61 @@ phase_a(const char *host, const char *port, const char *dsn)
           "DELETE is refused while the spool holds a transfer");
     CHECK(show_has("PARTNER=" NAME), "the partner is still there");
     CHECK(show_has("ENABLED=N"), "disabled, so that nothing new comes");
+    return 0;
+}
+
+/* The partners of OFTPPTN: PARMPTN and GONEPTN, both with port 1 */
+static int
+phase_p1(void)
+{
+    CHECK(show_has("PARTNER=PARMPTN") && show_has("PORT=1 ")
+          && show_has("source: OFTPPTN"), "PARMPTN comes from the member");
+    CHECK(answers("PARTNER SHOW PARTNER=GONEPTN", "200"),
+          "so does GONEPTN");
+    CHECK(answers("PARTNER DELETE PARTNER=PARMPTN", "513"),
+          "a partner that is only in the member cannot be deleted");
+    CHECK(answers("PARTNER CHANGE PARTNER=PARMPTN PORT=7 ENABLED=N", "200"),
+          "but it can be changed: that makes a record that overrides it");
+    CHECK(show_has("PORT=7 ") && show_has("ENABLED=N")
+          && show_has("overrides OFTPPTN"),
+          "SHOW reads the change back and says it overrides the member");
+    CHECK(answers("REFRESH", "200"), "REFRESH is done");
+    CHECK(show_has("PORT=7 ") && show_has("ENABLED=N"),
+          "and leaves the changed partner alone");
+    CHECK(answers("PARTNER DELETE PARTNER=PARMPTN", "200")
+          && find("200", "entry is back") != NULL,
+          "DELETE takes the record away: the member's entry is back");
+    CHECK(show_has("PORT=1 ") && show_has("ENABLED=Y")
+          && show_has("source: OFTPPTN"),
+          "as the member has it");
+    return 0;
+}
+
+static int
+phase_p2(void)
+{
+    CHECK(answers("REFRESH", "200"), "REFRESH is done");
+    CHECK(answers("PARTNER SHOW PARTNER=GONEPTN", "501"),
+          "a partner that left the member and has nothing in the spool is gone");
+    CHECK(answers("PARTNER SHOW PARTNER=PARMPTN", "200"),
+          "the one that is still in it is not");
+    return 0;
+}
+
+static int
+phase_c(void)
+{
+    CHECK(answers("PARTNER ADD PARTNER=" NAME " ODETTEID=O0000000000TSTB",
+                  "507"), "ADD needs ADMIN=");
+    CHECK(answers("PARTNER CHANGE PARTNER=PARMPTN PORT=9", "507"),
+          "so does CHANGE");
+    CHECK(answers("PARTNER DELETE PARTNER=PARMPTN", "507"), "and DELETE");
+    CHECK(answers("REFRESH", "507"), "and REFRESH");
+    CHECK(answers("PARTNER SHOW PARTNER=" NAME, "501"),
+          "nothing was added");
+    CHECK(answers("PARTNER SHOW PARTNER=PARMPTN", "200") && show_has("PORT=1 "),
+          "nor changed: SHOW is open to everyone");
+    CHECK(answers("PARTNERS", "200"), "and so is PARTNERS");
     return 0;
 }
 
@@ -247,7 +316,13 @@ main(int argc, char **argv)
         phase_a(argv[3], argv[4], argv[5]);
     else if (argv[2][0] == 'B')
         phase_b();
+    else if (strcmp(argv[2], "P1") == 0)
+        phase_p1();
+    else if (strcmp(argv[2], "P2") == 0)
+        phase_p2();
+    else if (argv[2][0] == 'C')
+        phase_c();
     else
-        CHECK(0, "PARM is RUN A host port dsn, or RUN B");
+        CHECK(0, "PARM is RUN A host port dsn, RUN B, RUN P1, RUN P2 or RUN C");
     return mbt_test_summary("TSTPTM");
 }

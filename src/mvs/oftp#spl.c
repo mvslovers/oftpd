@@ -544,12 +544,13 @@ int
 oftp_spl_ptn_put(OFTP_SPOOL *sp, const OFTP_SPPTN *rec)
 {
     SPL_REQ r;
+    OFTP_SPPTN copy = *rec;
 
     memset(&r, 0, sizeof(r));
     r.op = OP_PUT;
-    memcpy(r.key, rec->key, 8);
-    r.rec = (OFTP_SPPTN *)rec;
-    r.len = sizeof(*rec);
+    memcpy(r.key, copy.key, 8);
+    r.rec = &copy;
+    r.len = sizeof(copy);
     return enqueue(sp, &r);
 }
 

@@ -7,7 +7,10 @@
 //*
 //*   TSTPM1  adds, changes, enables the partner TSTPTM, sends a file to
 //*           it, tries to delete it. The partner is OFTPD B, reached on
-//*           127.0.0.1 port 3315 (change them to where B listens).
+//*           127.0.0.1 port 3315 (change them to where B listens). Then
+//*           the parmlib partners (P1), the member loses GONEPTN, and
+//*           REFRESH takes it away (P2). Submit tstptmd.jcl's first
+//*           job (TSTPTMP) once before the first start of A.
 //*   TSTPM2  the OFTP utility: PARTNER LIST, SHOW, ENABLE, CHANGE and
 //*           DISABLE, in batch; it leaves SESSIONS=2 and the partner
 //*           disabled
@@ -15,6 +18,9 @@
 //*           again (submit tstptmd.jcl's first job)
 //*   TSTPM3  the partner is still there, as changed; delete the
 //*           transfer, then the partner
+//*   -----   now stop OFTPD A again and start the job TSTPTMN of
+//*           tstptmd.jcl in its place: ADMIN= is somebody else
+//*   TSTPM5  ADD, CHANGE, DELETE and REFRESH are refused (507)
 //*   TSTPM4  the file B received is the file that was sent
 //*
 //* The userid that runs them must be in ADMIN= of OFTPD A. The test
@@ -41,6 +47,24 @@ LINE 3
 //SYSPRINT DD  SYSOUT=*
 //STDOUT   DD  SYSOUT=*
 //STDERR   DD  SYSOUT=*
+//PARM1    EXEC PGM=TSTPTM,PARM='RUN P1'
+//STEPLIB  DD  DISP=SHR,DSN=IBMUSER.OFTPD.V0R1M0D.TESTLIB
+//SYSPRINT DD  SYSOUT=*
+//STDOUT   DD  SYSOUT=*
+//STDERR   DD  SYSOUT=*
+//* the member without GONEPTN; A's OFTPPTN DD reads it afresh at REFRESH
+//REWRITE  EXEC PGM=IEBGENER
+//SYSPRINT DD  SYSOUT=*
+//SYSIN    DD  DUMMY
+//SYSUT1   DD  *
+PARTNER=PARMPTN ODETTEID=O0000000000PARM PORT=1 CALL=N
+/*
+//SYSUT2   DD  DSN=IBMUSER.TSTPTM.PTN,DISP=SHR
+//PARM2    EXEC PGM=TSTPTM,PARM='RUN P2'
+//STEPLIB  DD  DISP=SHR,DSN=IBMUSER.OFTPD.V0R1M0D.TESTLIB
+//SYSPRINT DD  SYSOUT=*
+//STDOUT   DD  SYSOUT=*
+//STDERR   DD  SYSOUT=*
 //*
 //TSTPM2   JOB (OFTP),'PARTNER UTILITY',CLASS=A,MSGCLASS=H
 //OFTP     EXEC PGM=OFTP
@@ -59,6 +83,14 @@ PARTNER SHOW TSTPTM
 //TSTPM3   JOB (OFTP),'PARTNER MAINT B',CLASS=A,MSGCLASS=H,
 //         MSGLEVEL=(1,1)
 //RUN      EXEC PGM=TSTPTM,PARM='RUN B'
+//STEPLIB  DD  DISP=SHR,DSN=IBMUSER.OFTPD.V0R1M0D.TESTLIB
+//SYSPRINT DD  SYSOUT=*
+//STDOUT   DD  SYSOUT=*
+//STDERR   DD  SYSOUT=*
+//*
+//TSTPM5  JOB (OFTP),'PARTNER NOT ADMIN',CLASS=A,MSGCLASS=H,
+//         MSGLEVEL=(1,1)
+//RUN      EXEC PGM=TSTPTM,PARM='RUN C'
 //STEPLIB  DD  DISP=SHR,DSN=IBMUSER.OFTPD.V0R1M0D.TESTLIB
 //SYSPRINT DD  SYSOUT=*
 //STDOUT   DD  SYSOUT=*

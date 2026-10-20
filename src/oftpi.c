@@ -319,6 +319,27 @@ add_partner(void *ctx, const char *line)
     oftp_isp_exec("TBADD OFTPPTN");
 }
 
+/* One KEYWORD=VALUE of PARTNER SHOW into its dialog variable */
+static void
+shown_value(DLG *d, const char *kw, const char *v)
+{
+    unsigned i;
+
+    if (strcmp(kw, "PASSWORD") == 0) {
+        PUT(d, epws, strcmp(v, "SET") == 0 ? "(set)" : "(none)");
+        return;
+    }
+    if (strcmp(kw, "OURPASSWORD") == 0) {
+        PUT(d, eopws, strcmp(v, "SET") == 0 ? "(set)" : "(none)");
+        return;
+    }
+    for (i = 0; i < NF; i++)
+        if (strcmp(kw, pf[i].kw) == 0) {
+            oftp_isp_put((char *)&d->v + pf[i].off, (int)pf[i].len, v);
+            return;
+        }
+}
+
 /* One row of PARTNER SHOW: KEYWORD=VALUE pairs; the other words, the
 ** "source" row's, are skipped. The passwords are only told as SET or NONE.
 */
@@ -331,7 +352,6 @@ shown(void *ctx, const char *line)
     while (*p) {
         char tok[100], *eq;
         size_t n = 0;
-        unsigned i;
 
         while (*p == ' ')
             p++;
@@ -344,19 +364,7 @@ shown(void *ctx, const char *line)
         if ((eq = strchr(tok, '=')) == NULL)
             continue;
         *eq++ = '\0';
-        if (strcmp(tok, "PASSWORD") == 0) {
-            PUT(d, epws, strcmp(eq, "SET") == 0 ? "(set)" : "(none)");
-            continue;
-        }
-        if (strcmp(tok, "OURPASSWORD") == 0) {
-            PUT(d, eopws, strcmp(eq, "SET") == 0 ? "(set)" : "(none)");
-            continue;
-        }
-        for (i = 0; i < NF; i++)
-            if (strcmp(tok, pf[i].kw) == 0) {
-                oftp_isp_put((char *)&d->v + pf[i].off, (int)pf[i].len, eq);
-                break;
-            }
+        shown_value(d, tok, eq);
     }
 }
 
@@ -372,6 +380,54 @@ addkw(char *req, size_t cap, size_t *n, const char *kw, const char *v)
     return 0;
 }
 
+/* Does field i go into the request? ADD: what was filled in. CHANGE: what
+** differs from the old value; a blank keeps the value, except where blank
+** clears it, and a blank password is never sent.
+*/
+static int
+sent(int i, int adding, const char *old, const char *now)
+{
+    if (adding || i == F_PW || i == F_OPW)
+        return now[0] != '\0';
+    if (strcmp(now, old) == 0)
+        return 0;
+    return now[0] != '\0' || pf[i].clear;
+}
+
+/* The panel variables for the entry, and the values they start with */
+static int
+pentry_init(DLG *d, const char *name, int adding, PVAL old)
+{
+    char req[60];
+    int i;
+
+    for (i = 0; i < NF; i++)
+        memset((char *)&d->v + pf[i].off, ' ', pf[i].len);
+    PUT(d, enam, name);
+    PUT(d, ettl, adding ? "Add" : "Change");
+    PUT(d, epws, "(none)");
+    PUT(d, eopws, "(none)");
+    PUT(d, oftmsg, "");
+    memset(old, 0, sizeof(PVAL));
+    if (adding) {
+        PUT(d, elev, "5");
+        PUT(d, emod, "B");
+        PUT(d, ecmp, "N");
+        PUT(d, ecal, "Y");
+        PUT(d, eses, "1");
+        PUT(d, exlt, "N");
+        PUT(d, eenb, "Y");
+    } else {
+        snprintf(req, sizeof(req), "PARTNER SHOW PARTNER=%s", name);
+        if (ask(d, req, shown, d) != 0)
+            return -1;
+        PUT(d, oftmsg, "");
+    }
+    for (i = 0; i < NF; i++)
+        oftp_isp_get((char *)&d->v + pf[i].off, (int)pf[i].len, old[i]);
+    return 0;
+}
+
 /* The entry panel for a new partner or for one that is there. Returns 1
 ** when OFTPD took the change, whose answer is then in OFTMSG; 0 when the
 ** user left or nothing was to do.
@@ -384,30 +440,8 @@ pentry(DLG *d, const char *name, int adding)
     size_t n;
     int i, rc;
 
-    for (i = 0; i < NF; i++)
-        memset((char *)&d->v + pf[i].off, ' ', pf[i].len);
-    PUT(d, enam, name);
-    PUT(d, ettl, adding ? "Add" : "Change");
-    PUT(d, epws, "(none)");
-    PUT(d, eopws, "(none)");
-    PUT(d, oftmsg, "");
-    memset(old, 0, sizeof(old));
-    if (adding) {
-        PUT(d, elev, "5");
-        PUT(d, emod, "B");
-        PUT(d, ecmp, "N");
-        PUT(d, ecal, "Y");
-        PUT(d, eses, "1");
-        PUT(d, exlt, "N");
-        PUT(d, eenb, "Y");
-    } else {
-        snprintf(req, sizeof(req), "PARTNER SHOW PARTNER=%s", name);
-        if (ask(d, req, shown, d) != 0)
-            return 0;
-        PUT(d, oftmsg, "");
-    }
-    for (i = 0; i < NF; i++)
-        oftp_isp_get((char *)&d->v + pf[i].off, (int)pf[i].len, old[i]);
+    if (pentry_init(d, name, adding, old) != 0)
+        return 0;
 
     for (;;) {
         if (oftp_isp_exec("DISPLAY PANEL(OFTPPED)") != 0)
@@ -417,18 +451,9 @@ pentry(DLG *d, const char *name, int adding)
         n = (size_t)snprintf(req, sizeof(req), "PARTNER %s PARTNER=%s",
                              adding ? "ADD" : "CHANGE", name);
         rc = 0;
-        for (i = 0; i < NF && rc == 0; i++) {
-            if (adding) {
-                if (now[i][0] == '\0')
-                    continue;
-            } else if (i == F_PW || i == F_OPW) {
-                if (now[i][0] == '\0')      /* blank keeps the password */
-                    continue;
-            } else if (strcmp(now[i], old[i]) == 0
-                       || (now[i][0] == '\0' && !pf[i].clear))
-                continue;
-            rc = addkw(req, sizeof(req), &n, pf[i].kw, now[i]);
-        }
+        for (i = 0; i < NF && rc == 0; i++)
+            if (sent(i, adding, old[i], now[i]))
+                rc = addkw(req, sizeof(req), &n, pf[i].kw, now[i]);
         if (rc != 0) {
             PUT(d, oftmsg, "The entries do not fit one request");
             continue;
@@ -454,6 +479,31 @@ pdelete(DLG *d, const char *name)
         return;
     snprintf(req, sizeof(req), "PARTNER DELETE PARTNER=%s", name);
     ask(d, req, NULL, NULL);
+}
+
+/* A line command of the partner list other than S of a selection */
+static void
+pline(DLG *d, char cmd, const char *name, int selecting)
+{
+    char req[60];
+
+    if (cmd == 'C') {
+        snprintf(req, sizeof(req), "CALL PARTNER=%s", name);
+        ask(d, req, NULL, NULL);
+    } else if (selecting)
+        PUT(d, oftmsg, "S selects a partner, C calls it");
+    else if (cmd == 'M') {
+        if (pentry(d, name, 0) == 0)
+            PUT(d, oftmsg, "");
+    } else if (cmd == 'E' || cmd == 'X') {
+        snprintf(req, sizeof(req), "PARTNER CHANGE PARTNER=%s ENABLED=%c",
+                 name, cmd == 'E' ? 'Y' : 'N');
+        ask(d, req, NULL, NULL);
+    } else if (cmd == 'D')
+        pdelete(d, name);
+    else
+        PUT(d, oftmsg, "Line commands: C call, M modify, E enable, "
+            "X disable, D delete");
 }
 
 /* selecting: from Send's '?', S puts the partner into OFTPTN and the line
@@ -508,23 +558,7 @@ partners(DLG *d, int selecting)
             PUT(d, oftmsg, "");
             return;
         }
-        if (sel[0] == 'C') {
-            snprintf(req, sizeof(req), "CALL PARTNER=%s", name);
-            ask(d, req, NULL, NULL);
-        } else if (selecting)
-            PUT(d, oftmsg, "S selects a partner, C calls it");
-        else if (sel[0] == 'M') {
-            if (pentry(d, name, 0) == 0)
-                PUT(d, oftmsg, "");
-        } else if (sel[0] == 'E' || sel[0] == 'X') {
-            snprintf(req, sizeof(req), "PARTNER CHANGE PARTNER=%s ENABLED=%c",
-                     name, sel[0] == 'E' ? 'Y' : 'N');
-            ask(d, req, NULL, NULL);
-        } else if (sel[0] == 'D')
-            pdelete(d, name);
-        else
-            PUT(d, oftmsg, "Line commands: C call, M modify, E enable, "
-                "X disable, D delete");
+        pline(d, sel[0], name, selecting);
     }
 }
 

@@ -138,7 +138,8 @@ main(int argc, char **argv)
                      "no partner record yet");
             for (i = 0; i < 3; i++) {
                 memset(&pp, 0, sizeof(pp));
-                sprintf(pp.text, "PARTNER=PTN%d ODETTEID=O00130000PTN%d", i, i);
+                snprintf(pp.text, sizeof(pp.text), "PARTNER=PTN%d ODETTEID=O00130000PTN%d",
+                         i, i);
                 CHECK_EQ(oftp_spl_ptn_add(sp, &pp), 0, "add a partner record");
                 CHECK(memcmp(pp.key, "P000000", 7) == 0 && pp.key[7] == '1' + i,
                       "keys P0000001.. in order");

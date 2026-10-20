@@ -338,6 +338,18 @@ type.
   record that shadows it; deleting that record brings the parmlib entry
   back at once.
 
+**Passwords.** The P record is the entry as text, so `PASSWORD=` and
+`OURPASSWORD=` are in the spool in clear text, as they are in `OFTPPTN`.
+The spool cluster and every backup or copy of it need the protection of
+the parmlib member (`docs/partners.md`, `docs/installation.md` 5). That is
+the reason `SHOW` and every reply print `SET` or `NONE` and never the
+value, and why the utility masks them in its `SYSIN` echo.
+
+**If the P records cannot be read at start**, OFTPD does not start
+(`OFTP019E`): carrying on with the parmlib layer alone would bring back a
+partner that a command had disabled or changed, which is the wrong way to
+fail.
+
 **Why the spool.** OFTPD is the sole owner of the spool and already keeps
 the restart state in it; a partner kept there survives a restart with no
 new data set to allocate, protect and back up, and the write goes through
@@ -361,9 +373,11 @@ validate everything, write the spool record, change the table in memory.
 A failed spool write (451) leaves the table as it was.
 
 - ADD of a name that exists is 509; a keyword or value that does not
-  parse or check is 508, and nothing is written. A full table is 513.
+  parse or check is 508, and nothing is written. A full table is 514.
 - CHANGE of a partner with a session or a call in progress is 450, unless
-  only `ENABLED` changes. A change that changes nothing is 508. Disabling
+  only `ENABLED` changes. A change that changes nothing (including ENABLE
+of an enabled partner) is answered 200 "unchanged", nothing is written.
+Disabling
   a partner that an enabled partner names as `VIA` is 512.
 - **DELETE** takes maintained partners only (a parmlib-only partner is
   513: remove it from the member and REFRESH). It is 450 while the
@@ -376,7 +390,13 @@ A failed spool write (451) leaves the table as it was.
   operator decides; the transfers are deleted or purged and DELETE is
   repeated. If it finds none (or cannot read the spool: 451), the record
   is deleted and the table slot freed. A freed slot stays a gap in the
-  table until the next start.
+  table (sessions and the call state work by index) until `ADD` or
+  `REFRESH` takes it again; whatever belonged to the old partner in the
+  slot -- the call timer, an operator's CALL, the trace flag -- is cleared
+  with it (`ptn_slot_reset`).
+- DELETE and REFRESH read the whole spool under `lock(m,0)`, which holds
+  up session set-up for that time. That is fine at the spool sizes of
+  today; an index by partner would be the answer if it stops being so.
 - A disabled partner takes no `SEND` (501) and is not called; its queue is
   kept.
 

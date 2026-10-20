@@ -7,7 +7,7 @@
 #include "oftpcfg.h"
 
 static void
-say(OFTP_CFGMSG msg, void *ctx, const char *fmt, int lineno, const char *what)
+say(OFTP_CFGMSG msg, const void *ctx, const char *fmt, int lineno, const char *what)
 {
     char line[120];
 
@@ -224,11 +224,18 @@ next_kv(const char **pp, char *tok, char **v)
     return 1;
 }
 
+static OFTP_PARTNER *
+last_partner(OFTP_CONFIG *c)
+{
+    return c->nptn > 0 ? &c->ptn[c->nptn - 1] : NULL;
+}
+
 int
 oftp_cfg_line(OFTP_CONFIG *c, int partner, const char *text, int lineno,
-              OFTP_CFGMSG msg, void *ctx)
+              OFTP_CFGMSG msg, const void *ctx)
 {
     const char *p = text;
+    OFTP_PARTNER *cur = last_partner(c);
     int errors = 0;
 
     if (*p == '*')
@@ -257,17 +264,18 @@ oftp_cfg_line(OFTP_CONFIG *c, int partner, const char *text, int lineno,
                 continue;
             }
             np = &c->ptn[c->nptn++];
+            cur = np;
             oftp_cfg_newptn(np, "");
             np->line = lineno;
             rc = put(np->peer.name, sizeof(np->peer.name), v);
             if (rc == 0 && v[0] == '\0')
                 rc = -1;
-        } else if (c->nptn == 0) {
+        } else if (cur == NULL) {
             say(msg, ctx, "line %d: %s before the first PARTNER=", lineno, tok);
             errors++;
             continue;
         } else
-            rc = partner_kw(&c->ptn[c->nptn - 1], tok, v);
+            rc = partner_kw(cur, tok, v);
 
         if (rc == -2) {
             say(msg, ctx, "line %d: unknown keyword %s", lineno, tok);
@@ -276,8 +284,8 @@ oftp_cfg_line(OFTP_CONFIG *c, int partner, const char *text, int lineno,
             say(msg, ctx, "line %d: invalid value for %s", lineno, tok);
             errors++;
         }
-        if (rc != 0 && partner && c->nptn > 0)
-            c->ptn[c->nptn - 1].enabled = 0;
+        if (rc != 0 && partner && cur != NULL)
+            cur->enabled = 0;
     }
     c->errors += errors;
     return errors;
@@ -344,7 +352,7 @@ oftp_cfg_complete(const OFTP_CONFIG *c, OFTP_PARTNER *p)
 }
 
 int
-oftp_cfg_vias(OFTP_CONFIG *c, OFTP_CFGMSG msg, void *ctx)
+oftp_cfg_vias(OFTP_CONFIG *c, OFTP_CFGMSG msg, const void *ctx)
 {
     int i, j, off = 0;
 
@@ -378,7 +386,7 @@ oftp_cfg_vias(OFTP_CONFIG *c, OFTP_CFGMSG msg, void *ctx)
 }
 
 int
-oftp_cfg_finish(OFTP_CONFIG *c, OFTP_CFGMSG msg, void *ctx)
+oftp_cfg_finish(OFTP_CONFIG *c, OFTP_CFGMSG msg, const void *ctx)
 {
     int i, j, on = 0;
 

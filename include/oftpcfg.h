@@ -106,7 +106,7 @@ typedef struct oftp_config {
 } OFTP_CONFIG;
 
 /* Messages go through this, one line each */
-typedef void (*OFTP_CFGMSG)(void *ctx, const char *line);
+typedef void (*OFTP_CFGMSG)(const void *ctx, const char *line);
 
 extern void oftp_cfg_defaults(OFTP_CONFIG *c)           asm("OFTPCFGD");
 
@@ -114,13 +114,13 @@ extern void oftp_cfg_defaults(OFTP_CONFIG *c)           asm("OFTPCFGD");
 ** messages. Returns the number of errors in the line.
 */
 extern int  oftp_cfg_line(OFTP_CONFIG *c, int partner, const char *text,
-                          int lineno, OFTP_CFGMSG msg, void *ctx)
+                          int lineno, OFTP_CFGMSG msg, const void *ctx)
                                                         asm("OFTPCFGL");
 
 /* After the last line: checks each partner, disables the incomplete
 ** ones, fills its peer from the defaults. Returns the partners enabled.
 */
-extern int  oftp_cfg_finish(OFTP_CONFIG *c, OFTP_CFGMSG msg, void *ctx)
+extern int  oftp_cfg_finish(OFTP_CONFIG *c, OFTP_CFGMSG msg, const void *ctx)
                                                         asm("OFTPCFGF");
 
 /* The enabled partner with this name or Odette ID, or NULL. byid finds
@@ -208,7 +208,7 @@ extern void oftp_cfg_free(OFTP_CONFIG *c, int i)        asm("OFTPCFGW");
 /* Disables the enabled partners whose VIA names no enabled direct
 ** partner, saying so through msg. Returns how many.
 */
-extern int  oftp_cfg_vias(OFTP_CONFIG *c, OFTP_CFGMSG msg, void *ctx)
+extern int  oftp_cfg_vias(OFTP_CONFIG *c, OFTP_CFGMSG msg, const void *ctx)
                                                         asm("OFTPCFGJ");
 
 /* Partners that are not gaps, and those of them enabled */

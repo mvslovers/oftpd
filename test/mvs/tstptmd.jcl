@@ -1,10 +1,27 @@
+//TSTPTMP  JOB (OFTP),'OFTPPTN OF A',CLASS=A,MSGCLASS=H
+//* The OFTPPTN member of A, a sequential data set, written once before
+//* A is started the first time. TSTPM1 rewrites it without GONEPTN.
+//OLD      EXEC PGM=IEFBR14
+//DD1      DD  DISP=(MOD,DELETE),DSN=IBMUSER.TSTPTM.PTN,
+//             UNIT=SYSDA,SPACE=(TRK,1)
+//MAKE     EXEC PGM=IEBGENER
+//SYSPRINT DD  SYSOUT=*
+//SYSIN    DD  DUMMY
+//SYSUT1   DD  *
+PARTNER=PARMPTN ODETTEID=O0000000000PARM PORT=1 CALL=N
+PARTNER=GONEPTN ODETTEID=O0000000000GONE PORT=1 CALL=N
+/*
+//SYSUT2   DD  DSN=IBMUSER.TSTPTM.PTN,DISP=(NEW,CATLG),
+//             UNIT=SYSDA,SPACE=(TRK,1),
+//             DCB=(RECFM=FB,LRECL=80,BLKSIZE=3120)
 //TSTPTMA  JOB (OFTP),'OFTPD A',CLASS=A,MSGCLASS=H,MSGLEVEL=(1,1)
 //* ------------------------------------------------------------------
 //* The two OFTPDs TSTPTM needs, on one system, each as a batch job
 //* that runs until P TSTPTMA / P TSTPTMB (the second job is below).
 //*
 //* A is the one the commands go to: SVC=, ADMIN= the user who runs
-//* TSTPTM, and no partner at all in OFTPPTN. B only receives; it has
+//* TSTPTM, and the two parmlib partners PARMPTN and GONEPTN in
+//* OFTPPTN (the job above). B only receives; it has
 //* no SVC= (two OFTPDs cannot share one subsystem name), so it takes
 //* no commands, and the file is looked for in its INPREFIX data sets.
 //* The spools (INDEXED KEYS(8 0) RECORDSIZE(512 512), as OFTPSPL
@@ -27,9 +44,25 @@ PORT=3305 SVC=237 ADMIN=IBMUSER
 INPREFIX=IBMUSER.OFTPAIN TMPPREFIX=IBMUSER.OFTPATMP
 SDEB=4096 CREDIT=99 TIMEOUT=60 RETRY=60
 /*
-//OFTPPTN  DD  *
-* no partner here: TSTPTM adds its own with a command
+//OFTPPTN  DD  DISP=SHR,DSN=IBMUSER.TSTPTM.PTN
+//*
+//TSTPTMN  JOB (OFTP),'OFTPD A, NOBODY',CLASS=A,MSGCLASS=H,MSGLEVEL=(1,1)
+//* A again for TSTPM5, with a userid in ADMIN= that is not the one that
+//* runs TSTPTM: start it in place of the job above (after P TSTPTMA)
+//OFTPD    EXEC PGM=OFTPD,REGION=4096K
+//STEPLIB  DD  DISP=SHR,DSN=SYS2.LINKLIB
+//OFTPSPL  DD  DISP=OLD,DSN=IBMUSER.OFTPA.SPOOL
+//SYSPRINT DD  SYSOUT=*
+//STDOUT   DD  SYSOUT=*
+//STDERR   DD  SYSOUT=*
+//OFTPPRM  DD  *
+ODETTEID=O0000000000TSTA
+PORT=3305 SVC=237 ADMIN=NOBODY
+INPREFIX=IBMUSER.OFTPAIN TMPPREFIX=IBMUSER.OFTPATMP
+SDEB=4096 CREDIT=99 TIMEOUT=60 RETRY=60
 /*
+//OFTPPTN  DD  DISP=SHR,DSN=IBMUSER.TSTPTM.PTN
+//*
 //TSTPTMB  JOB (OFTP),'OFTPD B',CLASS=A,MSGCLASS=H,MSGLEVEL=(1,1)
 //OFTPD    EXEC PGM=OFTPD,REGION=4096K
 //STEPLIB  DD  DISP=SHR,DSN=SYS2.LINKLIB

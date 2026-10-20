@@ -114,6 +114,13 @@ time. Only spool entries are deleted, never data sets.
 The spool belongs to OFTPD alone: the utilities and the dialog never open
 it, they ask OFTPD.
 
+The spool also holds the partners kept by command (section 6), **with their
+passwords in clear text**, as `OFTPPTN` does. Protect the cluster and every
+backup or copy of it the way you protect `OFTPPTN`: only OFTPD's userid and
+the administrators may read it. If OFTPD cannot read the partner records at
+start it stops with `OFTP019E` instead of starting with the parmlib table
+alone, which could bring back a partner that was disabled by command.
+
 ## 6. Settings and partners
 
 Copy `OFTPD.SAMPLIB(OFTPPRM0)` and `(OFTPPTN0)` to `SYS2.PARMLIB` and edit

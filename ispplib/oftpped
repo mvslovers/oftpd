@@ -15,23 +15,25 @@
 +    Odette ID   ===>_Z                        + up to 25 characters
 +    Password    ===>#Z       +@OFTEPWS +the partner's to us; blank keeps
 +    Our passwd  ===>#Z       +@OFTEOPS +ours to the partner; blank keeps
-+    Our ID      ===>_Z                        + blank: the ODETTEID of OFTPD
++    Our ID      ===>_Z                        + default: the ODETTEID of OFTPD
 +
 %  Where
 +    Host        ===>_Z                                                       +
 +                    blank: the partner calls us, OFTPD does not call it
-+    Port        ===>_Z    + blank: 3305    Address ===>_Z              +
++    Port        ===>_Z    + default 3305   Address ===>_Z              +
 +                                                  calls only from here
 %  How
 +    Level       ===>_Z+ 5, 4, 2, 1       Mode ===>_Z+ S, R or B
 +    Compress    ===>_Z+ Y or N           Call ===>_Z+ Y: OFTPD calls it
-+    Sessions    ===>_Z + blank: 1         Translate ===>_Z+ Y or N
++    Sessions    ===>_Z + default 1        Translate ===>_Z+ Y or N
 +    Via         ===>_Z       + reached through this partner
 +    Enabled     ===>_Z+ Y or N
 +
 !OFTMSG
 +
-+  Enter saves, END leaves without saving.
++  Enter saves, END leaves without saving. Add: a blank field takes its
++  default. Change: a blank field keeps its value, only Host, Address and
++  Via are cleared by it.
 )INIT
   .ZVARS = '(EID EPW EOP EOI EHS EPT EAD ELV EMD ECM ECL ESE EXL EVI EEN)'
   .CURSOR = EID
