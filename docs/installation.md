@@ -122,7 +122,8 @@ them. Each member describes its keywords at the top.
 - `OFTPPRM0`: this system's Odette ID (`ODETTEID`, required), the OFTP
   port (`PORT`, 3305), the SVC the utilities reach OFTPD through
   (`SVC=237`; without it they find no OFTPD), the userids that may manage
-  every transfer (`ADMIN=`, one per userid), and the prefixes for received files
+  every transfer (`ADMIN=`, one per userid; without a security product
+  nobody can be one, section 8), and the prefixes for received files
   (`INPREFIX`, `TMPPREFIX`). A received file is stored as
   `INPREFIX.<virtual file name>`. `RELAY=Y` makes this system a node that
   passes files on to its partners. `KEEPDAYS` is how long finished
@@ -220,17 +221,35 @@ data set, not a member.
 product (RAKF) whether your userid may read the data set, and refuses
 with `not authorized` (RC 8) when it may not -- an administrator
 included. So a data set needs the profile that protects it; under RAKF a
-data set no profile covers may be read by everyone.
+data set no profile covers may be read by everyone. A caller that has no
+userid at all, an address space without a security environment, is
+refused the same way, with `not authorized: the caller has no userid`
+(RC 8), also for `DISP(DELETE)`: there is no one whose authority could be
+checked.
 
-A transfer belongs to the userid that queued it. That userid sees and
-changes it; so does a userid named in `ADMIN=`, which sees and changes
-every transfer, including the received ones, which belong to nobody.
-Anyone else gets `not your transfer` (RC 8). `LIST` shows an
-administrator everything, and `LIST MINE` only their own. On a system
-without a security product there is no one to tell apart, so every caller
-sees and changes every transfer. `CALL` and
-`PURGE` are for an administrator only; `PURGE DAYS(0)` deletes every
-finished transfer, however recent.
+### Who may see and change a transfer
+
+With a security product (RAKF or RACF), a transfer belongs to the userid
+that queued it. That userid sees and changes it; so does a userid named in
+`ADMIN=`, which sees and changes every transfer, including the received
+ones, which belong to nobody. Anyone else gets `not your transfer`
+(RC 8). `LIST` shows an administrator everything, and `LIST MINE` only
+their own.
+
+Without a security product (the system has no RAKF or RACF) there is no
+userid to tell callers apart, and OFTPD does not try: **every caller sees
+and changes every transfer**. `LIST`, `SHOW`, `HOLD`, `RELEASE`, `RETRY`
+and `DELETE` work on any transfer, whoever queued it, the received ones
+included, and `LIST MINE` lists them all. A `SEND` is not checked against
+a data set profile, since there is none. So on such a system give OFTPD
+only to people who may touch each other's transfers.
+
+`CALL`, `PURGE` and `REFRESH` need a userid in `ADMIN=` in either case.
+Without a security product no caller has a userid, so OFTPD refuses these
+three from the utility and the dialog; the utility prints `needs ADMIN= in
+OFTPPRM` (RC 8). The operator's `F OFTPD,CALL`, `F OFTPD,PURGE` and
+`F OFTPD,REFRESH` (section 7) are not affected. `PURGE DAYS(0)` deletes
+every finished transfer, however recent.
 
 ## 9. The ISPF dialog
 

@@ -42,7 +42,10 @@
 *              CALL partners; one ADMIN= per userid, at most 8.
 *              Anyone else sees and changes only the transfers they
 *              queued. Received files belong to nobody, so only an
-*              ADMIN= userid sees them.                        (none)
+*              ADMIN= userid sees them. On a system without a
+*              security product nobody has a userid: everyone sees
+*              and changes every transfer, and CALL, PURGE and
+*              REFRESH from the utility are refused.           (none)
 *
 * ADMIN=IBMUSER
 *
