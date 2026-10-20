@@ -4,6 +4,12 @@
 * the keywords after it belong to that partner. An entry with an error
 * is disabled, the others still work.
 *
+* This member is the seed. Partners can also be added, changed and
+* deleted while OFTPD runs (OFTP PARTNER ..., the ISPF dialog); OFTPD
+* keeps those in its spool, and a partner of the same name there wins
+* over the entry here. REFRESH reads this member only and leaves them
+* alone.
+*
 * ODETTEID     the partner's Odette ID (required)
 * PASSWORD     the password the partner sends
 * OURPASSWORD  the password we send

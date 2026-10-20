@@ -450,7 +450,7 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
     OFTP_SPREC r;
     OFTP_DSOPT opt;
     char final[45], last[8];
-    int rc;
+    int rc, live;
 
     OFTP_PARTNER *next = NULL, *target = NULL;
     OFTP_SFIDCMD alloc;
@@ -514,7 +514,17 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
         strcpy(r.target, target != next ? target->peer.name : "");
         strcpy(r.partner, next->peer.name);
     }
-    if (oftp_spl_add(c->m->spool, &r) != 0) {
+    lock(c->m, 0);
+    live = next == NULL || (next->enabled
+                            && strcmp(next->peer.name, r.partner) == 0);
+    rc = live ? oftp_spl_add(c->m->spool, &r) : 0;
+    unlock(c->m, 0);
+    if (!live) {
+        oftp_mon_msg("OFTP223W %s: %s FOR %s REFUSED, NO ROUTE",
+                     c->pt->peer.name, f->dsn, f->dest);
+        return 2;
+    }
+    if (rc != 0) {
         *retry = 'Y';
         return 99;
     }
@@ -779,6 +789,11 @@ p_lookup(void *ctx, const char *code, OFTP_PEER *peer)
     }
     i = ptn_index(c->m, p);
     lock(c->m, 0);
+    /* disabled or deleted by command since the lookup above */
+    if (!p->enabled) {
+        unlock(c->m, 0);
+        return -1;
+    }
     if ((n = c->m->busy[i]) >= p->sessions) {
         unlock(c->m, 0);
         oftp_mon_msg("OFTP202W %s REFUSED, %d SESSIONS RUNNING, SESSIONS=%d",
@@ -1179,7 +1194,8 @@ due(OFTP_MON *m, int *sends, int *erps)
         else
             continue;
         for (i = 0; i < m->cfg.nptn; i++)
-            if (strcmp(m->cfg.ptn[i].peer.name, r.partner) == 0)
+            if (m->cfg.ptn[i].peer.name[0]
+                && strcmp(m->cfg.ptn[i].peer.name, r.partner) == 0)
                 n[i]++;
     }
 }
@@ -1287,7 +1303,10 @@ sched_thread(void *arg1, void *arg2)
                 || (!m->callreq[i] && (long)time(NULL) < m->tcall[i]))
                 continue;
             lock(m, 0);
-            if (m->busy[i] >= p->sessions || m->nsess >= m->cfg.maxsess
+            /* PARTNER DELETE, CHANGE or ADD may have run since the test
+            ** above; the slot counts only while it is still ours to call */
+            if (!p->peer.name[0] || !p->enabled || !p->call || !p->host[0]
+                || m->busy[i] >= p->sessions || m->nsess >= m->cfg.maxsess
                 || (!more && m->busy[i] > 0)) {
                 unlock(m, 0);
                 continue;
@@ -1386,7 +1405,7 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
     OFTP_PARTNER *p;
     char partner[16], dsn[60], vfn[40], fmt[4], xl[4], user[12];
     char hold[4], disp[8], reply[100], sdate[8], stime[8], swin[16];
-    int empty;
+    int empty, live, rc;
     char *lp;
     struct tm *tm;
     time_t now = time(NULL);
@@ -1530,7 +1549,23 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
     unlock(m, 0);
     r.tqueued = (long)now;
     settext(&r, r.state == SPL_HELD ? "queued and held" : "queued");
-    if (oftp_spl_add(m->spool, &r) != 0) {
+    /* the partner may have been disabled or deleted by command since it
+    ** was looked up; PARTNER DELETE looks through the spool under this
+    ** lock, so a send is either seen by it or refused here */
+    lock(m, 0);
+    live = p->enabled && strcmp(p->peer.name, r.partner) == 0;
+    if (live && r.target[0]) {
+        int t = oftp_cfg_slot(&m->cfg, r.target);
+
+        live = t >= 0 && m->cfg.ptn[t].enabled;
+    }
+    rc = live ? oftp_spl_add(m->spool, &r) : 0;
+    unlock(m, 0);
+    if (!live) {
+        ctl_put(o, "501 unknown or disabled partner");
+        return;
+    }
+    if (rc != 0) {
         ctl_put(o, "451 spool not available");
         return;
     }
@@ -1825,6 +1860,8 @@ ctl_partners(OFTP_MON *m, CTLOUT *o)
     for (i = 0; i < m->cfg.nptn; i++) {
         OFTP_PARTNER *p = &m->cfg.ptn[i];
 
+        if (p->peer.name[0] == '\0')
+            continue;
         snprintf(out, sizeof(out), "100 %-8s %-25s %-8s %s LEVEL %d %s%s",
                  p->peer.name, p->peer.code,
                  p->enabled ? "ENABLED" : "DISABLED",
@@ -1833,7 +1870,7 @@ ctl_partners(OFTP_MON *m, CTLOUT *o)
                  p->via[0] ? p->via : "");
         ctl_put(o, out);
     }
-    snprintf(out, sizeof(out), "200 %d partners", m->cfg.nptn);
+    snprintf(out, sizeof(out), "200 %d partners", oftp_cfg_count(&m->cfg, NULL));
     ctl_put(o, out);
 }
 
@@ -1842,7 +1879,7 @@ ctl_status(OFTP_MON *m, CTLOUT *o)
 {
     OFTP_SPREC r;
     char last[8], out[160];
-    int cnt[128], i, on = 0, total = 0;
+    int cnt[128], on = 0, all, total = 0;
 
     memset(cnt, 0, sizeof(cnt));
     last[0] = '\0';
@@ -1851,14 +1888,12 @@ ctl_status(OFTP_MON *m, CTLOUT *o)
         cnt[(unsigned char)r.state & 0x7F]++;
         total++;
     }
-    for (i = 0; i < m->cfg.nptn; i++)
-        if (m->cfg.ptn[i].enabled)
-            on++;
+    all = oftp_cfg_count(&m->cfg, &on);
     snprintf(out, sizeof(out), "100 Odette ID %s, OFTP port %d, SVC %d",
              m->cfg.odetteid, m->cfg.port, m->cfg.svc);
     ctl_put(o, out);
     snprintf(out, sizeof(out), "100 sessions %d of %d, partners %d of %d enabled",
-             m->nsess, m->cfg.maxsess, on, m->cfg.nptn);
+             m->nsess, m->cfg.maxsess, on, all);
     ctl_put(o, out);
     snprintf(out, sizeof(out), "100 spool %d: queued %d, waiting %d, held %d, "
              "active %d, sent %d", total, cnt[SPL_QUEUED & 0x7F],
@@ -1935,6 +1970,391 @@ ctl_purge(OFTP_MON *m, CTLOUT *o, const char *line)
     ctl_put(o, out);
 }
 
+/* ---- partner maintenance ------------------------------------------ */
+/* PARTNER ADD|CHANGE|DELETE|SHOW (internals/design.md section 4). The
+** order of every change is: check it, write the spool, then the table in
+** memory -- so what is in the spool is never behind what runs, and a
+** failed write changes nothing. The whole change is under lock(m, 0).
+*/
+
+static void
+ptn_put(OFTP_MON *m, int i, const OFTP_PARTNER *n)
+{
+    OFTP_PARTNER t = *n;
+    int on = n->enabled;
+
+    /* a reader without the lock must not see half an enabled entry */
+    t.enabled = 0;
+    m->cfg.ptn[i] = t;
+    m->cfg.ptn[i].enabled = on;
+}
+
+/* How many transfers of the spool name the partner (to, behind or from),
+** or -1 when the spool cannot be read to the end
+*/
+static int
+spool_uses(OFTP_MON *m, const char *name)
+{
+    OFTP_SPREC r;
+    char last[8];
+    int n = 0, rc;
+
+    last[0] = '\0';
+    while ((rc = oftp_spl_next(m->spool, last, &r)) == 0) {
+        memcpy(last, r.key, 8);
+        if (strcmp(r.partner, name) == 0 || strcmp(r.target, name) == 0
+            || strcmp(r.from, name) == 0)
+            n++;
+    }
+    return rc == OFTP_SPL_NOTFOUND ? n : -1;
+}
+
+/* The partner as text for the spool: 0, or -1 when it does not fit */
+static int
+ptn_rec(OFTP_MON *m, const OFTP_PARTNER *p, OFTP_SPPTN *rec)
+{
+    return oftp_cfg_text(&m->cfg, p, rec->text, sizeof(rec->text)) < 0 ? -1 : 0;
+}
+
+static int
+ptn_via_users(OFTP_MON *m, const char *name, int enabled_only)
+{
+    int i;
+
+    for (i = 0; i < m->cfg.nptn; i++)
+        if (m->cfg.ptn[i].via[0] && strcmp(m->cfg.ptn[i].via, name) == 0
+            && (!enabled_only || m->cfg.ptn[i].enabled))
+            return i;
+    return -1;
+}
+
+static void
+ctl_show_ptn(OFTP_MON *m, CTLOUT *o, const char *rest)
+{
+    OFTP_PARTNER p;
+    char name[16], out[160];
+    int i, n;
+
+    kw(rest, "PARTNER", name, sizeof(name));
+    lock(m, 0);
+    if ((i = oftp_cfg_slot(&m->cfg, name)) < 0) {
+        unlock(m, 0);
+        ctl_put(o, "501 no such partner");
+        return;
+    }
+    p = m->cfg.ptn[i];
+    n = m->busy[i];
+    unlock(m, 0);
+
+    snprintf(out, sizeof(out), "100 PARTNER=%s ODETTEID=%s OURID=%s",
+             p.peer.name, p.peer.code, p.peer.ourcode);
+    ctl_put(o, out);
+    snprintf(out, sizeof(out), "100 HOST=%s PORT=%d LEVEL=%d MODE=%c",
+             p.host, p.port, p.peer.level, p.peer.mode);
+    ctl_put(o, out);
+    snprintf(out, sizeof(out), "100 ENABLED=%c CALL=%c SESSIONS=%d COMPRESS=%c"
+             " XLATE=%c", p.enabled ? 'Y' : 'N', p.callwant ? 'Y' : 'N',
+             p.sessions, p.peer.cmpr ? 'Y' : 'N', p.xlate ? 'Y' : 'N');
+    ctl_put(o, out);
+    snprintf(out, sizeof(out), "100 SDEB=%u CREDIT=%u ADDRESS=%s VIA=%s",
+             p.peer.sdeb, p.peer.cred, p.address, p.via);
+    ctl_put(o, out);
+    snprintf(out, sizeof(out), "100 PASSWORD=%s OURPASSWORD=%s",
+             p.peer.pswd_in[0] ? "SET" : "NONE",
+             p.peer.pswd_out[0] ? "SET" : "NONE");
+    ctl_put(o, out);
+    snprintf(out, sizeof(out), "100 source: %s; %d sessions now",
+             p.skey[0] == '\0' ? "OFTPPTN"
+             : p.ovr ? "kept by command, overrides OFTPPTN"
+                     : "kept by command", n);
+    ctl_put(o, out);
+    ctl_put(o, "200 partner");
+}
+
+/* The state of one PARTNER ADD, CHANGE or DELETE; the worker functions
+** run under lock(m, 0) and leave the reply line in out
+*/
+typedef struct {
+    char        name[16];
+    const char *rest;                   /* the keywords of the request   */
+    int         slot;
+    int         ovr;                    /* DELETE: OFTPPTN has the name  */
+    char        out[160];
+} PTNREQ;
+
+enum { PTN_NO, PTN_DONE, PTN_SAME, PTN_MORE };
+
+/* A slot that is freed or given to another partner starts clean: the
+** call timer, an operator's CALL and the trace flag belong to the
+** partner, not to the slot
+*/
+static void
+ptn_slot_reset(OFTP_MON *m, int i)
+{
+    m->tcall[i] = 0;
+    m->callreq[i] = 0;
+    m->trace[i] = 0;
+}
+
+static int
+ptn_refuse(PTNREQ *q, const char *line)
+{
+    snprintf(q->out, sizeof(q->out), "%s", line);
+    return PTN_NO;
+}
+
+static int
+ptn_why(PTNREQ *q, const char *why)
+{
+    snprintf(q->out, sizeof(q->out), "508 %s", why);
+    return PTN_NO;
+}
+
+static int
+ptn_delete(OFTP_MON *m, PTNREQ *q)
+{
+    OFTP_PARTNER *old = q->slot >= 0 ? &m->cfg.ptn[q->slot] : NULL;
+    OFTP_PARTNER n;
+    OFTP_SPPTN rec;
+    int k, uses, was;
+
+    if (old == NULL)
+        return ptn_refuse(q, "501 no such partner");
+    n = *old;
+    if (old->skey[0] == '\0')
+        return ptn_refuse(q, "513 the partner is in OFTPPTN: remove it there,"
+                          " then REFRESH");
+    if (m->busy[q->slot] > 0 || m->calling[q->slot] > 0)
+        return ptn_refuse(q, "450 the partner has a session now, try again");
+    k = ptn_via_users(m, q->name, 0);
+    if (k >= 0) {
+        snprintf(q->out, sizeof(q->out), "512 partner %s is reached through "
+                 "it", m->cfg.ptn[k].peer.name);
+        return PTN_NO;
+    }
+    /* disabled first: nothing new is queued for it, nor accepted from it,
+    ** while the spool is looked through */
+    was = old->enabled;
+    if (was) {
+        memset(&rec, 0, sizeof(rec));
+        n.enabled = 0;
+        memcpy(rec.key, old->skey, 8);
+        if (ptn_rec(m, &n, &rec) != 0 || oftp_spl_ptn_put(m->spool, &rec) != 0)
+            return ptn_refuse(q, "451 spool not available");
+        old->enabled = 0;
+    }
+    uses = spool_uses(m, q->name);
+    if (uses < 0)
+        return ptn_refuse(q, "451 spool not available");
+    if (uses > 0) {
+        snprintf(q->out, sizeof(q->out), "512 %d transfers in the spool name "
+                 "partner %s%s: PURGE or DELETE them first", uses, q->name,
+                 was ? " (it is disabled now)" : "");
+        return PTN_NO;
+    }
+    if (oftp_spl_ptn_del(m->spool, old->skey) != 0)
+        return ptn_refuse(q, "451 spool not available");
+    q->ovr = old->ovr;
+    oftp_cfg_free(&m->cfg, q->slot);
+    ptn_slot_reset(m, q->slot);
+    return PTN_DONE;
+}
+
+/* CHANGE: does it change anything, and may it now? PTN_MORE when it may;
+** n carries the spool key and the override flag of the old entry then
+*/
+static int
+ptn_change_ok(OFTP_MON *m, PTNREQ *q, OFTP_PARTNER *n)
+{
+    const OFTP_PARTNER *old = &m->cfg.ptn[q->slot];
+    OFTP_PARTNER t = *n;
+    char a[OFTP_SPLRECL], b[OFTP_SPLRECL];
+    int k;
+
+    /* the entries as the spool would hold them: equal text, equal entry */
+    if (oftp_cfg_text(&m->cfg, n, a, sizeof(a)) < 0
+        || oftp_cfg_text(&m->cfg, old, b, sizeof(b)) < 0)
+        return ptn_refuse(q, "508 the entry is too long");
+    if (strcmp(a, b) == 0) {
+        snprintf(q->out, sizeof(q->out), "200 partner %s unchanged", q->name);
+        return PTN_SAME;
+    }
+    if (m->busy[q->slot] > 0 || m->calling[q->slot] > 0) {
+        /* a session reads the entry as it runs: only the switch may
+        ** change under it */
+        t.enabled = old->enabled;
+        if (oftp_cfg_text(&m->cfg, &t, a, sizeof(a)) < 0)
+            return ptn_refuse(q, "508 the entry is too long");
+        if (strcmp(a, b) != 0)
+            return ptn_refuse(q, "450 the partner has a session now, try "
+                              "again");
+    }
+    if (!n->enabled && old->enabled) {
+        k = ptn_via_users(m, q->name, 1);
+        if (k >= 0) {
+            snprintf(q->out, sizeof(q->out), "512 partner %s is reached "
+                     "through it: disable that first",
+                     m->cfg.ptn[k].peer.name);
+            return PTN_NO;
+        }
+    }
+    memcpy(n->skey, old->skey, 8);
+    n->ovr = old->ovr;
+    return PTN_MORE;
+}
+
+/* The record of a partner into the spool: its own, or a new one (a
+** parmlib partner changed for the first time shadows its member entry)
+*/
+static int
+ptn_store(OFTP_MON *m, OFTP_PARTNER *n, OFTP_SPPTN *rec, int adding)
+{
+    int rc;
+
+    if (n->skey[0] != '\0') {
+        memcpy(rec->key, n->skey, 8);
+        return oftp_spl_ptn_put(m->spool, rec);
+    }
+    rc = oftp_spl_ptn_add(m->spool, rec);
+    if (rc == 0) {
+        memcpy(n->skey, rec->key, 8);
+        n->ovr = !adding;
+    }
+    return rc;
+}
+
+static int
+ptn_save(OFTP_MON *m, PTNREQ *q, int adding)
+{
+    OFTP_PARTNER n;
+    OFTP_SPPTN rec;
+    char why[80];
+    int i = q->slot;
+    int rc;
+
+    memset(&rec, 0, sizeof(rec));
+    if (adding)
+        oftp_cfg_newptn(&n, q->name);
+    else
+        n = m->cfg.ptn[i];
+    if (oftp_cfg_apply(&n, q->rest, why, sizeof(why)) != 0)
+        return ptn_why(q, why);
+    oftp_cfg_complete(&m->cfg, &n);
+    if (!adding) {
+        rc = ptn_change_ok(m, q, &n);
+        if (rc != PTN_MORE)
+            return rc;
+    }
+    if (oftp_cfg_check(&m->cfg, &n, adding ? -1 : i, why, sizeof(why)) != 0)
+        return ptn_why(q, why);
+    if (ptn_rec(m, &n, &rec) != 0)
+        return ptn_refuse(q, "508 the entry is too long");
+    if (adding) {
+        i = oftp_cfg_alloc(&m->cfg);
+        if (i < 0)
+            return ptn_refuse(q, "514 the partner table is full");
+    }
+    if (ptn_store(m, &n, &rec, adding) != 0) {
+        if (adding)
+            oftp_cfg_free(&m->cfg, i);
+        return ptn_refuse(q, "451 spool not available");
+    }
+    ptn_put(m, i, &n);
+    if (adding)
+        ptn_slot_reset(m, i);
+    else
+        m->tcall[i] = 0;
+    q->slot = i;
+    return PTN_DONE;
+}
+
+/* what the operator and the caller are told once the lock is off */
+static void
+ptn_report(OFTP_MON *m, CTLOUT *o, PTNREQ *q, const char *sub)
+{
+    if (strcmp(sub, "DELETE") == 0) {
+        oftp_mon_msg("OFTP245I PARTNER %s DELETED BY %s", q->name, ctl_by(o));
+        if (!q->ovr)
+            snprintf(q->out, sizeof(q->out), "200 partner %s deleted",
+                     q->name);
+        else if (oftp_mon_refresh(m) < 0)
+            snprintf(q->out, sizeof(q->out), "200 partner %s deleted; "
+                     "OFTPPTN cannot be read, its entry is back after the "
+                     "next REFRESH", q->name);
+        else
+            snprintf(q->out, sizeof(q->out), "200 partner %s deleted; the "
+                     "OFTPPTN entry is back", q->name);
+        return;
+    }
+    oftp_mon_msg("OFTP24%cI PARTNER %s %s BY %s", sub[0] == 'A' ? '3' : '4',
+                 q->name, sub[0] == 'A' ? "ADDED" : "CHANGED", ctl_by(o));
+    ecb_post(&m->wake, 0);
+    snprintf(q->out, sizeof(q->out), "200 partner %s %s", q->name,
+             sub[0] == 'A' ? "added" : "changed");
+}
+
+static void
+ctl_partner(OFTP_MON *m, CTLOUT *o, const char *line)
+{
+    PTNREQ q;
+    char sub[10];
+    const char *rest = line + 7;
+    int k = 0;
+    int rc;
+    int adding;
+
+    while (*rest == ' ')
+        rest++;
+    while (*rest && *rest != ' ' && k < (int)sizeof(sub) - 1)
+        sub[k++] = *rest++;
+    sub[k] = '\0';
+    while (*rest == ' ')
+        rest++;
+    if (strcmp(sub, "SHOW") == 0) {
+        ctl_show_ptn(m, o, rest);
+        return;
+    }
+    adding = strcmp(sub, "ADD") == 0;
+    if (!adding && strcmp(sub, "CHANGE") != 0 && strcmp(sub, "DELETE") != 0) {
+        ctl_put(o, "500 PARTNER ADD, CHANGE, DELETE or SHOW");
+        return;
+    }
+    if (!o->admin) {
+        ctl_put(o, "507 needs ADMIN= in OFTPRM");
+        return;
+    }
+    memset(&q, 0, sizeof(q));
+    kw(rest, "PARTNER", q.name, sizeof(q.name));
+    if (q.name[0] == '\0' || strlen(q.name) > 8
+        || strspn(q.name, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#@$_-")
+           != strlen(q.name)) {
+        ctl_put(o, "508 PARTNER= is a name of 1 to 8 letters, digits, "
+                "# @ $ _ -");
+        return;
+    }
+    if (m->spool == NULL) {
+        ctl_put(o, "451 spool not available");
+        return;
+    }
+    q.rest = rest;
+
+    lock(m, 0);
+    q.slot = oftp_cfg_slot(&m->cfg, q.name);
+    if (adding && q.slot >= 0)
+        rc = ptn_refuse(&q, "509 partner exists: use CHANGE");
+    else if (!adding && q.slot < 0)
+        rc = ptn_refuse(&q, "501 no such partner");
+    else if (sub[0] == 'D')
+        rc = ptn_delete(m, &q);
+    else
+        rc = ptn_save(m, &q, adding);
+    unlock(m, 0);
+
+    if (rc == PTN_DONE)
+        ptn_report(m, o, &q, sub);
+    ctl_put(o, q.out);
+}
+
 static void
 ctl_request(OFTP_MON *m, CTLOUT *o, char *line)
 {
@@ -1961,6 +2381,8 @@ ctl_request(OFTP_MON *m, CTLOUT *o, char *line)
         ctl_call(m, o, line);
     else if (strncmp(line, "PARTNERS", 8) == 0)
         ctl_partners(m, o);
+    else if (strncmp(line, "PARTNER ", 8) == 0)
+        ctl_partner(m, o, line);
     else if (strncmp(line, "STATUS", 6) == 0)
         ctl_status(m, o);
     else if (strncmp(line, "PURGE", 5) == 0)
@@ -2259,7 +2681,7 @@ oftp_mon_svc_stop(OFTP_MON *m)
 /* ---- configuration ----------------------------------------------- */
 
 static void
-cfgmsg(void *ctx, const char *line)
+cfgmsg(const void *ctx, const char *line)
 {
     oftp_mon_msg("OFTP010W %s: %s", (const char *)ctx, line);
 }
@@ -2278,17 +2700,106 @@ oftp_mon_load(OFTP_CONFIG *c, const char *dd, int partner)
         /* fixed records: columns 73-80 are sequence numbers */
         if (strlen(line) > 72)
             line[72] = '\0';
-        oftp_cfg_line(c, partner, line, ++n, cfgmsg, (void *)dd);
+        oftp_cfg_line(c, partner, line, ++n, cfgmsg, dd);
     }
     fclose(fp);
     return 0;
+}
+
+/* Two enabled partners with one Odette ID cannot both stand: the one kept
+** by command stays, else the first.
+*/
+static void
+ptn_dups(OFTP_CONFIG *c)
+{
+    int i, j;
+
+    for (j = 0; j < c->nptn; j++) {
+        OFTP_PARTNER *p = &c->ptn[j];
+
+        if (!p->enabled)
+            continue;
+        for (i = 0; i < c->nptn; i++) {
+            const OFTP_PARTNER *q = &c->ptn[i];
+            int pk = p->skey[0] != '\0', qk = q->skey[0] != '\0';
+
+            if (i == j || !q->enabled
+                || strcmp(q->peer.code, p->peer.code) != 0)
+                continue;
+            if (qk > pk || (qk == pk && i < j)) {
+                oftp_mon_msg("OFTP018W PARTNER %s HAS THE ODETTEID OF %s, "
+                             "DISABLED", p->peer.name, q->peer.name);
+                p->enabled = 0;
+                break;
+            }
+        }
+    }
+}
+
+int
+oftp_mon_maint(OFTP_MON *m)
+{
+    OFTP_SPPTN rec;
+    char last[8];
+    int n = 0, ovr = 0, rc;
+
+    last[0] = '\0';
+    while ((rc = oftp_spl_ptn_next(m->spool, last, &rec)) == 0) {
+        OFTP_PARTNER p;
+        char name[16], why[80];
+        size_t l;
+        int i;
+
+        memcpy(last, rec.key, 8);
+        rec.text[sizeof(rec.text) - 1] = '\0';
+        l = strncmp(rec.text, "PARTNER=", 8) == 0
+            ? strcspn(rec.text + 8, " ") : 0;
+        if (l == 0 || l >= sizeof(p.peer.name)) {
+            oftp_mon_msg("OFTP018W PARTNER RECORD %.8s HAS NO NAME, IGNORED",
+                         rec.key);
+            continue;
+        }
+        memcpy(name, rec.text + 8, l);
+        name[l] = '\0';
+        oftp_cfg_newptn(&p, name);
+        if (oftp_cfg_apply(&p, rec.text, why, sizeof(why)) != 0) {
+            oftp_mon_msg("OFTP018W PARTNER RECORD %.8s: %s, IGNORED",
+                         rec.key, why);
+            continue;
+        }
+        oftp_cfg_complete(&m->cfg, &p);
+        memcpy(p.skey, rec.key, 8);
+        if ((i = oftp_cfg_slot(&m->cfg, name)) >= 0) {
+            if (m->cfg.ptn[i].skey[0] != '\0') {
+                oftp_mon_msg("OFTP018W PARTNER RECORD %.8s: %s IS KEPT BY "
+                             "COMMAND ALREADY, IGNORED", rec.key, name);
+                continue;
+            }
+            p.ovr = 1;
+            ovr++;
+        } else if ((i = oftp_cfg_alloc(&m->cfg)) < 0) {
+            oftp_mon_msg("OFTP015W PARTNER %s NOT ADDED, TABLE FULL", name);
+            continue;
+        }
+        m->cfg.ptn[i] = p;
+        n++;
+    }
+    if (rc != OFTP_SPL_NOTFOUND) {
+        oftp_mon_msg("OFTP018W THE PARTNER RECORDS OF THE SPOOL CANNOT BE READ");
+        return -1;
+    }
+    ptn_dups(&m->cfg);
+    oftp_cfg_vias(&m->cfg, cfgmsg, "SPOOL");
+    oftp_mon_msg("OFTP018I %d PARTNERS KEPT BY COMMAND, %d OVERRIDE OFTPPTN",
+                 n, ovr);
+    return n;
 }
 
 int
 oftp_mon_refresh(OFTP_MON *m)
 {
     OFTP_CONFIG *n;
-    int i, j, on = 0, added = 0, dropped = 0;
+    int i, j, on = 0, added = 0, dropped = 0, removed = 0;
 
     if ((n = malloc(sizeof(*n))) == NULL)
         return -1;
@@ -2299,43 +2810,55 @@ oftp_mon_refresh(OFTP_MON *m)
         free(n);
         return -1;
     }
-    oftp_cfg_finish(n, cfgmsg, (void *)"OFTPPTN");
+    oftp_cfg_finish(n, cfgmsg, "OFTPPTN");
 
     lock(m, 0);
     for (i = 0; i < m->cfg.nptn; i++) {
         OFTP_PARTNER *o = &m->cfg.ptn[i];
 
-        for (j = 0; j < n->nptn; j++)
-            if (strcmp(n->ptn[j].peer.name, o->peer.name) == 0)
-                break;
-        if (j == n->nptn) {
-            if (o->enabled)
-                dropped++;
-            o->enabled = 0;
-        } else {
+        if (o->peer.name[0] == '\0')
+            continue;
+        j = oftp_cfg_slot(n, o->peer.name);
+        if (o->skey[0] != '\0') {
+            /* kept by command: the spool wins, the member's entry of the
+            ** name is not used */
+            o->ovr = j >= 0;
+            if (j >= 0)
+                n->ptn[j].peer.name[0] = '\0';
+        } else if (j >= 0) {
             *o = n->ptn[j];
             m->tcall[i] = 0;                    /* perhaps a new HOST */
             n->ptn[j].peer.name[0] = '\0';     /* taken */
+        } else if (m->busy[i] == 0 && m->calling[i] == 0
+                   && spool_uses(m, o->peer.name) == 0) {
+            oftp_cfg_free(&m->cfg, i);
+            ptn_slot_reset(m, i);
+            removed++;
+        } else {
+            if (o->enabled)
+                dropped++;
+            o->enabled = 0;
         }
     }
     for (j = 0; j < n->nptn; j++) {
         if (n->ptn[j].peer.name[0] == '\0')
             continue;
-        if (m->cfg.nptn >= OFTP_MAXPTN) {
+        if ((i = oftp_cfg_alloc(&m->cfg)) < 0) {
             oftp_mon_msg("OFTP015W PARTNER %s NOT ADDED, TABLE FULL",
                          n->ptn[j].peer.name);
             continue;
         }
-        m->cfg.ptn[m->cfg.nptn++] = n->ptn[j];
+        m->cfg.ptn[i] = n->ptn[j];
+        ptn_slot_reset(m, i);
         added++;
     }
-    for (i = 0; i < m->cfg.nptn; i++)
-        if (m->cfg.ptn[i].enabled)
-            on++;
+    ptn_dups(&m->cfg);
+    oftp_cfg_vias(&m->cfg, cfgmsg, "OFTPPTN");
+    oftp_cfg_count(&m->cfg, &on);
     unlock(m, 0);
     free(n);
-    oftp_mon_msg("OFTP016I PARTNERS RELOADED: %d ENABLED, %d NEW, %d DISABLED",
-                 on, added, dropped);
+    oftp_mon_msg("OFTP016I PARTNERS RELOADED: %d ENABLED, %d NEW, %d DISABLED,"
+                 " %d REMOVED", on, added, dropped, removed);
     return on;
 }
 
@@ -2553,27 +3076,36 @@ cmd_trace(OFTP_MON *m, const char *onoff, const char *ptn)
 }
 
 static void
-cmd_display(OFTP_MON *m, const char *what)
+display_partners(OFTP_MON *m)
 {
     int i;
 
-    if (what[0] == 'P') {
-        for (i = 0; i < m->cfg.nptn; i++) {
-            OFTP_PARTNER *p = &m->cfg.ptn[i];
-            char ss[32];
+    for (i = 0; i < m->cfg.nptn; i++) {
+        OFTP_PARTNER *p = &m->cfg.ptn[i];
+        char ss[32];
 
-            ss[0] = '\0';
-            if (m->busy[i])
-                snprintf(ss, sizeof(ss), " %d OF %d SESSIONS", m->busy[i],
-                         p->sessions);
-            if (m->trace_all || m->trace[i])
-                strcat(ss, " TRACE");
-            oftp_mon_msg("OFTP100I %-8s %-25s %s%s LEVEL %d %s:%d", p->peer.name,
-                         p->peer.code, p->enabled ? "ENABLED" : "DISABLED",
-                         ss, p->peer.level, p->host[0] ? p->host : "-", p->port);
-        }
-        oftp_mon_msg("OFTP101I %d PARTNERS, %d SESSIONS", m->cfg.nptn, m->nsess);
-        show_trace(m);
+        if (p->peer.name[0] == '\0')
+            continue;
+        ss[0] = '\0';
+        if (m->busy[i])
+            snprintf(ss, sizeof(ss), " %d OF %d SESSIONS", m->busy[i],
+                     p->sessions);
+        if (m->trace_all || m->trace[i])
+            strcat(ss, " TRACE");
+        oftp_mon_msg("OFTP100I %-8s %-25s %s%s LEVEL %d %s:%d", p->peer.name,
+                     p->peer.code, p->enabled ? "ENABLED" : "DISABLED",
+                     ss, p->peer.level, p->host[0] ? p->host : "-", p->port);
+    }
+    oftp_mon_msg("OFTP101I %d PARTNERS, %d SESSIONS",
+                 oftp_cfg_count(&m->cfg, NULL), m->nsess);
+    show_trace(m);
+}
+
+static void
+cmd_display(OFTP_MON *m, const char *what)
+{
+    if (what[0] == 'P') {
+        display_partners(m);
     } else if (what[0] == 'Q') {
         OFTP_SPREC r;
         char last[8];

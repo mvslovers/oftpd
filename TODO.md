@@ -281,7 +281,21 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 - ~~Log to a SYSOUT data set instead of every line by WTO; a log-only
   message class (design 8)~~ -- #47: `DD OFTPLOG`, class `P`,
   `docs/messages.md`. Not done: a log viewer, log switching, size limits.
-- `docs/`: a configuration guide beside `docs/installation.md`.
+- `docs/`: a configuration guide beside `docs/installation.md`
+  (`docs/partners.md` is the first part of it).
+- ~~Partner maintenance by command and ISPF~~ (#46): `PARTNER
+  ADD|CHANGE|DELETE|SHOW` over the SVC, `OFTP PARTNER ...`, the dialog's
+  partner list and entry panels; the partners kept by command are P
+  records in the spool and win over `OFTPPTN` by name, `REFRESH` reads
+  `OFTPPTN` only (design 4). A partner with transfers in the spool is
+  never deleted. Measured (container, 2026-10-20, after the review
+  fixes; after the security review A is 60/60 and `TSTSPL` 64/64, the
+  rest unchanged): `TSTPTM` A 29/29, P1 10/10, P2 4/4, B 13/13, C 8/8 (two
+  OFTPDs: add, change, send, refused delete, OFTPPTN partners, REFRESH,
+  restart, delete, non-admin refusals), `TSTPTN`, `TSTSPL`; the trace of
+  a deleted partner is gone from the slot a new one takes (by hand,
+  console). **Not measured**: the ISPF panels and `OFTPI` (built,
+  nothing drives them; `test/tso/` has no script for them yet).
 - ~~GitHub repository, CI~~ — `mvslovers/oftpd` (2026-10-13).
 
 - ~~#13: about 520 bytes per session abend~~ -- libc370's `try()`
@@ -302,7 +316,7 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 
 - Restart, buffer compression, NERP generation beyond a relay that gives
   up, post-processing (JCL and exit), naming patterns for received data
-  sets, partner maintenance by command/ISPF, virtual local Odette IDs,
+  sets, virtual local Odette IDs,
   routing beyond one hop, cross-memory transport.
 
 ## Maintainer decisions

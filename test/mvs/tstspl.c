@@ -250,12 +250,111 @@ main(int argc, char **argv)
                  "putif of a key not there: NOTFOUND");
 #ifdef OFTP_DEBUG_ABEND
         abend_recovery(sp);
-        oftp_spl_close(sp);
-        printf("  the spool thread ended and closed after the abends\n");
+        printf("  the spool thread served on after the abends\n");
 #else
         printf("  SKIP: the abend recovery needs -DOFTP_DEBUG_ABEND\n");
-        oftp_spl_close(sp);
 #endif
+
+        /* partners kept by command: 'P' keys, apart from the transfers */
+        {
+            OFTP_SPPTN pp, qq;
+            int before = 0, after = 0;
+
+            last[0] = '\0';
+            while (oftp_spl_next(sp, last, &g) == 0) {
+                memcpy(last, g.key, 8);
+                before++;
+            }
+            memset(last, 0, 8);
+            CHECK_EQ(oftp_spl_ptn_next(sp, last, &qq), OFTP_SPL_NOTFOUND,
+                     "no partner record yet");
+            for (i = 0; i < 3; i++) {
+                memset(&pp, 0, sizeof(pp));
+                snprintf(pp.text, sizeof(pp.text), "PARTNER=PTN%d ODETTEID=O00130000PTN%d",
+                         i, i);
+                CHECK_EQ(oftp_spl_ptn_add(sp, &pp), 0, "add a partner record");
+                CHECK(memcmp(pp.key, "P000000", 7) == 0 && pp.key[7] == '1' + i,
+                      "keys P0000001.. in order");
+            }
+            n = 0;
+            last[0] = '\0';
+            while (oftp_spl_ptn_next(sp, last, &qq) == 0) {
+                memcpy(last, qq.key, 8);
+                n++;
+            }
+            CHECK_EQ(n, 3, "next walks the three partner records");
+            CHECK(strcmp(qq.text, "PARTNER=PTN2 ODETTEID=O00130000PTN2") == 0,
+                  "the text is back");
+            last[0] = '\0';
+            while (oftp_spl_next(sp, last, &g) == 0) {
+                memcpy(last, g.key, 8);
+                after++;
+            }
+            CHECK_EQ(after, before, "the walk over transfers does not see them");
+            CHECK_EQ(oftp_spl_purge(sp, 1000000, &cnt), 0, "purge");
+            memcpy(last, "P0000002", 8);
+            CHECK_EQ(oftp_spl_ptn_next(sp, last, &qq), 0,
+                     "and does not take them");
+            CHECK(memcmp(qq.key, "P0000003", 8) == 0, "next is above the key given");
+
+            /* the transfer calls never reach a partner record (it holds
+            ** passwords) or the control record */
+            memset(&g, 0, sizeof(g));
+            memcpy(g.key, "P0000001", 8);
+            CHECK_EQ(oftp_spl_get(sp, "P0000001", &g), OFTP_SPL_NOTFOUND,
+                     "get of a partner key: NOTFOUND");
+            CHECK(g.key[0] == 'P' && g.dsn[0] == '\0',
+                  "and nothing of the partner record is copied out");
+            CHECK_EQ(oftp_spl_get(sp, "\0\0\0\0\0\0\0\0", &g),
+                     OFTP_SPL_NOTFOUND, "get of the control key: NOTFOUND");
+            CHECK_EQ(oftp_spl_put(sp, &g), OFTP_SPL_NOTFOUND,
+                     "put under a partner key: NOTFOUND");
+            CHECK_EQ(oftp_spl_putif(sp, &g, SPL_QUEUED), OFTP_SPL_NOTFOUND,
+                     "putif under a partner key: NOTFOUND");
+            CHECK_EQ(oftp_spl_del(sp, "P0000001"), OFTP_SPL_NOTFOUND,
+                     "del of a partner key: NOTFOUND");
+            memset(&pp, 0, sizeof(pp));
+            memcpy(pp.key, "T0000001", 8);
+            CHECK_EQ(oftp_spl_ptn_put(sp, &pp), OFTP_SPL_NOTFOUND,
+                     "the partner calls do not reach a transfer");
+            CHECK_EQ(oftp_spl_ptn_del(sp, "T0000001"), OFTP_SPL_NOTFOUND,
+                     "nor delete one");
+            CHECK_EQ(oftp_spl_get(sp, keys[1], &g), 0, "the transfers are still there");
+            CHECK_EQ(oftp_spl_ptn_next(sp, "P0000002", &qq), 0,
+                     "and the partner record is untouched");
+
+            strcpy(pp.text, "PARTNER=PTN2 ODETTEID=O00130000PTN2 HOST=x.example.org");
+            memcpy(pp.key, "P0000003", 8);
+            CHECK_EQ(oftp_spl_ptn_put(sp, &pp), 0, "replace a partner record");
+            memcpy(pp.key, "P0000009", 8);
+            CHECK_EQ(oftp_spl_ptn_put(sp, &pp), OFTP_SPL_NOTFOUND,
+                     "replace of a record not there: NOTFOUND");
+            CHECK_EQ(oftp_spl_ptn_del(sp, "P0000002"), 0, "delete the middle one");
+            CHECK_EQ(oftp_spl_ptn_del(sp, "P0000002"), OFTP_SPL_NOTFOUND,
+                     "delete again: NOTFOUND");
+            memset(&pp, 0, sizeof(pp));
+            strcpy(pp.text, "PARTNER=PTN3 ODETTEID=O00130000PTN3");
+            CHECK(oftp_spl_ptn_add(sp, &pp) == 0 && memcmp(pp.key, "P0000004", 8) == 0,
+                  "a new record goes above the highest, into no gap");
+        }
+        oftp_spl_close(sp);
+
+        /* they are there after a reopen */
+        sp = oftp_spl_open("OFTPSPL", why, sizeof(why));
+        CHECK(sp != NULL, "reopen again");
+        if (sp != NULL) {
+            OFTP_SPPTN qq;
+
+            n = 0;
+            last[0] = '\0';
+            while (oftp_spl_ptn_next(sp, last, &qq) == 0) {
+                memcpy(last, qq.key, 8);
+                n++;
+            }
+            CHECK_EQ(n, 3, "three partner records survive");
+            CHECK(strstr(qq.text, "PTN3") != NULL, "the last one is PTN3");
+            oftp_spl_close(sp);
+        }
     }
     return mbt_test_summary("TSTSPL");
 }

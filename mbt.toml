@@ -62,6 +62,9 @@ reus = false
 [test.TSTVER]
 sources = ["test/tstver.c"]
 
+[test.TSTPTN]            # maintaining the partner table in memory
+sources = ["test/tstptn.c"]
+
 [test.TSTSESS]           # two engines joined by a socket pair; POSIX
 sources = ["test/tstsess.c"]
 mvs = false
@@ -96,6 +99,12 @@ ac = 1
 # OFTPD's first tick. Runs for real only from test/mvs/tstkeep.jcl.
 [test.TSTKEEP]
 sources = ["test/mvs/tstkeep.c"]
+host = false
+
+# Maintaining the partner table at run time against two RUNNING OFTPDs;
+# runs for real only from test/mvs/tstptm.jcl (PARM='RUN ...').
+[test.TSTPTM]
+sources = ["test/mvs/tstptm.c"]
 host = false
 
 # The cross-memory transport end to end: an unauthorized, problem-state
