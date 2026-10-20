@@ -301,6 +301,9 @@ the defaults are the same. A partner cannot be renamed.
 - With #cmd("CHANGE") an operand that is left out keeps its value. A value in
   empty parentheses, such as #cmd("HOST()"), is accepted and stores an empty
   value, which clears the host, the address, the via or a password.
+- Write every operand with its value. A lone word after the name, such as
+  #cmd("COMPRESS") without parentheses, is read as the partner name once more
+  and refused with the answer #cmd("a partner cannot be renamed").
 - OFTPD turns the whole request into upper case. A password and a
   #cmd("HOST") that are given with the command are stored in upper case,
   although a #cmd("HOST") in #cmd("OFTPPTN") keeps its case.
@@ -322,7 +325,7 @@ disabled, but nothing else of it can be changed\; #cmd("CHANGE") is refused
 with the code 450 and can be repeated later. #cmd("CHANGE") is also refused
 with the code 512 if it would disable a partner through which an enabled
 partner is reached (see @cfg-via). A #cmd("CHANGE") that would change nothing is
-answered with #cmd("partner name unchanged"), and the return code 0.
+answered with #cmd("partner name unchanged").
 
 === SHOW <cmd-partner-show>
 
@@ -371,9 +374,9 @@ entry is back after the next REFRESH").
 
 === Answers and Messages <cmd-partner-ans>
 
-The answer of OFTPD is the last line of the command. The return code follows
-the code at its start, which the utility does not show (see @cmd-rc). The
-codes that the #cmd("PARTNER") command uses are in @cmd-partner-tab.
+The answer of OFTPD is the last line of the command. The utility does not
+show the code at its start. The codes that the #cmd("PARTNER") command uses are
+in @cmd-partner-tab.
 
 #tab(caption: [Answers of the PARTNER command])[
   #table(columns: (0.7in, 1fr),
@@ -384,8 +387,7 @@ codes that the #cmd("PARTNER") command uses are in @cmd-partner-tab.
     [450], [The partner has a session now, try again.],
     [451], [The spool is not available. Nothing was changed, except that a
       partner that was being deleted may have been disabled.],
-    [501], [There is no such partner. The utility writes it as
-      #cmd("OFTP010E") and ends with the return code 12.],
+    [501], [There is no such partner.],
     [507], [The user is not an administrator.],
     [508], [The partner name or an operand is not valid, or the entry is too
       long. The answer gives the reason.],
@@ -415,8 +417,9 @@ A password given with #cmd("ADD") or #cmd("CHANGE") needs care.
 - It is visible where it is typed: in the JCL or the #cmd("SYSIN") data that
   holds the command, and on the screen at a terminal. When the utility reads
   the commands from #cmd("SYSIN") it echoes each one with the prefix
-  #cmd("OFTP"), and writes stars in place of the value of #cmd("PASSWORD") and
-  #cmd("OURPASSWORD"). That masks the echo only.
+  #cmd("OFTP"), and writes a star in place of each character of the value of
+  #cmd("PASSWORD") and #cmd("OURPASSWORD"), so the echo still shows how long the
+  password is. That masks the echo only.
 - The request passes through a slot in common storage (CSA) on its way to
   OFTPD. OFTPD wipes the request from the slot as soon as it has taken it.
 - #cmd("SHOW") and the ISPF dialog show whether a password is set, never the
@@ -448,14 +451,12 @@ commands come from #cmd("SYSIN"), it ends with the highest.
     [0], [The command was carried out.],
     [4], [A warning, or refused for now: the data set is empty\; there is no
       such transfer\; the transfer is in a session\; the transfer changed
-      meanwhile\; the partner has a session now\; OFTPD is busy\; the spool
+      meanwhile\; OFTPD is busy\; the spool
       or storage is not available.],
     [8], [An error in the command or in its data set: an operand is wrong or
       too long, the data set is not found, not allowed or cannot be opened,
       the state does not allow the change, it is not your transfer, the user
-      is not an administrator, the command is unknown, or a #cmd("PARTNER")
-      command is refused: the partner exists, is in use, is only in
-      #cmd("OFTPPTN"), or the table is full.],
+      is not an administrator, or the command is unknown.],
     [12], [Severe: the partner is unknown, not enabled or cannot be called,
       or OFTPD is not reached or does not answer completely.],
   )

@@ -197,6 +197,12 @@ starts ISPF.
 - #cmd("OFTPD.ISPPLIB") to the #cmd("ISPPLIB") allocation,
 - #cmd("OFTPD.LINKLIB") to the #cmd("ISPLLIB") allocation.
 
+Put #cmd("OFTPD.ISPPLIB") last in the #cmd("ISPPLIB") concatenation. It is
+received with the block size 3120, which is smaller than that of the panel
+libraries of ISPF. In a test, ISPF with #cmd("OFTPD.ISPPLIB") in front of a
+library of the block size 19040 ended at READY without a screen\; with the
+library behind the large one it worked.
+
 Start the dialog with
 
 #screen(```
@@ -252,7 +258,10 @@ the passwords as *(set)* or *(none)*, never as text. A blank password keeps the
 password as it is\; type a new one to replace it. Another field that you leave
 as it is stays as it is, and a blank Host, Address or Via is cleared. Enter
 saves, and END leaves the panel without saving. If OFTPD refuses the change, the
-reason is on the panel, and you can correct the entry.
+reason is on the panel, and you can correct the entry. The message line of the
+dialog has 80 columns, and a longer answer is cut\; the answer of a refused
+#cmd("DELETE") is one of these. The command #cmd("OFTP PARTNER DELETE") gives
+the whole answer.
 
 The letter *D* shows a panel that asks you to confirm. Enter deletes the
 partner, and END leaves it. OFTPD refuses it under the same rules as the
