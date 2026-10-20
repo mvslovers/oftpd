@@ -257,6 +257,13 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   was called at 17:03:02, not before); `TSTSCH` 32/32. libc370#392
   (`mktime()` ignores the zone) is worked around. Later from rvs: a
   deadline (`ENDDATE`/`ENDTIME`) and `ERRJOB`.
+- ~~Receive rules, names and REPLACE~~ (#44, `internals/receive-rules.md`
+  sections 6 and 7): member `OFTPRCV0`, first match wins, `DSN=` symbols,
+  `REPLACE=Y` by renaming the old data set aside, unit/volume/space/XLATE;
+  measured between two OFTPDs in a container (`TSTRCVM`). Open from it:
+  the job after receipt (MVS-42, its identity decided there), `TO=`
+  forwarding, GDG, SYSOUT, tape; not measured on MVS: a receive failing
+  midway with `REPLACE=Y`, `XLATE=`, `SPACE=` with no size in the SFID.
 - Log to a SYSOUT data set instead of every line by WTO; a log-only
   message class (design 8).
 - `docs/`: a configuration guide beside `docs/installation.md`.
@@ -273,9 +280,8 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 ## After the MVP
 
 - Restart, buffer compression, NERP generation beyond a relay that gives
-  up, post-processing (JCL and exit), naming patterns for received data
-  sets, partner maintenance by command/ISPF, virtual local Odette IDs,
-  routing beyond one hop, cross-memory transport.
+  up, post-processing (JCL and exit), partner maintenance by command/ISPF,
+  virtual local Odette IDs, routing beyond one hop, cross-memory transport.
 
 ## Maintainer decisions
 

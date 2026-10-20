@@ -106,6 +106,12 @@ host = false
 sources = ["test/mvs/tstsvc.c"]
 host = false
 
+# Receive rules (#44) against two RUNNING OFTPDs; runs for real only from
+# test/mvs/tstrcvm.jcl (PARM='RUN n').
+[test.TSTRCVM]
+sources = ["test/mvs/tstrcvm.c"]
+host = false
+
 # The SMP installation package (mbt package): the load modules go to
 # OFTPD.LINKLIB (SMP's, distribution library OFTPD.AOFTPLOD), samplib/
 # and ispplib/ are received as text libraries beside it.

@@ -137,6 +137,82 @@ them. Each member describes its keywords at the top.
 The sockets are the Hercules host's: `127.0.0.1` is the machine Hercules
 runs on, not MVS, and the OFTP port is opened there.
 
+### Receive rules
+
+Without any rule a received file is stored as `INPREFIX.<virtual file
+name>`, and a name that already exists is refused. A rule changes that for
+the files it matches. Copy `OFTPD.SAMPLIB(OFTPRCV0)` to `SYS2.PARMLIB`
+(the procedure's `OFTPRCV` DD points at it) and add rules; the sample
+describes every keyword at the top and has two examples. A member with only
+comments changes nothing, and so does a missing DD.
+
+```
+RULE=ORDERS  FROM=PARTNER1  VFN=ORDERS.*
+             DSN=PROD.ORDERS.Y%YYYY.D%MM%DD.T%HH%MI%SS
+RULE=INVOICE FROM=*  VFN=INV?????.DATA
+             DSN=ACCT.IN.%VFN  REPLACE=Y  VOLSER=WORK01  SPACE=30
+```
+
+`RULE=name` opens a rule (1 to 8 characters, unique) and the keywords after
+it belong to it, written as in the partner member. Lines are read to column
+72; `*` in column 1 starts a comment.
+
+| Keyword | Meaning |
+|---|---|
+| `FROM=` | a partner name from `OFTPPTN0`, or `*` (the default) for any |
+| `VFN=` | the virtual file name; `*` is any number of characters, `?` exactly one, case does not matter (default `*`) |
+| `DSN=` | the data set name, with the symbols below; without it the file gets the `INPREFIX` name |
+| `REPLACE=` | `Y`: an existing data set is replaced once the new file has been received and closed; `N` (default): the file is refused |
+| `UNIT=` `VOLSER=` | where the data set is allocated, instead of the `OFTPPRM0` values |
+| `SPACE=` | primary space in tracks (1 to 9999), the secondary is half of it plus one; used only when the sender's file description gives no size |
+| `XLATE=` | `Y` or `N`: translate this file or not, instead of what the partner entry says |
+
+**The first rule in member order that matches the partner and the file
+name decides**, so put the narrow rules before the wide ones. If none
+matches, the file is treated as it was before rules existed.
+
+Symbols in `DSN=`; everything else is taken literally (letters, digits,
+`@ # $ - .`):
+
+| Symbol | Value |
+|---|---|
+| `%VFN` | the virtual file name |
+| `%Q1` to `%Q9` | its first to ninth qualifier (between the dots) |
+| `%ID` | the partner's name |
+| `%YYYY` `%MM` `%DD` `%HH` `%MI` `%SS` | the time the file arrived |
+| `%CTR` | the 4 digits of the sender's file counter |
+| `%KEY` | the transfer's spool key, `T` and 7 digits |
+
+The name is checked as a data set name when the file arrives: qualifiers of
+1 to 8 characters starting with a letter or a national character, 44 in all.
+A date in a qualifier therefore needs a letter in front of it and at most 7
+characters in all: `Y%YYYY` is 5, `D%MM%DD` is 5, `T%HH%MI%SS` is 7, but
+`D%YYYY%MM%DD` is 9 and comes out invalid. A name that comes out invalid
+refuses the file with reason 01 (the sender does not retry) and the console
+shows `OFTP224W` with the rule's name. A file that exists with `REPLACE=N`
+is refused with reason 13 and `OFTP225W`; the sender tries again later, so
+delete the data set or give the rule `REPLACE=Y`.
+
+With `REPLACE=Y` the old data set is renamed out of the way only when the
+new file is complete and closed, then the new one takes its name and the old
+one is deleted (`OFTP229I`). A file that fails on the way costs nothing. A
+data set that is in use makes the replace fail: the file is refused at the
+end (reason 12, `OFTP221E` or `OFTP226E`) and the old data set stays. If a crash leaves an old
+copy behind, it is `TMPPREFIX.B<key>` (`OFTP228W` names it); delete it by
+hand.
+
+`F OFTPD,REFRESH` reads the rule member again together with the other two,
+and replaces the whole set. **A member with any error is not used at all**:
+the lines in error are reported with `OFTP010W`, `OFTP025E` says the old
+rules stay, and the files that arrive meanwhile follow the old rules. A
+good member is acknowledged with `OFTP024I RECEIVE RULES: n READ`, at start
+as well. `OFTP026W` means the DD cannot be opened now and the old rules
+stay. A rule for a partner that is not in `OFTPPTN0` is an error, so
+refresh the partners and the rules together.
+
+Not (yet) part of the rules: a job after receipt, passing a file on, GDGs,
+SYSOUT and tape.
+
 Coming from 0.1.0: the TCP control port is gone. Remove `CONTROLPORT=`
 from `OFTPPRM0` (OFTPD reports it as an unknown keyword with `OFTP010W`)
 and add `SVC=237`, without which the utilities and the dialog cannot
@@ -145,8 +221,8 @@ reach OFTPD at all.
 ## 7. The procedure
 
 Copy `OFTPD.SAMPLIB(OFTPD)` to `SYS2.PROCLIB`. Its `STEPLIB` already names
-`OFTPD.LINKLIB`. Its defaults are `SYS2.PARMLIB` (members `OFTPPRM0` and
-`OFTPPTN0`) and the spool `OFTP.SPOOL`; give your spool's name either in
+`OFTPD.LINKLIB`. Its defaults are `SYS2.PARMLIB` (members `OFTPPRM0`,
+`OFTPPTN0` and `OFTPRCV0`; `R=` names another rules member) and the spool `OFTP.SPOOL`; give your spool's name either in
 the procedure (`S=`) or when starting it.
 
 Under RAKF, the started task's userid may need update access to the
@@ -162,7 +238,7 @@ work.
 
 The operator commands are listed at the top of the procedure: `F OFTPD,D P`
 (partners), `D Q` (the spool), `D S` (sessions), `F OFTPD,CALL name`,
-`F OFTPD,REFRESH` (read the partner member again), `F OFTPD,HOLD name`
+`F OFTPD,REFRESH` (read the partner and rules members again), `F OFTPD,HOLD name`
 and `F OFTPD,RELEASE name` (every send to that partner, `ALL` for every
 partner: queued and waiting ones are held, held ones queued again),
 `F OFTPD,PURGE [days]`

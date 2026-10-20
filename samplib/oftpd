@@ -1,4 +1,4 @@
-//OFTPD    PROC M=OFTPPRM0,P=OFTPPTN0,
+//OFTPD    PROC M=OFTPPRM0,P=OFTPPTN0,R=OFTPRCV0,
 //            D='SYS2.PARMLIB',
 //            S='OFTP.SPOOL'
 //*
@@ -6,18 +6,20 @@
 //*
 //* Installation:
 //*   Copy to SYS2.PROCLIB(OFTPD)
-//*   Copy OFTPPRM0 and OFTPPTN0 to SYS2.PARMLIB and edit them
+//*   Copy OFTPPRM0, OFTPPTN0 and OFTPRCV0 to SYS2.PARMLIB and edit them
 //*   Define the spool once with the job in member OFTPSPL
 //*
 //* Starting:    /S OFTPD
 //*              /S OFTPD,M=OFTPPRM1     (another monitor member)
 //*              /S OFTPD,P=OFTPPTN1     (another partner member)
+//*              /S OFTPD,R=OFTPRCV1     (other receive rules)
 //*              /S OFTPD,S='MY.SPOOL'   (another spool)
 //* Commands:    /F OFTPD,D P            (partners)
 //*              /F OFTPD,D Q            (the spool)
 //*              /F OFTPD,D S            (sessions)
 //*              /F OFTPD,CALL partner   (call a partner now)
-//*              /F OFTPD,REFRESH        (read the partner member again)
+//*              /F OFTPD,REFRESH        (read the partner member and the
+//*                                       receive rules again)
 //*              /F OFTPD,HOLD partner   (every send to it; ALL)
 //*              /F OFTPD,RELEASE partner
 //*              /F OFTPD,PURGE 30       (finished transfers > 30 days)
@@ -30,6 +32,7 @@
 //STEPLIB  DD  DISP=SHR,DSN=@LINKLIB@
 //OFTPPRM  DD  DSN=&D(&M),DISP=SHR,FREE=CLOSE
 //OFTPPTN  DD  DSN=&D(&P),DISP=SHR
+//OFTPRCV  DD  DSN=&D(&R),DISP=SHR
 //OFTPSPL  DD  DSN=&S,DISP=OLD
 //SYSPRINT DD  SYSOUT=*
 //STDOUT   DD  SYSOUT=*
