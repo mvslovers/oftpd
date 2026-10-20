@@ -74,6 +74,30 @@ main(void)
     CHECK(rc == 0 && strcmp(s, "//  PARM='?id,?pfile'") == 0,
           "symbols are upper case");
 
+    /* a symbol ends where its name ends: ?IDX is another name, not ?ID and X */
+    s = sub("//  PARM='?IDX,?PFILE1,?KEYS,?VFILEX,?ID1,?IDx'", &rc);
+    CHECK(rc == 0 && strcmp(s, "//  PARM='?IDX,?PFILE1,?KEYS,?VFILEX,?ID1,?IDx'") == 0,
+          "?ID, ?PFILE, ?KEY, ?VFILE followed by a letter or digit are other names");
+    s = sub("//  PARM='?ID.X,?ID-?KEY,(?ID),?ID'", &rc);
+    CHECK(rc == 0 && strcmp(s, "//  PARM='PARTNER1.X,PARTNER1-T0000042,(PARTNER1),PARTNER1'") == 0,
+          "after a symbol: a dot, a minus, a bracket, a quote, the end all end it");
+    ctx.vfile = "A'B";
+    s = sub("//  PARM='?VFILEX'", &rc);
+    CHECK_EQ(rc, 0, "?VFILEX is no ?VFILE: the check of its value does not apply");
+    ctx.vfile = "ORDERS.JAN";
+
+    /* the buffer for a record: from the lrecl of this open, none for a format
+    ** or a length the reader cannot take */
+    CHECK_EQ((int)oftp_sub_bufsize(0, 80), 84, "RECFM=F 80: the record and slack");
+    CHECK_EQ((int)oftp_sub_bufsize(0, 133), 137, "a wider record than the first one");
+    CHECK_EQ((int)oftp_sub_bufsize(0, 32760), 32764, "the widest block");
+    CHECK_EQ((int)oftp_sub_bufsize(0, 0), 0, "lrecl 0: no buffer");
+    CHECK_EQ((int)oftp_sub_bufsize(0, -1), 0, "lrecl negative: no buffer");
+    CHECK_EQ((int)oftp_sub_bufsize(1, 84), 88, "RECFM=V counts the RDW in lrecl");
+    CHECK_EQ((int)oftp_sub_bufsize(2, 80), 0, "RECFM=U: not a job");
+    CHECK_EQ((int)oftp_sub_bufsize(2, 0), 0, "RECFM=U and lrecl 0");
+    CHECK_EQ((int)oftp_sub_bufsize(3, 80), 0, "a format that does not exist");
+
     /* the text of a // line is columns 1-71, 72 is the continuation mark and
     ** 73-80 the sequence numbers */
     strcpy(rec, "//X DD DSN=?PFILE");

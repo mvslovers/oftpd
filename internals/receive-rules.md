@@ -346,6 +346,15 @@ so they get no job.
   the reader and writes. Between the passes the member could be edited; a
   failure in the second pass closes the reader, and what was written is
   then run. That window is the reading of one member.
+  The record buffer is sized from the `lrecl` of each open, not of the
+  first one (`oftp_sub_bufsize`), because the second open can be a member
+  that was edited to a longer record. A member with `RECFM=U` or an `lrecl`
+  that is not positive is refused ("RECORD FORMAT NOT SUPPORTED"); what
+  `lrecl` is for a U data set was not measured, the refusal does not depend
+  on it.
+- **A symbol ends at a non-alphanumeric.** `?IDX`, `?PFILE1` and `?KEYS` are
+  other names and stay as they are (tstsub.c); `?ID.X` and `?ID-?KEY` are
+  symbols. The first version matched by prefix.
 - **Width.** A record starting `//` has its text in columns 1 to 71, column
   72 is the continuation mark and 73 to 80 are sequence numbers (a comma
   that landed in 72 would be read by JES as a continuation mark, measured

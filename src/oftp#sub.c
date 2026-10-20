@@ -12,28 +12,33 @@ nz(const char *s)
 
 /* The symbol at p (which points at the '?'): its value, or NULL when it
 ** is none. *len gets the length of its name including the '?', *theirs
-** is set for the one that holds the partner's text.
+** is set for the one that holds the partner's text. A name ends at a
+** character that is no letter or digit: ?IDX is another name.
 */
 static const char *
 symbol(const char *p, const OFTP_SUBCTX *x, size_t *len, int *theirs)
 {
+    static const struct {
+        const char *name;
+        size_t      len;
+    } names[] = {
+        { "?PFILE", 6 }, { "?VFILE", 6 }, { "?ID", 3 }, { "?KEY", 4 }
+    };
+    const char *value[4];
+    int i;
+
+    value[0] = nz(x->pfile);
+    value[1] = nz(x->vfile);
+    value[2] = nz(x->partner);
+    value[3] = nz(x->key);
     *theirs = 0;
-    if (strncmp(p, "?PFILE", 6) == 0) {
-        *len = 6;
-        return nz(x->pfile);
-    }
-    if (strncmp(p, "?VFILE", 6) == 0) {
-        *len = 6;
-        *theirs = 1;
-        return nz(x->vfile);
-    }
-    if (strncmp(p, "?ID", 3) == 0) {
-        *len = 3;
-        return nz(x->partner);
-    }
-    if (strncmp(p, "?KEY", 4) == 0) {
-        *len = 4;
-        return nz(x->key);
+    for (i = 0; i < 4; i++) {
+        if (strncmp(p, names[i].name, names[i].len) == 0
+            && !isalnum((unsigned char)p[names[i].len])) {
+            *len = names[i].len;
+            *theirs = i == 1;
+            return value[i];
+        }
     }
     return NULL;
 }
@@ -102,4 +107,12 @@ oftp_sub_card(const char *rec, const OFTP_SUBCTX *x, char *card)
     }
     card[OFTP_SUB_CARD] = '\0';
     return 0;
+}
+
+size_t
+oftp_sub_bufsize(int recfm, long lrecl)
+{
+    if (recfm < 0 || recfm > 1 || lrecl <= 0)
+        return 0;
+    return (size_t)lrecl + 4;
 }

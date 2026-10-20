@@ -53,10 +53,23 @@
 *   ?VFILE  the virtual file name (letters, digits and . - _ @ # $ only)
 *   ?ID     the partner          ?KEY  the spool key
 * and gives it to its own internal reader. The EERP does not wait for the
-* job. A line that grows past column 72 (a // line) or 80 is not cut: the
-* job is not submitted, the file is kept (OFTP247W). The job runs with
-* what a job from the OFTPD started task gets; protect this member and the
-* library of the jobs as you protect SYS2.PARMLIB.
+* job. A symbol ends at the first character that is no letter or digit:
+* ?IDX is another name and stays. A line that grows past column 71 (a //
+* line) or 80 is not cut: the job is not submitted, the file is kept
+* (OFTP247W).
+* Whose job it is: OFTPD sets no USER=. Without one on the job card the job
+* does NOT run as the OFTPD started task but as the default user of the
+* security product (RAKF: RAKF0011I ... STARTED USING DEFAULT PROD
+* ACCOUNT), and has what that user may do under your RAKF profiles; what
+* that is, only you can say: look it up before you use JOB=. Protect this
+* member and the library of the jobs as you protect SYS2.PARMLIB.
+* The partner's text must never decide what the job is: put ?VFILE only
+* behind a fixed high-level qualifier (DSN=ACCT.IN.?VFILE), never as a whole
+* name, as PGM= or in PARM=, and keep VFN= as narrow as the application
+* allows (the filter in OFTPD checks the characters, not the meaning:
+* SYS1.PARMLIB and IEFBR14 pass it). A partner can have one job queued for
+* every file it may send under a matching rule. Partner names used with ?ID
+* should be plain names (OFTPPTN0 does not restrict the characters).
 *
 * F OFTPD,REFRESH reads this member again. A member with any error is not
 * used at all: the rules that were in force stay, and the console names

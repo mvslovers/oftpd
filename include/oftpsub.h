@@ -1,6 +1,8 @@
 #ifndef OFTPSUB_H
 #define OFTPSUB_H
 
+#include <stddef.h>
+
 /* oftpsub.h - the job after receipt: ?symbols in a JCL record
 ** (src/oftp#sub.c, portable; internals/receive-rules.md section 4)
 **
@@ -13,7 +15,9 @@
 **   ?KEY    the spool key
 **
 ** The names are upper case and nothing else is a symbol: a ? followed by
-** another name, or by nothing, stays as it is. A JCL statement ("//") has
+** another name, or by nothing, stays as it is. A name ends at the first
+** character that is no letter or digit, so ?IDX and ?PFILE1 are other
+** names and stay; ?ID.X and ?ID-?KEY are symbols. A JCL statement ("//") has
 ** its text in columns 1-71; column 72 is the continuation mark and 73-80
 ** the sequence number, and both stay where they are. Any other record has
 ** 80 columns of text. A record that comes out longer is not cut: the job
@@ -46,5 +50,13 @@ typedef struct oftp_subctx {
 */
 extern int  oftp_sub_card(const char *rec, const OFTP_SUBCTX *x, char *card)
                                                         asm("OFTPSUBC");
+
+/* The bytes to read one record of a member into: recfm is RFILE_RECFM_F (0)
+** or _V (1), lrecl is the one of this open (a V record counts its RDW in
+** it). 0 for a member the job reader cannot take: RECFM=U (a JCL member is
+** never one) and an lrecl that is not positive. Asked per open, because
+** the member can be a different one in the second pass.
+*/
+extern size_t oftp_sub_bufsize(int recfm, long lrecl)   asm("OFTPSUBB");
 
 #endif /* OFTPSUB_H */

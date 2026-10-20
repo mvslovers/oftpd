@@ -262,13 +262,17 @@ read when the file is received, so the member can be changed any time.
 | `?ID` | the partner's name |
 | `?KEY` | the transfer's spool key, `T` and 7 digits |
 
-The names are upper case. A `?` followed by anything else stays as it is.
+The names are upper case. A name ends at the first character that is no
+letter or digit, so `?ID.X` and `?ID-?KEY` are symbols, while `?IDX`,
+`?PFILE1` and `?KEYS` are other names and stay as they are. A `?` followed by
+anything else stays as it is as well.
 A JCL statement (a line starting `//`) has its text in columns 1 to 71
 (72 is the continuation mark); any other line has 80. A line that comes
 out longer, after the symbols went in, is **not** cut: the job is not submitted. The file is kept and acknowledged
 all the same, and the console says `OFTP247W` with the reason. A job is
 not submitted either when the member is not there, is empty, or has a
-record past column 80. The record of the transfer says which of the two
+record past column 80, or its record format is undefined (`RECFM=U`) or
+its record length is not positive. The record of the transfer says which of the two
 happened (`OFTP SHOW`: `job submitted JOB00123`, or `job not submitted:
 ...`); a submitted job is `OFTP246P` in the log.
 
@@ -277,17 +281,39 @@ The virtual file name is chosen by the partner and ends up in the JCL, so
 another character (a quote, a blank, a comma, `&`) does not get a job.
 The other three are made by OFTPD.
 
+That filter protects the card, not the meaning. `SYS1.PARMLIB`, `IEFBR14`
+and `A.B.C` all pass it, and each is a valid name in JCL. So the partner's
+file name must never decide by itself what the job touches or runs:
+
+- put `?VFILE` only behind a fixed high-level qualifier the partner cannot
+  leave, as in `DSN=ACCT.IN.?VFILE`;
+- never as a whole name (`DSN=?VFILE`), never as `PGM=?VFILE`, never inside
+  `PARM=`;
+- keep the `VFN=` pattern of the rule as narrow as the application allows
+  (`VFN=INV?????.DATA`, not `VFN=*`).
+
+A partner can have one job queued for every file it may send under a rule
+that matches, so `VFN=` is also what limits how many. A partner name used
+with `?ID` should be a plain name: `OFTPPTN0` does not restrict its
+characters, and OFTPD does not check `?ID` the way it checks `?VFILE`.
+`?PFILE` is the name OFTPD built from the rule's `DSN=`: a valid data set
+name, but one with `%VFN` in it carries the partner's text.
+
 **Whose job it is.** It goes through the internal reader of the OFTPD
-started task and runs with what a job submitted from that task gets. OFTPD
-sets no `USER=`, and on a system with RAKF a job without one starts as the
-default user (the log says `RAKF0011I ... STARTED USING DEFAULT PROD
-ACCOUNT`), not as the started task: that user needs the access the job's
-data sets call for, or the member carries a `USER=` and `PASSWORD=` of its
-own on the job card. A job that fails there fails in the JES log of the job,
-not in OFTPD: `job submitted` says only that JES took it. OFTPD checks
-nothing more; the member is named in the rules member, so whoever may change
-that member decides what runs. Protect the rules member and the library of
-the jobs like `SYS2.PARMLIB` itself.
+started task, but it does not run as that task. OFTPD sets no `USER=`, and
+on a system with RAKF a job without one starts as the default user (the
+log says `RAKF0011I ... STARTED USING DEFAULT PROD ACCOUNT`), not as the
+started task. The job can do what that user may do under your RAKF
+profiles, and that can be a lot. What the default user may do on your
+system is not something OFTPD knows or this manual can say: before you
+write `JOB=`, look it up in your profiles, and give that user only the
+access the jobs need, or let the member carry a `USER=` and `PASSWORD=` of
+its own on the job card. A job that fails there fails in the JES log of the
+job, not in OFTPD: `job submitted` says only that JES took it, and not that
+the member was read to its end (`rread()` does not tell an end of file from
+a read error). OFTPD checks nothing more; the member is named in the rules
+member, so whoever may change that member decides what runs. Protect the
+rules member and the library of the jobs like `SYS2.PARMLIB` itself.
 
 Not part of it: a job after a send, a job when a send fails (`ERRJOB`), a
 job for a file that was refused.

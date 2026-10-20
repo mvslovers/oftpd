@@ -38,7 +38,9 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   read that member once the file is under its final name, put `?PFILE`
   (the data set), `?VFILE` (the virtual file name), `?ID` (the partner) and
   `?KEY` (the transfer) into it and give it to the internal reader of the
-  started task. The EERP does not wait for the job. The transfer record
+  started task; the job runs as the default user of the security product
+  (RAKF: `PROD`), not as the started task, unless the member has a `USER=`
+  of its own. The EERP does not wait for the job. The transfer record
   (`OFTP SHOW`) says whether the job was submitted, with its JES job id, or
   why not; a line that grows past column 71 (a JCL statement) or 80 after
   the substitution, a member that is missing or empty, or a virtual file

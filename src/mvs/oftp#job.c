@@ -56,6 +56,7 @@ oftp_job_submit(const char *job, const OFTP_SUBCTX *x, char *jobid, char *why)
     char        card[OFTP_SUB_CARD + 1];
     unsigned char id[8];
     unsigned long recs = 0;
+    size_t      size;
     int         pass, rc, n;
 
     jobid[0] = '\0';
@@ -70,7 +71,17 @@ oftp_job_submit(const char *job, const OFTP_SUBCTX *x, char *jobid, char *why)
             reason(why, "MEMBER NOT READABLE", 0);
             goto fail;
         }
-        if (rec == NULL && (rec = malloc((size_t)rf->lrecl + 4)) == NULL) {
+        /* the member can be another one in the second pass: a buffer
+        ** for the record length of every open */
+        free(rec);
+        rec = NULL;
+        size = oftp_sub_bufsize(rf->recfm, rf->lrecl);
+        if (size == 0) {
+            rclose(rf);
+            reason(why, "RECORD FORMAT NOT SUPPORTED", 0);
+            return 1;
+        }
+        if ((rec = malloc(size)) == NULL) {
             rclose(rf);
             reason(why, "NO STORAGE", 0);
             return 1;
