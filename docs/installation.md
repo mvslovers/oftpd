@@ -134,6 +134,11 @@ them. Each member describes its keywords at the top.
   default); give both sides the same number, since a call beyond the
   other side's limit is refused and made again after a short pause.
 
+`OFTPPTN0` is the seed. Partners can also be added, changed, disabled and
+deleted while OFTPD runs, from the `OFTP` utility and the ISPF dialog,
+without a parmlib edit or a restart; OFTPD keeps those in its spool and
+the spool wins by name. `docs/partners.md` describes both.
+
 The sockets are the Hercules host's: `127.0.0.1` is the machine Hercules
 runs on, not MVS, and the OFTP port is opened there.
 
@@ -198,7 +203,8 @@ link list or in the logon procedure's `STEPLIB`, as in the `TSO` step of
 `OFTPBAT`.
 
 The commands are `SEND`, `LIST`, `SHOW`, `DELETE`, `HOLD`, `RELEASE`,
-`RETRY`, `CALL`, `PARTNERS` and `PURGE [DAYS(n)]`. `HOLD` and `RELEASE`
+`RETRY`, `CALL`, `PARTNERS`, `PARTNER` (maintaining the partner table,
+`docs/partners.md`) and `PURGE [DAYS(n)]`. `HOLD` and `RELEASE`
 take a transfer's key, or `PARTNER(name)` (`*` for all) and optionally
 `VFN(name)` or `VFN(prefix*)` for every send that matches and that you
 may change. `OFTP` needs no authorization of its own:
@@ -250,7 +256,8 @@ for example as an entry in a menu panel: a line for the option in the
 body, and `O,'CMD(OFTPI) NEWAPPL(OFTP)'` in its `TRANS` (replace `O` with
 the option you choose). The dialog reaches OFTPD the way `OFTP` does,
 through the SVC and with the same rules. Reading the partner member
-again after option 4 is for an administrator.
+again after option 4 is for an administrator. Option 3 maintains the
+partner table (`docs/partners.md`).
 
 ## Removing it
 

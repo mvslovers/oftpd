@@ -316,13 +316,81 @@ negotiated per session (`SSIDREST`) and per file (`SFIDREST` / `SFPAACNT`).
 
 ## 4. The partner table
 
-*Decided* for the MVP: **a parmlib member** (`DD:OFTPPTN`), one entry per
-partner, read at startup and on `F OFTPD,REFRESH`. An entry with an error
-disables that partner with a message; it does not stop OFTPD. A refresh
-never deletes a partner that still has transfers in the spool. *Later*: maintenance by
-command and ISPF (rvsMVS had both a table and commands); whether that
-needs a KSDS is decided then. Each entry has an 8-character partner name,
-the name operators and users type.
+*Decided* (2026-10-20, #46): **the authoritative partner table is both
+the parmlib member and the spool, in layers, and the spool wins by name.**
+Each entry has an 8-character partner name, the name operators and users
+type.
+
+- **The parmlib layer** (`DD:OFTPPTN`) is the seed: one entry per partner,
+  read at startup and on `F OFTPD,REFRESH`. An entry with an error
+  disables that partner with a message; it does not stop OFTPD.
+- **The maintained layer** is what the partner commands make: one **P
+  record** in the spool KSDS per partner (key `P` + 7 digits, `OFTP_SPPTN`
+  in `include/oftpspl.h`), holding the entry as the same `KEYWORD=VALUE`
+  text, parsed at startup by the parser the parmlib uses. No second
+  format, no second parser. The P records are not transfers: `LIST`,
+  housekeeping and the purge never see them.
+- **By name the spool wins.** A partner in both layers is the maintained
+  one; the parmlib entry under it is shadowed (`OFTP018I` counts them, and
+  SHOW says "overrides OFTPPTN"). In the table `skey[0] != 0` marks a
+  maintained partner and `ovr` that the name is in OFTPPTN as well.
+  Changing a parmlib partner by command therefore creates the maintained
+  record that shadows it; deleting that record brings the parmlib entry
+  back at once.
+
+**Why the spool.** OFTPD is the sole owner of the spool and already keeps
+the restart state in it; a partner kept there survives a restart with no
+new data set to allocate, protect and back up, and the write goes through
+the one writer that exists. Rewriting the parmlib member from the monitor
+was rejected: OFTPD would need write authority on `SYS2.PARMLIB`, a
+hand-edited member and a command would race, and the comments and layout
+of the member would be lost.
+
+**REFRESH reads the parmlib layer only.** It re-reads OFTPPTN, adds,
+changes and disables parmlib partners as before, and **leaves every
+maintained partner alone**. A parmlib partner that was removed from the
+member is dropped only when it has no session and no transfer in the
+spool; otherwise it is disabled. To change a maintained partner, use the
+command.
+
+**Commands** (`PARTNER ADD|CHANGE|DELETE|SHOW`, section 7; `OFTP PARTNER
+...`; the ISPF dialog). ADD, CHANGE and DELETE are for an `ADMIN=` userid
+(507 otherwise); SHOW is open to everyone and never returns a password
+(`PASSWORD=SET` or `NONE`). Each works under `lock(m,0)` in this order:
+validate everything, write the spool record, change the table in memory.
+A failed spool write (451) leaves the table as it was.
+
+- ADD of a name that exists is 509; a keyword or value that does not
+  parse or check is 508, and nothing is written. A full table is 513.
+- CHANGE of a partner with a session or a call in progress is 450, unless
+  only `ENABLED` changes. A change that changes nothing is 508. Disabling
+  a partner that an enabled partner names as `VIA` is 512.
+- **DELETE** takes maintained partners only (a parmlib-only partner is
+  513: remove it from the member and REFRESH). It is 450 while the
+  partner has a session or a call, and 512 while another partner is
+  reached through it. Otherwise it **disables the partner first** and
+  writes that, then scans the whole spool for a transfer that names it as
+  partner, target or origin, in any state: a finished transfer is still
+  the record of what was sent. If the scan finds one, the answer is 512
+  and the partner stays disabled, so nothing new is queued while the
+  operator decides; the transfers are deleted or purged and DELETE is
+  repeated. If it finds none (or cannot read the spool: 451), the record
+  is deleted and the table slot freed. A freed slot stays a gap in the
+  table until the next start.
+- A disabled partner takes no `SEND` (501) and is not called; its queue is
+  kept.
+
+Operator messages: `OFTP243I` added, `OFTP244I` changed, `OFTP245I`
+deleted (each with the userid), `OFTP018I/W` the maintained records at
+startup, `OFTP015W` table full.
+
+Measured on MVS (`test/mvs/tstptm.c`, two OFTPDs in a throwaway
+container): a partner that is in no parmlib member is added, changed,
+enabled, sent a file (DELIVERED, EERP back), refused its DELETE with the
+transfer in the spool, still there as changed after OFTPD was stopped and
+started (`OFTP018I 1 PARTNERS KEPT BY COMMAND`), and deleted once the
+transfer was. Not measured: the ISPF dialog (built, no script drives it
+yet), and a CHANGE that races a session.
 
 Attributes:
 
@@ -541,8 +609,9 @@ with it.
 Proposed protocol: line-based text, one request per line, numbered
 responses in the FTP manner (`2xx` done, `4xx` try later, `5xx` refused),
 multi-line output for lists. Verbs mirror the utility: `SEND`, `LIST`,
-`SHOW`, `HOLD`, `RELEASE`, `DELETE`, `RETRY`, `CALL`, `PARTNER
-ADD|CHANGE|DELETE|LIST`, `STATUS`.
+`SHOW`, `HOLD`, `RELEASE`, `DELETE`, `RETRY`, `CALL`, `PARTNERS`,
+`PARTNER ADD|CHANGE|DELETE|SHOW PARTNER=name KEYWORD=VALUE ...` (the
+keywords of `OFTPPTN`; `ENABLED=N` disables), `STATUS`.
 
 ### 7.1 Who is asking
 
@@ -576,7 +645,7 @@ OFTP LIST [PARTNER(MVS2)] [STATUS(QUEUED)]
 OFTP SHOW 0000042
 OFTP HOLD|RELEASE|DELETE|RETRY 0000042
 OFTP CALL MVS2
-OFTP PARTNER LIST|ADD|CHANGE|DELETE ...
+OFTP PARTNER LIST|SHOW|ADD|CHANGE|ENABLE|DISABLE|DELETE name ...
 ```
 
 Batch: several commands from `SYSIN`. Output through `*PUTLINE` in TSO,
@@ -590,7 +659,8 @@ F OFTPD,D SESSIONS | PARTNERS | QUEUE [partner]
 F OFTPD,CALL partner
 F OFTPD,STOP partner          (end that partner's sessions gracefully)
 F OFTPD,HOLD|RELEASE partner
-F OFTPD,REFRESH               (configuration, partner table if parmlib)
+F OFTPD,REFRESH               (configuration and the OFTPPTN partners;
+                               partners kept by command are left alone)
 F OFTPD,TRACE ON|OFF [partner]
 P OFTPD                       (stop accepting, end sessions at the next
                                file boundary, close the spool)
@@ -644,7 +714,8 @@ act on.
 
 - **Q1** (*later*) Receiver restart: NOTE/POINT and rewrite, or work data
   set and copy?
-- ~~Q2~~ Partner table: parmlib member for the MVP; commands/ISPF later.
+- ~~Q2~~ Partner table: a parmlib seed plus a spool layer kept by command
+  and ISPF; the spool wins by name (section 4, #46).
 - **Q3** (*later*) Which partner attributes may a single send override?
 - ~~Q4~~ Received `U` → RECFM U, `T` → VB 255, long line fails (5.2).
 - ~~Q5~~ Received data sets under the virtual file name (5.2); patterns

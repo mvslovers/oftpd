@@ -21,7 +21,8 @@
 ** opens another session to it, up to the limit (internals/design.md 6.1).
 **
 ** ADMIN=id names a userid that may see and change every transfer, and
-** CALL and REFRESH; one ADMIN= per id, up to OFTP_MAXADM. Anyone else
+** CALL, REFRESH and the partner commands (ADD, CHANGE, DELETE); one
+** ADMIN= per id, up to OFTP_MAXADM. Anyone else
 ** sees and changes only the transfers they queued (internals/xmem.md
 ** section 13).
 **
@@ -39,6 +40,10 @@
 ** Values are upper-cased except HOST. A wrong keyword or value is
 ** reported with its line number and, in the partner member, disables
 ** that partner only.
+**
+** OFTPPTN is the parmlib layer of the partner table; the partners kept
+** by command are a second layer in the spool, and by name the spool wins
+** (internals/design.md section 4).
 */
 
 #include "oftpsess.h"
