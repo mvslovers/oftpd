@@ -416,7 +416,10 @@ reader\; the second pass sends the cards. A member that fails a check of the
 first pass therefore leaves nothing in JES. If the member is edited between the
 two passes, or the reader fails while the cards are written, a part of the job
 may already be in JES, and it may run although the message says that the job
-was not submitted. No job is submitted when:
+was not submitted. Any reason can be of this kind if the member was edited
+just before. The same holds for #cmd("INTERNAL READER CLOSE FAILED"), which is
+reported when all cards have been written\; whether JES has the job then is not
+known. No job is submitted when:
 
 - the data set or the member cannot be opened, or it has no records\;
 - a record is longer than 80 columns (#cmd("RECORD PAST COLUMN 80"))\;
@@ -428,9 +431,8 @@ was not submitted. No job is submitted when:
   #cmd("$"). A quote, a blank, a comma or an ampersand is not\;
 - the record format is undefined (#cmd("RECFM=U")) or the record length is not
   positive (#cmd("RECORD FORMAT NOT SUPPORTED"))\;
-- there is no storage for the record, or the internal reader cannot be opened,
-  written or closed (#cmd("INTERNAL READER OPEN FAILED"), #cmd("INTERNAL READER WRITE FAILED"),
-  #cmd("INTERNAL READER CLOSE FAILED"))\;
+- there is no storage for the record, or the internal reader cannot be opened
+  or written (#cmd("INTERNAL READER OPEN FAILED"), #cmd("INTERNAL READER WRITE FAILED"))\;
 - the second pass finds another number of records than the first, or cannot read
   the member to its end (#cmd("MEMBER CHANGED DURING READ")).
 
@@ -497,4 +499,7 @@ what runs. Protect both, and the library that holds the job members, as you
 protect the library of the other OFTPD members, #cmd("SYS2.PARMLIB") by default.
 
 Not part of the job after receipt: a job after a send, a job when a send fails,
-and a job for a file that was refused.
+and a job for a file that was refused. A file that is only passed on to another
+partner (relaying, #cmd("RELAY=Y") in #cmd("OFTPPRM")) meets no receive rule and gets no job. A file that the
+partner sends again after it was received is acknowledged again, and no second
+job is started.

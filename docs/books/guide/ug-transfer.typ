@@ -179,7 +179,7 @@ A receive rule can also start a job when a file has arrived: with
 data set, the virtual file name, the partner and the transfer key into it, and
 gives it to the internal reader. The receipt to the partner does not wait for the
 job. Two things to know before you use it. The job does not run as the OFTPD
-started task but as the default user of the security product, so it may do what
+started task but, with RAKF, as the default user of RAKF, so it may do what
 that user may do. And the virtual file name comes from the partner\; it must never
 decide by itself what the job touches or runs. Both are explained in the section
 "A Job After Receipt" of the _OFTPD Reference_, which also lists the symbols and
