@@ -63,6 +63,47 @@ has_line(const char *buf, unsigned len, const char *want)
     return 0;
 }
 
+/* Issue the SVC with a hand-built block, past oftp_svc_call(): the
+** client refuses a request over REQMAX itself, so only a caller that
+** does not go through it can reach the routine's own length check.
+** Same sequence as oftp#svcc.c, with labels of its own (this module
+** and the client link into one program). R0 goes in non-zero, so a 0
+** coming out is the routine's doing and not a leftover.
+*/
+static void __attribute__((noinline))
+raw_svc(OFTP_SVCREQ *req, unsigned svcn, unsigned *out)
+{
+    __asm__ __volatile__(
+        "         LR    1,%1\n"
+        "         LR    6,%2\n"
+        "         LA    0,1\n"
+        "         EX    6,TSTSCS0\n"
+        "         B     TSTSCSX\n"
+        "TSTSCS0  SVC   0\n"
+        "TSTSCSX  ST    15,0(,%0)\n"
+        "         ST    0,4(,%0)\n"
+        "         ST    1,8(,%0)\n"
+        :
+        : "r"(out), "r"(req), "r"(svcn)
+        : "0", "1", "6", "15", "memory");
+}
+
+/* The pool as the anchor shows it: every slot FREE and nobody inside
+** the routine. A key-8 fetch of subpool 241, which #15 measured legal.
+*/
+static int
+pool_idle(const OFTP_ANCHOR *a)
+{
+    unsigned i;
+
+    if (a->inflight != 0)
+        return 0;
+    for (i = 0; i < OFTP_SVC_NSLOT; i++)
+        if (a->slot[i].state != OFTP_SL_FREE)
+            return 0;
+    return 1;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -128,6 +169,56 @@ main(int argc, char **argv)
         rc = oftp_svc_call(longreq, buf, sizeof(buf), 0, &len, &next);
         CHECK_EQ(rc, OFTP_SVC_BADREQ, "a request over REQMAX is refused");
         CHECK_EQ((int)len, 0, "and nothing is reported written");
+    }
+
+    /* 2c. **The routine's own length check**, which step 2b cannot
+    ** reach: the client turns the request away before the SVC. Here the
+    ** block is built by hand and the SVC issued directly, with a
+    ** declared length the routine must refuse (over REQMAX, zero,
+    ** negative). The refusal comes after the claim, so what it has to
+    ** prove is the release: rc BADREQ, nothing reported written, no
+    ** abend, every slot FREE and nothing in flight afterwards. Twice
+    ** the pool's worth of calls, as in step 7, so one slot or one count
+    ** left behind per call fills the pool; STATUS after them must still
+    ** be answered by OFTPD.
+    */
+    {
+        static const unsigned bad[] = {
+            OFTP_SVC_REQMAX + 1, OFTP_SVC_REQMAX + 2, 1000, 0x7FFFFFFFU,
+            0x80000000U, 0xFFFFFFFFU, 0
+        };
+        SSCT        *ssct = ssct_find(OFTP_SVC_SSNAME);
+        OFTP_ANCHOR *anc  = (OFTP_ANCHOR *)ssct->ssctsuse;
+        OFTP_SVCREQ  blk;
+        unsigned     out[3], k, refused = 0, wrote = 0, nbad;
+
+        nbad = (unsigned)(sizeof(bad) / sizeof(bad[0]));
+        CHECK(pool_idle(anc), "before: every slot FREE, none in flight");
+        for (k = 0; k < 2 * OFTP_SVC_NSLOT + nbad; k++) {
+            memset(&blk, 0, sizeof(blk));
+            memcpy(blk.eye, "OFTQ", 4);
+            blk.ver    = OFTP_SVC_VER;
+            blk.reply  = buf;
+            blk.cap    = sizeof(buf);
+            blk.reqlen = (k < nbad) ? bad[k] : OFTP_SVC_REQMAX + 1;
+            memset(blk.req, 'S', OFTP_SVC_REQMAX);
+            out[0] = out[1] = out[2] = 0;
+            raw_svc(&blk, anc->svc, out);
+            if (out[0] == OFTP_SVC_BADREQ)
+                refused++;
+            if (out[1] != 0)
+                wrote++;
+        }
+        CHECK_EQ((int)refused, (int)(2 * OFTP_SVC_NSLOT + nbad),
+                 "a declared length the routine cannot take is refused,"
+                 " every time");
+        CHECK_EQ((int)wrote, 0, "and the routine reports nothing written");
+        CHECK(pool_idle(anc), "after: every slot FREE, none in flight");
+        memset(buf, 0, sizeof(buf));
+        len = 0;
+        rc = oftp_svc_call("STATUS", buf, sizeof(buf), 0, &len, NULL);
+        CHECK_EQ(rc, OFTP_SVC_OK, "STATUS still answers after them: OFTPD unharmed");
+        CHECK(has_line(buf, len, "200 status"), "and the answer is complete");
     }
 
     /* 3. STATUS, the round trip this test exists for: an unauthorized
