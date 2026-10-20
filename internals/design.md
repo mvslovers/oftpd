@@ -264,6 +264,23 @@ an end sets the end time.
   (`src/oftp#prg.c`) and host-tested.
 - Only spool records go; data sets, received or sent, are never touched.
 
+Measured (2026-10-20, #59, a throwaway MVS/CE container, `KEEPDAYS=7`
+by default, `test/mvs/tstkeep.c` and `.jcl`): the daily run, not
+`PURGE`, deletes what is old and finished. The age is produced by
+writing it: with OFTPD stopped, `TSTKEEP` (PARM='SEED') adds nine
+transfers to the spool with `tqueued`, `tlast` and `tdone` set 1 to 60
+days back; then OFTPD is started and nothing else is done. Four finished
+ones older than 7 days (CONFIRMED 30, DELIVERED 10, REJECTED 20, FAILED
+60 days) and five that must stay (CONFIRMED 1 day, DELIVERED 6 days, and
+HELD, SENT, QUEUED at 30 days) were seeded. The first tick, ten seconds
+after `OFTP001I OFTPD READY`, logged `OFTP235I 4 FINISHED TRANSFERS OLDER
+THAN 7 DAYS DELETED BY KEEPDAYS`, and `TSTKEEP` (PARM='CHECK') then found
+the four gone and the five there (10/10); the same check before the start
+failed on exactly the four (6/10). A first start on an empty spool logs
+nothing: the daily run is silent when it deletes none. Not observed: the
+second run 24 hours later, whose only part not shared with the first is
+`now - tpurge >= 86400`.
+
 Later, from rvs: a purge by partner, name or time range, and a backup of
 the spool (a REPRO job in samplib).
 
