@@ -173,6 +173,18 @@ refuses, for instance because the data set cannot be created or because the file
 is for another Odette ID, is not kept in the spool\; the reason is in the log of
 the monitor (messages #cmd("OFTP220E") and #cmd("OFTP223W")).
 
+#idx("received files", "job after receipt")
+A receive rule can also start a job when a file has arrived: with
+#cmd("JOB=ACCT.JCL(ORDERS)") OFTPD reads that member, puts the name of the
+data set, the virtual file name, the partner and the transfer key into it, and
+gives it to the internal reader. The receipt to the partner does not wait for the
+job. Two things to know before you use it. The job does not run as the OFTPD
+started task but, with RAKF, as the default user of RAKF, so it may do what
+that user may do. And the virtual file name comes from the partner\; it must never
+decide by itself what the job touches or runs. Both are explained in the section
+"A Job After Receipt" of the _OFTPD Reference_, which also lists the symbols and
+the reasons for which no job is submitted (message #cmd("OFTP247W")).
+
 == The ISPF Dialog <xfer-dialog>
 
 #idx("ISPF dialog")#idx("OFTPI")
