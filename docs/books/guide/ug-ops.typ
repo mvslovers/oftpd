@@ -236,9 +236,18 @@ messages are in the Reference.
       #cmd("OFTP223W"))], [The data set could not be created or renamed, or the file
       is for another Odette ID. Check the space and the name, and #cmd("RELAY")
       for files in transit.],
-    [A change to a partner does not take effect], [Partners change with
-      #cmd("F OFTPD,REFRESH"). The settings change only after a restart. If the
-      table is full (#cmd("OFTP015W")), restart the monitor.],
+    [A change to a partner does not take effect], [A change in the member
+      #cmd("OFTPPTN") needs #cmd("F OFTPD,REFRESH"). The settings change only
+      after a restart. A partner kept by command is not changed by the member:
+      it wins by name, and only the #cmd("PARTNER") command changes it (see
+      @ptn-cmd). If the table is full (#cmd("OFTP015W")), delete a partner
+      that is kept by command or take an entry out of the member, and use
+      #cmd("REFRESH").],
+    [A #cmd("PARTNER") command is refused], [The answer says why. The user must
+      be an administrator (code 507)\; a partner with a session cannot be
+      changed (code 450) or deleted\; a partner with transfers in the spool
+      cannot be deleted (code 512). The Reference lists the answers, in the
+      chapter “The OFTP Command”.],
     [A file is received, but no job runs (#cmd("OFTP247W"))], [The receive rule of
       the file has a #cmd("JOB="), and the job was not submitted. The message gives
       the reason, for instance a member that is missing or empty, or a line that is

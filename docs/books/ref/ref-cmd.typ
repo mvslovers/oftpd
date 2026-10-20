@@ -25,8 +25,10 @@ The OFTPD load library must be in the STEPLIB, or in the link list.
 
 In #cmd("SYSIN") there is one command to a line. A line with an asterisk in
 column 1 is a comment. A hyphen as the last character of a line continues
-the command on the next line. Columns 73 to 80 are ignored. The utility
-writes each command with the prefix #cmd("OFTP") before its answer. If
+the command on the next line. Columns 73 to 80 are ignored. From
+#cmd("SYSIN") the utility reads at most 20 words of a command, and does not
+report any that follow. The
+utility writes each command with the prefix #cmd("OFTP") before its answer. If
 #cmd("SYSIN") holds no command, the utility writes #cmd("OFTP001E").
 
 Operands are written #cmd("KEYWORD(value)") or #cmd("KEYWORD=value"). Keywords
@@ -34,6 +36,7 @@ and values are not case sensitive. Single quotes around a value are removed.
 After #cmd("SHOW"), #cmd("DELETE"), #cmd("HOLD"), #cmd("RELEASE")
 and #cmd("RETRY") a lone word is taken as the transfer key, after
 #cmd("CALL") as the partner, and after #cmd("PURGE") as the number of days.
+After #cmd("PARTNER") and its sub-command a lone word is the partner.
 
 #screen(```
 OFTP SHOW T0000012
@@ -52,8 +55,10 @@ OFTPD knows the user ID of the caller by itself. A user sees and changes only
 the transfers that the user queued. An administrator, a user named by an
 #cmd("ADMIN") keyword of #cmd("OFTPPRM"), sees and changes every transfer,
 including received files, which have no owner. Only an administrator may use
-#cmd("CALL") and #cmd("PURGE"). The utility itself has no #cmd("REFRESH")
-command\; the ISPF dialog offers it to an administrator.
+#cmd("CALL") and #cmd("PURGE"), and the sub-commands of #cmd("PARTNER") that
+change the partner table. Every user may use #cmd("PARTNERS"),
+#cmd("PARTNER LIST") and #cmd("PARTNER SHOW"). The utility itself has no
+#cmd("REFRESH") command\; the ISPF dialog offers it to an administrator.
 
 == SEND <cmd-send>
 
@@ -246,6 +251,177 @@ otherwise #cmd("IDLE"), the protocol level, and the host, or #cmd("via") and
 the other partner, or #cmd("(not called)") for a partner that OFTPD never
 calls. The last line gives the number of partners.
 
+== PARTNER <cmd-partner>
+
+#idx("PARTNER")#idx("partner table", "maintenance")
+#screen(```
+OFTP PARTNER LIST
+OFTP PARTNER SHOW name
+OFTP PARTNER ADD name ODETTEID(id) [operand ...]
+OFTP PARTNER CHANGE name [operand ...]
+OFTP PARTNER ENABLE name
+OFTP PARTNER DISABLE name
+OFTP PARTNER DELETE name
+```)
+
+The command shows and maintains the partner table of the running OFTPD, with
+no restart and no edit of #cmd("OFTPPTN"). A partner that is added or changed
+with it is kept by command: OFTPD stores it in the spool, and it is there
+after the next start. @cfg-cmd explains how these partners and the entries
+of #cmd("OFTPPTN") live together. The name of the partner is the first word
+after the sub-command. It has 1 to 8 letters, digits or the characters
+#cmd("# @ $ _ -").
+
+- #cmd("LIST") shows the partner table as the command #cmd("PARTNERS") does,
+  see @cmd-partners.
+- #cmd("SHOW") shows the entry of one partner, and where it comes from.
+- #cmd("ADD") puts a new partner in the table.
+- #cmd("CHANGE") changes the operands that are given\; the others keep their
+  value.
+- #cmd("ENABLE") and #cmd("DISABLE") are a #cmd("CHANGE") of the one operand
+  #cmd("ENABLED").
+- #cmd("DELETE") takes a partner out of the table and deletes it from the
+  spool.
+
+Only an administrator may use #cmd("ADD"), #cmd("CHANGE"), #cmd("ENABLE"),
+#cmd("DISABLE") and #cmd("DELETE"). #cmd("LIST") and #cmd("SHOW") are open to
+every user.
+
+=== The Operands of ADD and CHANGE <cmd-partner-ops>
+
+The operands are the keywords of an entry of #cmd("OFTPPTN"), written
+#cmd("KEYWORD(value)") or #cmd("KEYWORD=value"). @cfg-ptn describes each one:
+#cmd("ODETTEID"), #cmd("PASSWORD"), #cmd("OURPASSWORD"), #cmd("OURID"),
+#cmd("HOST"), #cmd("PORT"), #cmd("LEVEL"), #cmd("MODE"), #cmd("COMPRESS"),
+#cmd("CALL"), #cmd("SESSIONS"), #cmd("ADDRESS"), #cmd("VIA"),
+#cmd("XLATE"), #cmd("SDEB"), #cmd("CREDIT") and #cmd("ENABLED"). The rules and
+the defaults are the same. A partner cannot be renamed.
+
+- #cmd("ADD") needs #cmd("ODETTEID"). An operand left out takes its default.
+- With #cmd("CHANGE") an operand that is left out keeps its value. A value in
+  empty parentheses, such as #cmd("HOST()"), is accepted and stores an empty
+  value, which clears the host, the address, the via or a password.
+- OFTPD turns the whole request into upper case. A password and a
+  #cmd("HOST") that are given with the command are stored in upper case,
+  although a #cmd("HOST") in #cmd("OFTPPTN") keeps its case.
+
+The utility sends the command to OFTPD in one request of at most 255
+characters. If the operands do not fit, the utility writes #cmd("OFTP003E").
+Then change the partner in two commands.
+
+OFTPD checks the entry before it stores anything. It refuses an entry that has
+no Odette ID, an Odette ID that another partner has, a #cmd("VIA") that does
+not name an enabled direct partner, a #cmd("VIA") for a partner through which
+others are reached, and any value that @cfg-ptn does not allow. If the stored
+form of the entry would not fit a record of the spool, it refuses that too.
+The answer begins with the code 508 and names the reason. Nothing is changed
+when a command is refused.
+
+A partner that has a session, or that OFTPD is calling, can be enabled and
+disabled, but nothing else of it can be changed\; #cmd("CHANGE") is refused
+with the code 450 and can be repeated later. #cmd("CHANGE") is also refused
+with the code 512 if it would disable a partner through which an enabled
+partner is reached (see @cfg-via). A #cmd("CHANGE") that would change nothing is
+answered with #cmd("partner name unchanged"), and the return code 0.
+
+=== SHOW <cmd-partner-show>
+
+#idx("PARTNER", "SHOW")
+#cmd("SHOW") writes these lines. Each of the first five has the keywords and
+the values that the partner has now, with the defaults filled in\: the name
+with #cmd("ODETTEID") and #cmd("OURID")\; #cmd("HOST"), #cmd("PORT"),
+#cmd("LEVEL") and #cmd("MODE")\; #cmd("ENABLED"), #cmd("CALL"),
+#cmd("SESSIONS"), #cmd("COMPRESS") and #cmd("XLATE")\; #cmd("SDEB"),
+#cmd("CREDIT"), #cmd("ADDRESS") and #cmd("VIA")\; and #cmd("PASSWORD") and
+#cmd("OURPASSWORD"). The passwords are never shown\: each one reads
+#cmd("SET") or #cmd("NONE"). The sixth line starts with #cmd("source:") and
+tells where the partner comes from\: #cmd("OFTPPTN"), #cmd("kept by command"),
+or #cmd("kept by command, overrides OFTPPTN"), followed by the number of
+sessions the partner has now. The answer ends with #cmd("partner").
+
+=== DELETE <cmd-partner-delete>
+
+#idx("PARTNER", "DELETE")
+#cmd("DELETE") applies to a partner that is kept by command. OFTPD refuses it
+in these cases, checking them in this order.
+
+- The partner is only in #cmd("OFTPPTN") (code 513). Remove its entry from the
+  member, and use #cmd("REFRESH").
+- The partner has a session, or OFTPD is calling it (code 450). Repeat the
+  command later.
+- Another partner is reached through it (#cmd("VIA")), enabled or not
+  (code 512). Delete that partner, or change its #cmd("VIA"), first.
+- A transfer in the spool names the partner (code 512): as its partner, as the
+  partner behind which the file goes (#cmd("VIA")), or as the partner a relayed
+  file came from. The answer gives the number of transfers. Delete them with
+  #cmd("DELETE") or #cmd("PURGE") first. A transfer counts in any state,
+  finished ones included.
+
+If the partner is enabled, OFTPD disables it before it looks through the
+spool, so that nothing new is queued for it or accepted from it meanwhile.
+When a transfer in the spool names the partner, the partner stays disabled\;
+the answer says so with #cmd("(it is disabled now)"). Enable it again if it
+should work.
+
+If the partner was kept by command and has an entry of the same name in
+#cmd("OFTPPTN") as well, deleting it brings that entry back at once, and the
+answer ends with #cmd("the OFTPPTN entry is back"). If OFTPD cannot read
+#cmd("OFTPPTN") then, the answer ends with #cmd("OFTPPTN cannot be read, its
+entry is back after the next REFRESH").
+
+=== Answers and Messages <cmd-partner-ans>
+
+The answer of OFTPD is the last line of the command. The return code follows
+the code at its start, which the utility does not show (see @cmd-rc). The
+codes that the #cmd("PARTNER") command uses are in @cmd-partner-tab.
+
+#tab(caption: [Answers of the PARTNER command])[
+  #table(columns: (0.7in, 1fr),
+    [Code], [Meaning],
+    [200], [Done: #cmd("partner name added"), #cmd("partner name changed"),
+      #cmd("partner name unchanged"), #cmd("partner name deleted") (with the
+      endings above), or the end of a #cmd("SHOW").],
+    [450], [The partner has a session now, try again.],
+    [451], [The spool is not available. Nothing was changed, except that a
+      partner that was being deleted may have been disabled.],
+    [501], [There is no such partner. The utility writes it as
+      #cmd("OFTP010E") and ends with the return code 12.],
+    [507], [The user is not an administrator.],
+    [508], [The partner name or an operand is not valid, or the entry is too
+      long. The answer gives the reason.],
+    [509], [The partner exists\; #cmd("ADD") is refused. Use #cmd("CHANGE").],
+    [512], [Another partner is reached through this one, or transfers in the
+      spool name it.],
+    [513], [The partner is in #cmd("OFTPPTN") only, and cannot be deleted by
+      command.],
+    [514], [The partner table is full. It holds 32 partners, from both
+      sources.],
+  )
+] <cmd-partner-tab>
+
+OFTPD writes a message to the console and the log for each change it makes\:
+#cmd("OFTP243I") for an added partner, #cmd("OFTP244I") for a changed one
+and #cmd("OFTP245I") for a deleted one. They name the partner and the user,
+never a password. A command that is refused, or that changes nothing, writes
+none.
+
+=== The Passwords <cmd-partner-pw>
+
+#idx("PARTNER", "passwords")#idx("password")
+A password given with #cmd("ADD") or #cmd("CHANGE") needs care.
+
+- It is stored in the spool in clear text, as it is in #cmd("OFTPPTN"). Protect
+  the spool data set like the member of #cmd("OFTPPTN"), and so its backups.
+- It is visible where it is typed: in the JCL or the #cmd("SYSIN") data that
+  holds the command, and on the screen at a terminal. When the utility reads
+  the commands from #cmd("SYSIN") it echoes each one with the prefix
+  #cmd("OFTP"), and writes stars in place of the value of #cmd("PASSWORD") and
+  #cmd("OURPASSWORD"). That masks the echo only.
+- The request passes through a slot in common storage (CSA) on its way to
+  OFTPD. OFTPD wipes the request from the slot as soon as it has taken it.
+- #cmd("SHOW") and the ISPF dialog show whether a password is set, never the
+  password. The messages #cmd("OFTP243I") and #cmd("OFTP244I") do not carry it.
+
 == PURGE <cmd-purge>
 
 #idx("PURGE")
@@ -272,19 +448,22 @@ commands come from #cmd("SYSIN"), it ends with the highest.
     [0], [The command was carried out.],
     [4], [A warning, or refused for now: the data set is empty\; there is no
       such transfer\; the transfer is in a session\; the transfer changed
-      meanwhile\; OFTPD is busy\; the spool or storage is not available.],
+      meanwhile\; the partner has a session now\; OFTPD is busy\; the spool
+      or storage is not available.],
     [8], [An error in the command or in its data set: an operand is wrong or
       too long, the data set is not found, not allowed or cannot be opened,
       the state does not allow the change, it is not your transfer, the user
-      is not an administrator, or the command is unknown.],
+      is not an administrator, the command is unknown, or a #cmd("PARTNER")
+      command is refused: the partner exists, is in use, is only in
+      #cmd("OFTPPTN"), or the table is full.],
     [12], [Severe: the partner is unknown, not enabled or cannot be called,
       or OFTPD is not reached or does not answer completely.],
   )
 ] <cmd-rc-tab>
 
 With the return code 12 the utility writes the cause with the message
-#cmd("OFTP010E"). The messages #cmd("OFTP001E"), #cmd("OFTP002E") and
-#cmd("OFTP003E") are written by the utility itself. They are described in
+#cmd("OFTP010E"). The messages #cmd("OFTP001E"), #cmd("OFTP002E"),
+#cmd("OFTP003E") and #cmd("OFTP004E") are written by the utility itself. They are described in
 the appendix “Messages”.
 
 The answers of OFTPD that are not shown above are plain text. They include

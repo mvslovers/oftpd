@@ -26,9 +26,11 @@ partitioned data set that holds both, default #cmd("SYS2.PARMLIB")) and
     [#cmd("OFTPPRM")], [The settings of the monitor, described in
       @cfg-prm. Read once, when OFTPD starts.],
     [#cmd("OFTPPTN")], [The partner table, described in @cfg-ptn. Read when
-      OFTPD starts, and again by the #cmd("REFRESH") command.],
+      OFTPD starts, and again by the #cmd("REFRESH") command. The partners
+      that are kept by command (@cfg-cmd) are not in it.],
     [#cmd("OFTPSPL")], [The spool, a VSAM data set that holds one record for
-      each transfer. Allocate it with #cmd("DISP=OLD").],
+      each transfer and one for each partner that is kept by command. Allocate
+      it with #cmd("DISP=OLD").],
     [#cmd("OFTPLOG")], [The log, a data set with fixed or fixed blocked
       records of at least 143 bytes. The sample procedure writes it to
       SYSOUT with a record length of 160.],
@@ -173,8 +175,12 @@ An #cmd("OFTP") utility user who is not an administrator sees and changes
 only their own transfers, and #cmd("LIST") shows only these. An administrator
 sees and changes every transfer, including the received files, which have no
 owner, and may use the #cmd("CALL"), #cmd("REFRESH") and #cmd("PURGE")
-requests. Without any #cmd("ADMIN") keyword, these three requests are refused
-with the answer #cmd("507 needs ADMIN= in OFTPPRM").
+requests. Only an administrator may add, change, enable, disable or delete a
+partner with the #cmd("PARTNER") command or in the ISPF dialog\; showing and
+listing partners is open to every user. Without any #cmd("ADMIN") keyword,
+these requests are refused with the answer #cmd("507"). For #cmd("CALL"),
+#cmd("REFRESH") and #cmd("PURGE") the text is #cmd("needs ADMIN= in
+OFTPPRM").
 
 == The Partner Table: OFTPPTN <cfg-ptn>
 
@@ -182,11 +188,13 @@ with the answer #cmd("507 needs ADMIN= in OFTPPRM").
 Each partner is an entry that starts with #cmd("PARTNER=") and goes on to the
 next #cmd("PARTNER=") or to the end of the member. A keyword that comes before
 the first #cmd("PARTNER=") is reported. The table holds at most 32 partners.
+The partners that are kept by command (@cfg-cmd) use places of the same table.
 
 #note[After 32 partners, OFTPD refuses a further #cmd("PARTNER=") with the
 report #cmd("more than 32 partners"), but it still reads the keywords that
 follow, and applies them to the 32nd partner. Do not put more than 32
-partners in the member.]
+partners in the member, and leave room for the partners that you keep by
+command.]
 
 OFTPD reads the member when it starts, and again at each #cmd("REFRESH")
 (see @cfg-refresh). After the read, OFTPD disables a partner that has no
@@ -267,24 +275,71 @@ final partner. #cmd("name") must be a direct partner that is enabled. Only
 one level is allowed: if #cmd("name") is not an enabled direct partner,
 OFTPD disables the partner with the #cmd("VIA").
 
+== Partners Kept by Command <cfg-cmd>
+
+#idx("partner table", "kept by command")#idx("PARTNER")
+The partner table has two sources, which are one table in the running OFTPD.
+
+- The member #cmd("OFTPPTN") is the seed. OFTPD reads it when it starts and at
+  each #cmd("REFRESH").
+- A partner that an administrator adds or changes with the #cmd("PARTNER")
+  command (see @cmd-partner) or in the ISPF dialog is kept by command. OFTPD
+  stores it in the spool, one record for each partner, and reads these records
+  at each start.
+
+When both sources have a partner of one name, the spool wins. The entry of
+#cmd("OFTPPTN") is not used for as long as the record exists. This is how a
+partner of #cmd("OFTPPTN") is changed by command\; the first change makes a
+record, which has the whole entry. The command #cmd("PARTNER DELETE") deletes
+the record, and the entry of #cmd("OFTPPTN") is in use again. A partner that
+is only in #cmd("OFTPPTN") cannot be deleted by command.
+
+At the start OFTPD reads #cmd("OFTPPTN") first (message #cmd("OFTP014P")),
+then opens the spool and reads the records (message #cmd("OFTP018I")). If it
+cannot read the records to the end, it does not start (message
+#cmd("OFTP019E")), because a partner that was disabled or changed by command
+would come back as #cmd("OFTPPTN") has it. A record that OFTPD cannot use is
+ignored, with the message #cmd("OFTP018W"), and stays in the spool.
+
+The record holds the entry in the form of a line of #cmd("OFTPPTN"), without
+the values that are the defaults. A partner whose #cmd("OURID"), #cmd("SDEB")
+or #cmd("CREDIT") is the same as the setting of #cmd("OFTPPRM") when it is
+stored therefore follows #cmd("OFTPPRM") when that setting changes, at the next
+start. The passwords are stored in clear text. Protect the spool like
+#cmd("OFTPPTN") and its backups.
+
+Two enabled partners cannot have one Odette ID. If the sources give two, OFTPD
+disables one of them and writes #cmd("OFTP018W")\: the one that is kept by
+command stays, and of two of one source the first. A change by command is
+checked first, and is refused when it would make the second.
+
+A partner takes a place in the table of 32, whichever source it comes from.
+When the table is full, #cmd("PARTNER ADD") is refused with the code 514.
+
 == Refreshing the Partner Table <cfg-refresh>
 
 #idx("REFRESH")
 The operator command #cmd("F OFTPD,REFRESH") reads #cmd("OFTPPTN") again\; so
 does the #cmd("REFRESH") request of an administrator in the ISPF dialog. It
-does not read #cmd("OFTPPRM"). OFTPD reports the result with message
-#cmd("OFTP016I").
+does not read #cmd("OFTPPRM"), and it reads the member only\: the partners
+that are kept by command are not read again (see @cfg-cmd). OFTPD reports the
+result with message #cmd("OFTP016I").
 
 - A partner that is new is added.
 - A partner whose entry has changed is replaced, and OFTPD calls it again at
   once.
-- A partner that is no longer in the member is disabled. Its slot in the
-  table stays used until OFTPD is started again.
+- A partner that is kept by command stays as it is. If #cmd("OFTPPTN") has an
+  entry of the same name, the entry is not used.
+- A partner that is no longer in the member is taken out of the table, and its
+  place is free again. If it has a session, OFTPD is calling it, or a transfer
+  in the spool names it, it stays in the table, disabled, until a later
+  refresh finds it free of these.
 
-The table holds 32 slots, so after several changes it can be full even if
-fewer than 32 partners are enabled (message #cmd("OFTP015W")). Restart OFTPD
-to free the slots. If the member cannot be opened, OFTPD writes
-#cmd("OFTP017E") and goes on with the table it has.
+The table holds 32 places, so it can be full even if fewer than 32 partners
+are enabled (message #cmd("OFTP015W")). Delete a partner that is kept by
+command, or take an entry out of the member, and use #cmd("REFRESH") again\;
+a partner of the member that was skipped is read again. If the member cannot
+be opened, OFTPD writes #cmd("OFTP017E") and goes on with the table it has.
 
 == Names of Received Data Sets <cfg-dsn>
 

@@ -170,27 +170,105 @@ default #cmd("SYS2.PARMLIB"), with the members #cmd("OFTPPRM0") and
 #cmd("OFTPPTN0"). The procedure picks other members through its parameters.
 Then start the monitor (see @ug-monitor).
 
-A change to the partner table does not need a restart. Edit #cmd("OFTPPTN"),
-and enter
+A change to the member does not need a restart. Edit #cmd("OFTPPTN"), and
+enter
 
 #screen(```
 F OFTPD,REFRESH
 ```)
 
-at the console, or, as an administrator, choose the option to configure in the ISPF dialog,
-which reads the member again when the edit ends. OFTPD adds new partners, replaces the
-entries that have changed, and disables the partners that are no longer in the
-member. It answers with message #cmd("OFTP016I"), which gives the number of
-partners enabled, new and disabled.
+at the console, or, as an administrator, choose the option to configure in the
+ISPF dialog, which reads the member again when the edit ends. OFTPD adds new
+partners, replaces the entries that have changed, and takes out the partners
+that are no longer in the member. It answers with message #cmd("OFTP016I"),
+which gives the number of partners enabled, new, disabled and removed. A
+partner that is no longer in the member, but has a session, is being called, or
+has transfers in the spool, is not taken out at once. It is disabled, and a
+later refresh takes it out when it is free of these.
 
-Two limits apply to this. A partner that you removed keeps its place in the
-table, disabled, until the monitor is started again. The table has 32 places, so
-after many changes it can be full, and OFTPD then writes #cmd("OFTP015W") and
-does not add the partner. Restart the monitor when that happens. Keep the member
-to at most 32 partners in any case\; a further #cmd("PARTNER=") is refused, but
-the keywords after it still go to the last partner.
+A refresh reads the member and nothing else. The partners that you keep by
+command (see @ptn-cmd) stay as they are, even if the member has an entry of the
+same name.
+
+The table has 32 places, for the partners of the member and the partners kept
+by command together. If it is full, OFTPD writes #cmd("OFTP015W") and does not
+add the partner. Take an entry out of the member, or delete a partner that is
+kept by command, and refresh again. Keep the member to at most 32 partners in
+any case\; a further #cmd("PARTNER=") is refused, but the keywords after it
+still go to the last partner.
 
 A change to #cmd("OFTPPRM") needs a restart.
+
+== Keeping Partners by Command <ptn-cmd>
+
+#idx("partner")#idx("PARTNER")
+An administrator does not have to edit the member to add a partner. The
+#cmd("OFTP") utility has the command #cmd("PARTNER"), and the ISPF dialog has
+the same in option 3. OFTPD takes the change at once, without a restart, and
+keeps the partner in its spool, so that it is there after the next start. Such
+a partner is *kept by command*. The partners of the member are the seed\; the
+partners kept by command are added to them, and when both have a partner of one
+name, the one kept by command wins. The chapter “Configuration and the Partner
+Table” of the _OFTPD Reference_ describes how the two live together.
+
+Only an administrator (see @xfer-admin) may add, change, enable, disable or
+delete a partner. Every user may look at the table. In batch the commands go
+into the SYSIN of the utility, and under TSO they follow #cmd("OFTP").
+
+#screen(```
+PARTNER LIST
+PARTNER SHOW MAC2
+PARTNER ADD MAC2 ODETTEID(O0000000000MAC2) PASSWORD(SECRET3) -
+        OURPASSWORD(SECRET4) HOST(192.0.2.20) PORT(3305)
+PARTNER CHANGE MAC2 PORT(3306) SESSIONS(2)
+PARTNER DISABLE MAC2
+PARTNER ENABLE MAC2
+PARTNER DELETE MAC2
+```)
+
+#cmd("ADD") and #cmd("CHANGE") take the keywords of an entry of the member.
+#cmd("ADD") needs the #cmd("ODETTEID")\; for a keyword that is left out, the
+partner gets the default. #cmd("CHANGE") changes what you name and leaves the
+rest. A partner cannot be renamed\; add the new name and delete the old one.
+The Reference, in the chapter “The OFTP Command”, has the syntax, the limits
+and the answers.
+
+Four points matter in daily use.
+
+- *The case of the values.* OFTPD turns the request into upper case, so a
+  partner added by command has its passwords and its host in upper case. If a
+  partner needs a host name in lower case, put it in the member.
+- *Show before you change.* #cmd("PARTNER SHOW") tells where the partner comes
+  from (the member, or kept by command), and whether the passwords are set. It
+  never shows a password. To change a password, give the new one.
+- *A partner in use.* While a partner has a session, or OFTPD is calling it,
+  you can enable and disable it, but not change anything else. The command is
+  refused with the answer #cmd("450 the partner has a session now, try again").
+  Repeat it later.
+- *Deleting.* OFTPD deletes a partner only if no transfer in the spool names
+  it, and none is running. The transfers that count are all of them, finished
+  ones too. If there are transfers, #cmd("DELETE") first disables the partner,
+  so that nothing new is queued for it, and tells you how many there are. Delete
+  or purge these (see @xfer-admin), and delete the partner again. A partner that
+  is only in the member cannot be deleted by command\; take its entry out of the
+  member and refresh.
+
+If a partner of the member is changed by command, the change is kept in the
+spool and the entry in the member is not used. To go back to the entry of the
+member, delete the partner kept by command\; the entry is in use again at once.
+
+OFTPD writes #cmd("OFTP243I"), #cmd("OFTP244I") or #cmd("OFTP245I") to the
+console and the log for each partner that is added, changed or deleted, with
+the name of the user.
+
+#note[*Passwords are stored in clear text.* The spool holds the passwords of the
+partners kept by command in clear text, as the member does. Protect the spool
+data set, and its backups, as you protect #cmd("OFTPPTN"). A password in a
+#cmd("PARTNER") command is as visible as the place where you type it\: in the
+JCL or SYSIN data, and on the screen at a terminal. The utility masks it in the
+echo of SYSIN, but not in your JCL. On its way to OFTPD the request passes
+through common storage for a short time. Do not give a password in a job whose
+JCL others can read.]
 
 == Checking a Partner <ptn-check>
 

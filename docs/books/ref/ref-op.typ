@@ -68,7 +68,8 @@ F OFTPD,REFRESH
 The command reads the partner table #cmd("OFTPPTN") again. It does not read
 #cmd("OFTPPRM"). OFTPD answers #cmd("OFTP016I") when it has read the member,
 or #cmd("OFTP017E") if it could not open it, in which case the table in use
-is not changed. What happens to new, changed and removed partners is
+is not changed. The partners that are kept by command are not read again,
+and stay as they are. What happens to new, changed and removed partners is
 described in the chapter “Configuration and the Partner Table”.
 
 == HOLD and RELEASE <op-hold>

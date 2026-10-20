@@ -14,6 +14,9 @@ The log is `DD OFTPLOG` of the procedure (`docs/installation.md`, "The
 log"). Each log line has the date and time in front; the console line does
 not. A line is at most 123 characters; a longer one is cut and ends in `>`.
 
+Two messages bypass the log: `OFTP219W` and `OFTP219E`, written by the
+task that serves the spool, go to the console only.
+
 If the log is not available -- the DD is missing, it will not open, or a
 write to it fails -- everything goes to the console, class `P` included,
 and `OFTP022W` or `OFTP023E` says so once.
@@ -52,8 +55,11 @@ different messages share the number; each is listed.
 | `OFTP013W` | Console + log | `DD OFTPPTN CANNOT BE OPENED, NO PARTNERS` |
 | `OFTP014P` | Log only | `ODETTE ID <id>, n OF m PARTNERS ENABLED` |
 | `OFTP015W` | Console + log | `PARTNER <name> NOT ADDED, TABLE FULL` |
-| `OFTP016I` | Console + log | `PARTNERS RELOADED: n ENABLED, n NEW, n DISABLED`: the answer to `F OFTPD,REFRESH` |
+| `OFTP016I` | Console + log | `PARTNERS RELOADED: n ENABLED, n NEW, n DISABLED, n REMOVED`: the answer to `F OFTPD,REFRESH` |
 | `OFTP017E` | Console + log | `DD OFTPPTN CANNOT BE READ` (`F OFTPD,REFRESH`) |
+| `OFTP018I` | Console + log | `n PARTNERS KEPT BY COMMAND, n OVERRIDE OFTPPTN`: the partners added or changed by `PARTNER` commands (`docs/partners.md`), read from the spool at start |
+| `OFTP018W` | Console + log | a partner record of the spool was not taken (`HAS NO NAME`, `<reason>, IGNORED`, `IS KEPT BY COMMAND ALREADY`), two partners have one Odette ID (the second is `DISABLED`), or `THE PARTNER RECORDS OF THE SPOOL CANNOT BE READ` |
+| `OFTP019E` | Console + log | `PARTNER RECORDS OF THE SPOOL UNREADABLE, OFTPD NOT STARTED`: starting on the parmlib table alone would bring back a partner that was disabled or changed by command |
 | `OFTP020E` | Console + log | `SPOOL NOT OPEN: <reason>`; OFTPD ends |
 | `OFTP021W` | Console + log | `SPOOL WAS NOT CLOSED (OPEN RC n), VERIFIED`: OFTPD did not end cleanly last time; the spool was checked |
 | `OFTP022W` | Console + log | `DD OFTPLOG CANNOT BE OPENED` or `IS NOT RECFM=F OR FB`: the messages go to the console |
@@ -114,6 +120,9 @@ These answer a command, so they stay on the console.
 | `OFTP235I` | Console + log | `n FINISHED TRANSFERS OLDER THAN n DAYS DELETED BY <who>`: after `F OFTPD,PURGE`, or the daily purge when it deleted something |
 | `OFTP236E` | Console + log | `SPOOL HOUSEKEEPING FAILED AFTER n, BY <who>` |
 | `OFTP237E` | Console + log | `<verb> OF <partner>: SPOOL NOT AVAILABLE` |
+| `OFTP243I` | Console + log | `PARTNER <name> ADDED BY <who>`: after `PARTNER ADD` (`docs/partners.md`) |
+| `OFTP244I` | Console + log | `PARTNER <name> CHANGED BY <who>`: after `PARTNER CHANGE`, `ENABLE` or `DISABLE` |
+| `OFTP245I` | Console + log | `PARTNER <name> DELETED BY <who>`: after `PARTNER DELETE` |
 
 ## Sessions and transfers
 
@@ -159,6 +168,8 @@ except for a refusal for lack of authority.
 
 | Id | Dest | Text and meaning |
 |---|---|---|
+| `OFTP219W` | Console only | `SPOOL THREAD WITHOUT ABEND RECOVERY`: the task that serves the spool could not set up abend recovery; a request that abends is not caught. It is written to the console directly, not to the log |
+| `OFTP219E` | Console only | `SPOOL REQUEST n ABEND Sxxx` or `Unnnn`, `ANSWERED WITH AN ERROR`: a request to the spool abended; its caller got an error and the spool task goes on. It is written to the console directly, not to the log |
 | `OFTP230P` | Log only | `<key> QUEUED FOR <partner>: <data set> AS <dsn>` |
 | `OFTP231P` | Log only | `<key> DELETED BY <user>` |
 | `OFTP232P` | Log only | `<key> HOLD/RELEASE/RETRY BY <user>` |
@@ -167,7 +178,7 @@ except for a refusal for lack of authority.
 
 ## The OFTP utility
 
-`OFTP001E`, `OFTP002E`, `OFTP003E` and `OFTP010E` come from the utility
+`OFTP001E`, `OFTP002E`, `OFTP003E`, `OFTP004E` and `OFTP010E` come from the utility
 itself and are written to its own output (SYSPRINT or the terminal). They
 do not use the console or the log.
 
@@ -176,4 +187,5 @@ do not use the console or the log.
 | `OFTP001E` | `NO COMMAND IN PARM OR SYSIN` |
 | `OFTP002E` | `UNKNOWN COMMAND <word>` |
 | `OFTP003E` | `COMMAND TOO LONG` / `OPERAND TOO LONG` |
+| `OFTP004E` | `PARTNER <sub> NEEDS A PARTNER NAME` (`ENABLE` and `DISABLE` show `CHANGE`) |
 | `OFTP010E` | the reply of OFTPD to a request that failed |
