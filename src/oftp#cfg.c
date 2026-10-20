@@ -237,11 +237,37 @@ last_partner(OFTP_CONFIG *c)
     return c->nptn > 0 ? &c->ptn[c->nptn - 1] : NULL;
 }
 
+/* Where a message about a line goes: its number and the message sink. */
+typedef struct {
+    int         lineno;
+    OFTP_CFGMSG msg;
+    const void *ctx;
+} CFG_AT;
+
+/* A word next_kv() refused: -2 too long, else no KEYWORD=VALUE. */
+static void
+cfg_badword(int partner, OFTP_PARTNER *cur, int got, const char *tok,
+            const CFG_AT *at)
+{
+    if (got != -2) {
+        say(at->msg, at->ctx, "line %d: %s is not KEYWORD=VALUE", at->lineno,
+            tok);
+        return;
+    }
+    say(at->msg, at->ctx, "line %d: %s", at->lineno,
+        "a word is longer than 99 characters");
+    if (partner && cur != NULL)
+        cur->enabled = 0;
+}
+
 /* One KEYWORD=VALUE word of a line; 1 when it is wrong, else 0. */
 static int
 cfg_word(OFTP_CONFIG *c, int partner, OFTP_PARTNER **cur, const char *tok,
-         const char *v, int lineno, OFTP_CFGMSG msg, const void *ctx)
+         const char *v, const CFG_AT *at)
 {
+    OFTP_CFGMSG msg = at->msg;
+    const void *ctx = at->ctx;
+    int lineno = at->lineno;
     int rc;
 
     if (!partner)
@@ -280,6 +306,7 @@ oftp_cfg_line(OFTP_CONFIG *c, int partner, const char *text, int lineno,
               OFTP_CFGMSG msg, const void *ctx)
 {
     const char *p = text;
+    const CFG_AT at = { lineno, msg, ctx };
     OFTP_PARTNER *cur = last_partner(c);
     int errors = 0;
 
@@ -293,17 +320,11 @@ oftp_cfg_line(OFTP_CONFIG *c, int partner, const char *text, int lineno,
         if (got == 0)
             break;
         if (got < 0) {
-            if (got == -2) {
-                say(msg, ctx, "line %d: %s", lineno,
-                    "a word is longer than 99 characters");
-                if (partner && cur != NULL)
-                    cur->enabled = 0;
-            } else
-                say(msg, ctx, "line %d: %s is not KEYWORD=VALUE", lineno, tok);
+            cfg_badword(partner, cur, got, tok, &at);
             errors++;
             continue;
         }
-        errors += cfg_word(c, partner, &cur, tok, v, lineno, msg, ctx);
+        errors += cfg_word(c, partner, &cur, tok, v, &at);
     }
     c->errors += errors;
     return errors;

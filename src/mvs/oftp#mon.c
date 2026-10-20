@@ -2348,7 +2348,7 @@ ctl_partner(OFTP_MON *m, CTLOUT *o, const char *line)
         return;
     }
     if (!o->admin) {
-        ctl_put(o, "507 needs ADMIN= in OFTPRM");
+        ctl_put(o, "507 needs ADMIN= in OFTPPRM");
         return;
     }
     memset(&q, 0, sizeof(q));
@@ -2835,7 +2835,7 @@ typedef struct {
 ** new comes for it meanwhile.
 */
 static void
-refresh_mark(OFTP_MON *m, OFTP_CONFIG *n, REFLEFT *left)
+refresh_mark(OFTP_MON *m, const OFTP_CONFIG *n, REFLEFT *left)
 {
     int i;
 
@@ -2894,10 +2894,10 @@ static int
 refresh_add(OFTP_MON *m, OFTP_CONFIG *n)
 {
     int added = 0;
-    int i;
-    int j;
 
-    for (j = 0; j < n->nptn; j++) {
+    for (int j = 0; j < n->nptn; j++) {
+        int i;
+
         if (n->ptn[j].peer.name[0] == '\0')
             continue;
         if ((i = oftp_cfg_alloc(&m->cfg)) < 0) {
@@ -2917,7 +2917,6 @@ oftp_mon_refresh(OFTP_MON *m)
 {
     OFTP_CONFIG *n;
     REFLEFT left[OFTP_MAXPTN];
-    int i;
     int on = 0;
     int added;
     int dropped = 0;
@@ -2936,7 +2935,7 @@ oftp_mon_refresh(OFTP_MON *m)
 
     refresh_mark(m, n, left);
     lock(m, 0);
-    for (i = 0; i < m->cfg.nptn; i++)
+    for (int i = 0; i < m->cfg.nptn; i++)
         if (m->cfg.ptn[i].peer.name[0] != '\0')
             refresh_slot(m, n, left, i, &dropped, &removed);
     added = refresh_add(m, n);

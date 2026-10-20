@@ -111,7 +111,7 @@ mask(char *line, size_t cap)
 {
     char *p;
     char *s;
-    char *e;
+    const char *e;
 
     for (p = line; strlen(p) > 8; p++) {
         char k[9];

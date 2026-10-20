@@ -42,6 +42,7 @@ run(const char *text, char *buf, size_t cap)
     int rc;
     int argc = 0;
 
+    buf[0] = '\0';
     if (f == NULL)
         return -1;
     snprintf(copy, sizeof(copy), "%s", text);
@@ -69,6 +70,7 @@ batch(const char *input, char *buf, size_t cap)
     size_t n = 0;
     int rc;
 
+    buf[0] = '\0';
     if (getcwd(here, sizeof(here)) == NULL || mkdtemp(dir) == NULL
         || chdir(dir) != 0)
         return -1;
@@ -193,7 +195,8 @@ main(void)
                "  FORMAT(T) HOLD\n",
                out, sizeof(out));
     CHECK_EQ(rc, 0, "batch: a continued command ran");
-    CHECK(longest_line(out) <= 72, "no echo line is longer than 72 characters");
+    CHECK(rc == 0 && longest_line(out) <= 72,
+          "no echo line is longer than 72 characters");
     CHECK(strstr(out, "FORMAT(T)") != NULL && strstr(out, "HOLD") != NULL,
           "and the end of the command is in it");
     CHECK(strstr(lastreq, "FMT=T") != NULL, "the request got all of it");
