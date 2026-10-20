@@ -1574,7 +1574,8 @@ on the stand: `HERC01.OFTPD.V0R1M0D.TESTLIB` from `mbt test --mvs`.
 - **The dialog on TK5**, in the container or on a stand.
 - **Two RAKF userids on a stand**: m38b ran HERC01 only. The container
   covered HERC02.
-- **A caller without an ACEE**, which owns nothing by this rule.
+- ~~**A caller without an ACEE**, which owns nothing by this rule.~~ Run
+  in section 17.
 - ~~**`SEND` reads the data set with OFTPD's authority, not the
   caller's.**~~ Checked at queue time since section 14: over the SVC,
   OFTPD asks RACHECK whether the caller may read the data set.
@@ -1619,8 +1620,8 @@ The check writes nothing to the console: RACINIT and the RACHECK
 (`LOG=NONE`) left no RAKF message for OFTPD's checks, only for the
 IEBGENER control.
 
-Not shown: a caller without an ACEE, and a system without a security
-product -- both are read off the code.
+A caller without an ACEE, and a system without a security product, are
+run in section 17.
 
 
 ## 15. The failure cases, measured (2026-10-19, #34)
@@ -2100,3 +2101,62 @@ bounds how long finished transfers stay in it.
 - A second client at the same time (slots, `inflight`): one caller at a
   time here. The sweep of section 11 is not involved.
 - TK5: not run.
+
+## 18. A caller without an ACEE, a system without a security product (2026-10-20, #54)
+
+Sections 13 and 14 left two cases read off the code: a caller whose
+address space has no ACEE, and a system with no security product. Both
+were run with `TSTSEC` (`test/mvs/tstsec.c`, `tstsec.jcl`) in a
+throwaway TK5 container (`tk5` image, RAKF; OFTPD from `OFTPD.DEV.LINKLIB`
+authorized by SVC 244, `ADMIN=HERC01`, one partner).
+
+**How the cases are made.** `OFTPSVC` reads the userid by walking
+`PSAAOLD` -> ASCB -> `ASCBASXB` -> `ASXBSENV` -> ACEE. `TSTSEC` is
+authorized (`SYS2.LINKLIB` did not authorize it, so it asks for SVC 244
+as OFTPD does, and RAKF permits it), and for the length of one SVC
+it stores 0 in its own `ASXBSENV`, in key 0, and puts the value back
+afterwards. The routine and the monitor run unchanged; the routine finds
+no ACEE and leaves `slot.user` blank, as it does for any address space
+that has none.
+
+The second case is **simulated**: neither TK5 nor MVS/CE boots without
+RAKF, and `CVTRAC` is 00FF9620 in the container. With `PARM=...,NOSEC`
+the test clears `CVTRAC` as well as `ASXBSENV` for the one SVC, so
+`oftp_sec_may_read()` sees what it sees on a system without a product
+(`cvtrac == NULL`), and puts both back. It is the branch that was
+unrun, on MVS and through the real routine, but it is not a boot
+without RAKF. The `RACINIT` answering 32 branch (a product that is
+installed and not active) is still read off the code and not run.
+
+| Caller | Request | Answer |
+|---|---|---|
+| HERC01, own ACEE (the control) | `SEND ... HOLD=Y` | `200 T0000002 queued and held` |
+| no ACEE, RAKF present | `SEND ... HOLD=Y` | `509 not authorized: the caller has no userid`; console `OFTP238W` (JOB00070) |
+| no ACEE, RAKF present | `SEND ... DISP=DELETE` | the same `509` |
+| no ACEE, RAKF present | `LIST` | `200 0 transfers` |
+| no ACEE, `CVTRAC` cleared | `SEND ... HOLD=Y` | `200 T0000004 queued and held` (JOB00071) |
+| no ACEE, `CVTRAC` cleared | `SEND ... DISP=DELETE` | `200 T0000005 queued and held` |
+| no ACEE, `CVTRAC` cleared | `LIST` | `200 0 transfers` |
+| no ACEE, `CVTRAC` cleared | `SHOW`, `RELEASE`, `DELETE` of its own transfer | `506 not your transfer` |
+| HERC01 (`ADMIN=`), own ACEE | `DELETE` of those transfers | `200 ... deleted` |
+
+**Decided, and what the test shows.**
+- A caller without an ACEE **on a system with a security product is
+  refused**, for `SEND` and for `SEND DISP=DELETE`: there is no identity to
+  check, and OFTPD reads the file later with its own authority, so
+  letting it through would be a way round the profile. `509`, `OFTP238W`,
+  before the existence check as for any refusal. This is the behaviour
+  sections 13 and 14 described; it is now measured.
+- On a system **without** a security product nothing is checked and a
+  send is queued, with the owner blank.
+
+**Open, and not decided here.** On a system without a security product
+every caller has a blank userid, and a blank userid owns nothing and is
+never an administrator (`ctl_may()`, `ctl_list()`). So a send is
+queued, but the sender cannot `LIST`, `SHOW`, `HOLD`, `RELEASE` or `DELETE`
+it; only the operator's `F OFTPD,...` commands reach it. That answers
+"can still use OFTPD" with "to send, yes; to manage what was sent, no".
+Changing it changes the authorization model (who counts as an
+administrator or an owner when there is nobody to tell apart), which this
+issue leaves out.
+
