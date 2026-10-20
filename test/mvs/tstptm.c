@@ -110,6 +110,21 @@ answers(const char *req, const char *code)
     return ok;
 }
 
+/* The final line of the reply, without its code, fits the ISPF message
+** line (cut at column 79) for an 8-character partner name (this one has
+** 6) and a count of 5 digits (this one has 1)
+*/
+static int
+fits_dialog(void)
+{
+    const char *l = find("5", NULL);
+
+    if (l == NULL || strlen(l) < 4)
+        return 0;
+    printf("    %s\n", l);
+    return strlen(l + 4) + (8 - (sizeof(NAME) - 1)) + 4 <= 78;
+}
+
 static int
 show_of(const char *name, const char *text)
 {
@@ -252,6 +267,7 @@ phase_a(const char *host, const char *port, const char *dsn)
     /* 7. the transfer is in the spool: the partner is not deleted */
     CHECK(answers("PARTNER DELETE PARTNER=" NAME, "512"),
           "DELETE is refused while the spool holds a transfer");
+    CHECK(fits_dialog(), "and its text fits the ISPF message line");
     CHECK(show_has("PARTNER=" NAME), "the partner is still there");
     CHECK(show_has("ENABLED=N"), "disabled, so that nothing new comes");
     return 0;
