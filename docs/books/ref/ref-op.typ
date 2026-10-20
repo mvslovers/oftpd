@@ -116,8 +116,10 @@ operand other than #cmd("ON") or #cmd("OFF") is refused with
 #cmd("OFTP126E"). A partner that is not in the table is refused with
 #cmd("OFTP120E")\; a partner that is disabled is accepted. The state of the
 trace is shown by #cmd("D P") and #cmd("D S") in message #cmd("OFTP127I").
-#cmd("OFTP127I") names about ten traced partners\; #cmd("D P") marks every
-traced partner with #cmd("TRACE") in its #cmd("OFTP100I") line.
+#cmd("OFTP127I") holds at least ten partner names, more if the names are short.
+A longer list is cut at the end of the line, which is marked with
+#cmd(">"), and the last name may be cut. #cmd("D P") marks every traced partner
+with #cmd("TRACE") in its #cmd("OFTP100I") line.
 
 After #cmd("TRACE OFF") OFTPD writes no more trace lines. A session that is
 running at that moment writes none either, not even the line for the data
@@ -126,11 +128,18 @@ buffers it has counted so far.
 The trace is a diagnostic\; switch it off when you have what you need. Every
 protocol command is one line in the log, and a session that moves three small
 files writes about 28 trace lines. A partner that connects often fills the log
-quickly, and there is no limit to the size of what the trace writes. With
-#cmd("TRACE ON") for all partners, the first two lines of a session that the
-partner started, #cmd("SEND SSRM") and #cmd("RECV SSID"), show the caller's
-address in place of the partner name, because OFTPD does not know the partner
-yet. A trace for one partner starts with the #cmd("RECV SSID") line.
+quickly, and there is no limit to the size of what the trace writes. If the
+log data set is full, OFTPD gives the log up and writes every further message
+to the console (#cmd("OFTP023E")), the trace lines included, so a forgotten
+trace can flood the console.
+
+With #cmd("TRACE ON") for all partners, the first two lines of a session that
+the partner started, #cmd("SEND SSRM") and #cmd("RECV SSID"), show the
+caller's address in place of the partner name, because OFTPD does not know the
+partner yet. If the caller is refused or unknown, every line of the session
+shows the address. A trace for one partner starts with the #cmd("RECV SSID")
+line. In a session that OFTPD started with a call, the partner is known from
+the first line, which is #cmd("RECV SSRM").
 
 == PURGE <op-purge>
 

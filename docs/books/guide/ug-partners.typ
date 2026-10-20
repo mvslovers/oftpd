@@ -259,9 +259,11 @@ trace line follows.
 
 The trace is a diagnostic, not a standing setting. Every command is a line in
 the log, and a session that moves three small files writes about 28 of them.
-The log has no size limit for them, so a busy partner fills it quickly. With
-the trace on for all partners, the first two lines of a session that a partner
-started carry the caller's address instead of the partner name, because OFTPD
-does not know the partner yet. A character of an Odette ID or a file name from
+The trace has no size limit, so a busy partner fills the log quickly. When the
+log is full, OFTPD writes every further message to the console, trace lines
+included. With the trace on for all partners, the first two lines of a session
+that a partner started carry the caller's address instead of the partner name,
+because OFTPD does not know the partner yet. For a caller that is refused or
+unknown, every line carries the address. A character of an Odette ID or a file name from
 the partner that cannot be printed shows as a dot in the trace and in the
 session lines.
