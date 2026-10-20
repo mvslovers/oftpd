@@ -165,6 +165,32 @@ main(int argc, char **argv)
                      "and does not take them");
             CHECK(memcmp(qq.key, "P0000003", 8) == 0, "next is above the key given");
 
+            /* the transfer calls never reach a partner record (it holds
+            ** passwords) or the control record */
+            memset(&g, 0, sizeof(g));
+            memcpy(g.key, "P0000001", 8);
+            CHECK_EQ(oftp_spl_get(sp, "P0000001", &g), OFTP_SPL_NOTFOUND,
+                     "get of a partner key: NOTFOUND");
+            CHECK(g.key[0] == 'P' && g.dsn[0] == '\0',
+                  "and nothing of the partner record is copied out");
+            CHECK_EQ(oftp_spl_get(sp, "\0\0\0\0\0\0\0\0", &g),
+                     OFTP_SPL_NOTFOUND, "get of the control key: NOTFOUND");
+            CHECK_EQ(oftp_spl_put(sp, &g), OFTP_SPL_NOTFOUND,
+                     "put under a partner key: NOTFOUND");
+            CHECK_EQ(oftp_spl_putif(sp, &g, SPL_QUEUED), OFTP_SPL_NOTFOUND,
+                     "putif under a partner key: NOTFOUND");
+            CHECK_EQ(oftp_spl_del(sp, "P0000001"), OFTP_SPL_NOTFOUND,
+                     "del of a partner key: NOTFOUND");
+            memset(&pp, 0, sizeof(pp));
+            memcpy(pp.key, "T0000001", 8);
+            CHECK_EQ(oftp_spl_ptn_put(sp, &pp), OFTP_SPL_NOTFOUND,
+                     "the partner calls do not reach a transfer");
+            CHECK_EQ(oftp_spl_ptn_del(sp, "T0000001"), OFTP_SPL_NOTFOUND,
+                     "nor delete one");
+            CHECK_EQ(oftp_spl_get(sp, keys[1], &g), 0, "the transfers are still there");
+            CHECK_EQ(oftp_spl_ptn_next(sp, "P0000002", &qq), 0,
+                     "and the partner record is untouched");
+
             strcpy(pp.text, "PARTNER=PTN2 ODETTEID=O00130000PTN2 HOST=x.example.org");
             memcpy(pp.key, "P0000003", 8);
             CHECK_EQ(oftp_spl_ptn_put(sp, &pp), 0, "replace a partner record");

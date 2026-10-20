@@ -58,6 +58,13 @@ the echo of `SYSIN`, but it is in your JCL, and under TSO it is on your
 terminal and in your session's history. Keep the JCL in a data set only you
 can read.
 
+A password in a `PARTNER` command also travels through common storage
+(CSA): `OFTP` hands the request to OFTPD in a slot there, and OFTPD
+erases the slot as soon as it has copied the request. Common storage is
+not fetch-protected, so until then any program on the system could read it.
+That window is short, but it is there; it is a limit of the way the
+utilities reach OFTPD, not something a setting closes.
+
 ### What is refused
 
 | Request | Answer |

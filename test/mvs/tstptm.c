@@ -148,6 +148,26 @@ transfer(char *key, char *state)
     return 1;
 }
 
+/* A KEY= that is not a transfer's: none of the transfer verbs may answer
+** with, or change, a partner record (it holds the passwords)
+*/
+static void
+no_partner_key(const char *key)
+{
+    static const char *const verbs[] = { "SHOW", "DELETE", "HOLD", "RELEASE",
+                                         "RETRY" };
+    char req[64];
+    int  i;
+
+    for (i = 0; i < 5; i++) {
+        snprintf(req, sizeof(req), "%s KEY=%s", verbs[i], key);
+        CHECK(answers(req, "504"), "a partner key is no transfer");
+        CHECK(strstr(reply, "PASSWORD") == NULL && strstr(reply, "TSTB") == NULL
+              && strstr(reply, "PARTNER=") == NULL,
+              "and the answer has no partner text");
+    }
+}
+
 static int
 phase_a(const char *host, const char *port, const char *dsn)
 {
@@ -172,6 +192,14 @@ phase_a(const char *host, const char *port, const char *dsn)
     CHECK(show_has("PASSWORD=") && strstr(reply, "PASSWORD=TST") == NULL,
           "the passwords themselves are never in the answer");
     CHECK(show_has("kept by command"), "and that the partner is kept by command");
+
+    /* 1a. the record just written is in the spool, and no transfer verb
+    ** can read, change or delete it */
+    no_partner_key("P0000001");
+    no_partner_key("P0000002");
+    no_partner_key("00000000");
+    CHECK(show_has("PASSWORD=SET OURPASSWORD=SET"),
+          "the partner is as it was after those");
 
     /* 2. refusals that change nothing */
     CHECK(answers(req, "509"), "ADD of the same name is refused: it exists");

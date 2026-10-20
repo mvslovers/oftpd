@@ -30,7 +30,7 @@ typedef char sprec_fits[sizeof(OFTP_SPREC) <= OFTP_SPLRECL ? 1 : -1];
 typedef char spptn_fits[sizeof(OFTP_SPPTN) == OFTP_SPLRECL ? 1 : -1];
 
 enum { OP_ADD, OP_GET, OP_PUT, OP_PUTIF, OP_DEL, OP_NEXT, OP_PURGE, OP_STOP,
-       OP_PNEXT, OP_PADD };
+       OP_PNEXT, OP_PADD, OP_PPUT, OP_PDEL };
 
 typedef struct spl_req {
     struct spl_req *next;
@@ -205,9 +205,34 @@ do_purge(OFTP_SPOOL *sp, long before, unsigned *count, OFTP_SPREC *rec)
     return rc == OFTP_SPL_NOTFOUND ? 0 : rc;
 }
 
+/* The transfer operations touch transfer records only: the 'P' records
+** hold partner data with passwords, and nothing a caller types as a key
+** may reach them or the control record. Partners have OP_PPUT/OP_PDEL.
+*/
+static int
+wrong_kind(const SPL_REQ *r)
+{
+    switch (r->op) {
+    case OP_GET:
+    case OP_PUT:
+    case OP_PUTIF:
+    case OP_DEL:
+        return r->key[0] != 'T';
+    case OP_PPUT:
+    case OP_PDEL:
+        return r->key[0] != 'P';
+    default:
+        return 0;
+    }
+}
+
 static void
 serve(OFTP_SPOOL *sp, SPL_REQ *r)
 {
+    if (wrong_kind(r)) {
+        r->rc = OFTP_SPL_NOTFOUND;
+        return;
+    }
     switch (r->op) {
     case OP_ADD:
         r->rc = do_add(sp, r->rec);
@@ -217,6 +242,7 @@ serve(OFTP_SPOOL *sp, SPL_REQ *r)
             memcpy(r->rec, sp->buf, r->len);
         break;
     case OP_PUT:
+    case OP_PPUT:
         if ((r->rc = read_key(sp, r->key)) == 0) {
             memset(sp->buf, 0, OFTP_SPLRECL);
             memcpy(sp->buf, r->rec, r->len);
@@ -241,6 +267,7 @@ serve(OFTP_SPOOL *sp, SPL_REQ *r)
         }
         break;
     case OP_DEL:
+    case OP_PDEL:
         if ((r->rc = read_key(sp, r->key)) == 0
             && vsdelete(sp->vs, sp->buf, OFTP_SPLRECL) != 0) {
             vsclear(sp->vs);
@@ -547,7 +574,7 @@ oftp_spl_ptn_put(OFTP_SPOOL *sp, const OFTP_SPPTN *rec)
     OFTP_SPPTN copy = *rec;
 
     memset(&r, 0, sizeof(r));
-    r.op = OP_PUT;
+    r.op = OP_PPUT;
     memcpy(r.key, copy.key, 8);
     r.rec = &copy;
     r.len = sizeof(copy);
@@ -557,5 +584,5 @@ oftp_spl_ptn_put(OFTP_SPOOL *sp, const OFTP_SPPTN *rec)
 int
 oftp_spl_ptn_del(OFTP_SPOOL *sp, const char *key)
 {
-    return request(sp, OP_DEL, key, NULL);
+    return request(sp, OP_PDEL, key, NULL);
 }

@@ -645,6 +645,9 @@ oftp_svc_take(OFTP_MON *m, unsigned i, OFTP_SVCJOB *j)
         memcpy(j->req, s->req, n);
         j->user[8] = '\0';
         j->req[n]  = '\0';
+        /* a PARTNER request can carry a password, and the slot is
+        ** readable from key 8: what was copied does not stay */
+        memset(s->req, 0, sizeof(s->req));
         got = 1;
     }
     __prob(savekey, NULL);
