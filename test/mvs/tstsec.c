@@ -18,6 +18,12 @@
 ** none. That needs authority, which is why this job -- unlike TSTSVC --
 ** must run from an APF-authorized library.
 **
+** **NEVER RUN THIS ON A STAND.** With NOSEC the call clears CVTRAC of the
+** whole system for the length of one SVC, not just of this address
+** space; if the SVC hung between the two key-0 sections, it would stay
+** cleared and every security check on the system would be off. It is for
+** a throwaway container only.
+**
 ** It needs a running OFTPD with SVC= and a partner, and a sequential
 ** data set the caller can read (test/mvs/tstsec.jcl). It queues held
 ** sends and deletes them again; ADMIN= in OFTPPRM must name the userid
@@ -107,6 +113,22 @@ static int
 queued(const char *answer)
 {
     return strncmp(answer, "200 ", 4) == 0 || strncmp(answer, "210 ", 4) == 0;
+}
+
+/* Does the whole answer to LIST name key? */
+static int
+lists(int anon, int nosec, const char *key)
+{
+    char     buf[OFTP_SVC_REPMAX + 1];
+    unsigned len = 0, next = 0;
+    int      rc;
+
+    rc = anon ? call_as(nosec, "LIST", buf, OFTP_SVC_REPMAX, &len)
+              : oftp_svc_call("LIST", buf, OFTP_SVC_REPMAX, 0, &len, &next);
+    if (rc != OFTP_SVC_OK)
+        return 0;
+    buf[len] = '\0';
+    return strstr(buf, key) != NULL;
 }
 
 /* One request, answered; the first line of the reply in `out` */
@@ -228,19 +250,47 @@ main(int argc, char **argv)
             ask(0, 0, req, ans, sizeof(ans));
     }
 
-    /* 4. What a caller without a userid can then do with its transfer */
+    /* 4. What a caller without a userid can then do with transfers.
+    ** The control transfer (key, HERC01's, held) is there in both
+    ** modes. With a product a blank userid owns nothing: it sees no
+    ** transfer and may touch none. Without one there is nobody to tell
+    ** apart, so everyone sees and manages everything (oftpd#54).
+    */
     ask(1, nosec, "LIST", ans, sizeof(ans));
     printf("    no ACEE, LIST      : %s\n", ans);
-    if (key2[0] != '\0') {
+    snprintf(req, sizeof(req), "SHOW KEY=%s", key);
+    if (secure) {
+        CHECK(strcmp(ans, "200 0 transfers") == 0,
+              "no ACEE, security product: LIST shows nothing");
+        ask(1, nosec, req, ans, sizeof(ans));
+        printf("    no ACEE, SHOW ctl  : %s\n", ans);
+        CHECK(strcmp(ans, "506 not your transfer") == 0,
+              "no ACEE, security product: SHOW of another's transfer refused");
+        snprintf(req, sizeof(req), "DELETE KEY=%s", key);
+        ask(1, nosec, req, ans, sizeof(ans));
+        printf("    no ACEE, DELETE ctl: %s\n", ans);
+        CHECK(strcmp(ans, "506 not your transfer") == 0,
+              "no ACEE, security product: DELETE of another's transfer refused");
+    } else if (key2[0] != '\0') {
+        CHECK(lists(1, nosec, key2),
+              "no ACEE, no security product: LIST shows its transfer");
         snprintf(req, sizeof(req), "SHOW KEY=%s", key2);
         ask(1, nosec, req, ans, sizeof(ans));
         printf("    no ACEE, SHOW      : %s\n", ans);
-        snprintf(req, sizeof(req), "RELEASE KEY=%s", key2);
+        CHECK(strncmp(ans, "100 ", 4) == 0 && strstr(ans, key2) != NULL,
+              "no ACEE, no security product: SHOW answers");
+        /* held already: 505 says the request passed the owner test */
+        snprintf(req, sizeof(req), "HOLD KEY=%s", key2);
         ask(1, nosec, req, ans, sizeof(ans));
-        printf("    no ACEE, RELEASE   : %s\n", ans);
+        printf("    no ACEE, HOLD      : %s\n", ans);
+        CHECK(strncmp(ans, "505 ", 4) == 0,
+              "no ACEE, no security product: HOLD is not refused as foreign");
         snprintf(req, sizeof(req), "DELETE KEY=%s", key2);
         ask(1, nosec, req, ans, sizeof(ans));
         printf("    no ACEE, DELETE    : %s\n", ans);
+        CHECK(strncmp(ans, "200 ", 4) == 0 && strstr(ans, "deleted") != NULL,
+              "no ACEE, no security product: DELETE of its transfer works");
+        key2[0] = '\0';
     }
 
     /* Clean up with the job's own ACEE (ADMIN=) */
