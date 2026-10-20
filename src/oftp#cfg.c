@@ -189,7 +189,8 @@ partner_kw(OFTP_PARTNER *p, const char *k, const char *v)
 
 /* The next KEYWORD=VALUE of *pp into tok[100]: tok the keyword, upper-cased,
 ** *v the value, upper-cased except HOST. 1 for a pair, 0 at the end, -1
-** for a word without '=' (tok holds it).
+** for a word without '=' (tok holds it), -2 for a word of more than 99
+** characters (tok is empty: the word may hold a password).
 */
 static int
 next_kv(const char **pp, char *tok, char **v)
@@ -208,10 +209,16 @@ next_kv(const char **pp, char *tok, char **v)
            && *p != '\r') {
         if (n < 99)
             tok[n++] = *p;
+        else
+            n = 100;
         p++;
     }
-    tok[n] = '\0';
     *pp = p;
+    if (n > 99) {
+        tok[0] = '\0';
+        return -2;
+    }
+    tok[n] = '\0';
     if ((eq = strchr(tok, '=')) == NULL)
         return -1;
     *eq = '\0';
@@ -247,6 +254,14 @@ oftp_cfg_line(OFTP_CONFIG *c, int partner, const char *text, int lineno,
         got = next_kv(&p, tok, &v);
         if (got == 0)
             break;
+        if (got == -2) {
+            say(msg, ctx, "line %d: %s", lineno,
+                "a word is longer than 99 characters");
+            errors++;
+            if (partner && cur != NULL)
+                cur->enabled = 0;
+            continue;
+        }
         if (got < 0) {
             say(msg, ctx, "line %d: %s is not KEYWORD=VALUE", lineno, tok);
             errors++;
@@ -312,6 +327,10 @@ oftp_cfg_apply(OFTP_PARTNER *p, const char *text, char *why, int whylen)
 
         if ((got = next_kv(&t, tok, &v)) == 0)
             return 0;
+        if (got == -2) {
+            snprintf(why, (size_t)whylen, "a word is longer than 99 characters");
+            return -1;
+        }
         if (got < 0) {
             snprintf(why, (size_t)whylen, "%s is not KEYWORD=VALUE", tok);
             return -1;
