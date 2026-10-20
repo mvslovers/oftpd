@@ -268,15 +268,16 @@ letter or digit, so `?ID.X` and `?ID-?KEY` are symbols, while `?IDX`,
 anything else stays as it is as well.
 A JCL statement (a line starting `//`) has its text in columns 1 to 71
 (72 is the continuation mark); any other line has 80. A line that comes
-out longer, after the symbols went in, is **not** cut: the job is not submitted. The file is kept and acknowledged
-all the same, and the console says `OFTP247W` with the reason. A job is
+out longer, after the symbols went in, is **not** cut: the job is not
+submitted. The file is kept and acknowledged all the same, and the console
+says `OFTP247W` with the reason. A job is
 not submitted either when the member is not there, is empty, or has a
 record past column 80, or its record format is undefined (`RECFM=U`) or
 its record length is not positive, or it is read to a different end the
 second time (`MEMBER CHANGED DURING READ`: it was edited meanwhile, or the
-read failed). The record of the transfer says which of the two
-happened (`OFTP SHOW`: `job submitted JOB00123`, or `job not submitted:
-...`); a submitted job is `OFTP246P` in the log.
+read failed). The record of the transfer says what happened (`OFTP SHOW`
+prints `job submitted JOBnnnnn (JES job id)`, or `job not submitted:`
+and the reason); a submitted job is `OFTP246P` in the log.
 
 The virtual file name is chosen by the partner and ends up in the JCL, so
 `?VFILE` stands only for letters, digits and `. - _ @ # $`: a name with
@@ -290,7 +291,8 @@ file name must never decide by itself what the job touches or runs:
 - put `?VFILE` only behind a fixed high-level qualifier the partner cannot
   leave, as in `DSN=ACCT.IN.?VFILE`;
 - never as a whole name (`DSN=?VFILE`), never as `PGM=?VFILE`, never inside
-  `PARM=`;
+  `PARM=`, never on the job card, and never in an operand that names an
+  identity: `USER=`, `PASSWORD=` or `GROUP=`;
 - keep the `VFN=` pattern of the rule as narrow as the application allows
   (`VFN=INV?????.DATA`, not `VFN=*`).
 
@@ -303,14 +305,14 @@ name, but one with `%VFN` in it carries the partner's text.
 
 **Whose job it is.** It goes through the internal reader of the OFTPD
 started task, but it does not run as that task. OFTPD sets no `USER=`, and
-on a system with RAKF a job without one starts as the default user (the
-log says `RAKF0011I ... STARTED USING DEFAULT PROD ACCOUNT`), not as the
-started task. The job can do what that user may do under your RAKF
+on a system with RAKF a job without one starts as the default user
+(`PROD`, measured), not as the started task. The job can do what that user may do under your RAKF
 profiles, and that can be a lot. What the default user may do on your
 system is not something OFTPD knows or this manual can say: before you
 write `JOB=`, look it up in your profiles, and give that user only the
 access the jobs need, or let the member carry a `USER=` and `PASSWORD=` of
-its own on the job card. A job that fails there fails in the JES log of the
+its own on the job card; a `PASSWORD=` there is plain text in the member,
+so protect the member accordingly. A job that fails there fails in the JES log of the
 job, not in OFTPD: `job submitted` says only that JES took it, and not that
 the member was read to its end (`rread()` does not tell an end of file from
 a read error). OFTPD checks nothing more; the member is named in the rules

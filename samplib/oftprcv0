@@ -59,13 +59,14 @@
 * (OFTP247W).
 * Whose job it is: OFTPD sets no USER=. Without one on the job card the job
 * does NOT run as the OFTPD started task but as the default user of the
-* security product (RAKF: RAKF0011I ... STARTED USING DEFAULT PROD
-* ACCOUNT), and has what that user may do under your RAKF profiles; what
+* security product (RAKF: PROD), and has what that user may do under
+* your RAKF profiles; what
 * that is, only you can say: look it up before you use JOB=. Protect this
 * member and the library of the jobs as you protect SYS2.PARMLIB.
 * The partner's text must never decide what the job is: put ?VFILE only
 * behind a fixed high-level qualifier (DSN=ACCT.IN.?VFILE), never as a whole
-* name, as PGM= or in PARM=, and keep VFN= as narrow as the application
+* name, as PGM= or in PARM=, not on the job card or in USER=, PASSWORD= or
+* GROUP=, and keep VFN= as narrow as the application
 * allows (the filter in OFTPD checks the characters, not the meaning:
 * SYS1.PARMLIB and IEFBR14 pass it). A partner can have one job queued for
 * every file it may send under a matching rule. Partner names used with ?ID
