@@ -214,8 +214,9 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   files and EERPs claimed by one session~~ -- PR #20: 20 files over two
   parallel sessions and 12 each way at once, each sent, received and
   confirmed once; with `SESSIONS=1` the collision resolves as before.
-  `MAXSESS` reached keeps the silent close. Open: a session ending while
-  it holds a claim is read, not measured.
+  `MAXSESS` reached keeps the silent close. A session ending while it
+  holds an EERP claim: measured (#57, `internals/design.md` 6.1); claims
+  of other kinds are not.
 - ~~A file over about 750 KB between two OFTPDs ends EFNA 12~~ (#21):
   the SFID now carries the tracks used at the volume's track length, and
   a size of 0 gets `TRK(15,15)` instead of `TRK(5,3)`. Measured in two
