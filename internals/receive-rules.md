@@ -270,13 +270,41 @@ IEBCOMPR; every step's return code was checked.
 | `REFRESH` with a broken member (`%NOSUCH`, `FROM=NOBODY`, `BOGUS=1`) | three `OFTP010W`, `OFTP025E`, the second set still in force |
 | `mbt test --mvs`: TSTDSF (space override), TSTRCV | ok |
 
+### Measured, second round (security review fixes)
+
+Another throwaway MVS/CE container (2026-10-20), the merged head of the
+branch, same set-up. `test/mvs/tstrcvm.c` has two more cases, `REPLACE=Y`
+onto a PDS and onto a VSAM cluster, and `test/mvs/tstrcvr.c` (new, from
+`test/mvs/tstrcvr.jcl`, needs no running OFTPD) drives
+`oftp_mon_recover()` and `oftp_dsf_kind()` directly.
+
+| Case | Result |
+|---|---|
+| `oftp_dsf_kind()` of a PS, a name not in the catalog, a PDS, a VSAM cluster, a member | `PS`, `NONE`, `OTHER`, `OTHER`, `OTHER` (TSTRCVR) |
+| `REPLACE=Y` onto a PDS (`IBMUSER.RCVTEST.PDS.ONE`, one member) | REJECTED with 12, `OFTP234W ... IS NOT A SEQUENTIAL DATA SET AND IS NOT REPLACED (RULE PDS)`, the waiting send deleted; IEBCOMPR `TYPORG=PO` of the PDS against its copy RC 0 |
+| `REPLACE=Y` onto a VSAM cluster | the same, `OFTP234W`; the cluster still in `LISTCAT` |
+| after these, `LISTCAT` of `TMPPREFIX` | `NOT FOUND`: no temporary name or backup left |
+| `REPLACE=Y` where the old data set was held by another job (again) | REJECTED with 12, now `OFTP226E` (the check at the close; the old data set compared equal to what it held) |
+| recovery, backup only (`TMPPREFIX.B<key>` present, target missing) | the backup renamed to the target, the half-received temporary file removed, the spool record deleted (TSTRCVR 1) |
+| recovery, both present | both left, the record deleted (TSTRCVR 2); `OFTP243W` is in the code path but was not read from the console |
+| recovery, no backup | the target untouched (TSTRCVR 3) |
+| `TSTRCVM` 1, 2, 3 | 28/28, 6/6, 3/3; `REFRESH` with the broken member: `OFTP010W` three times (DSN, `BOGUS`, `FROM=NOBODY`), `OFTP025E`, the second set still in force |
+| `mbt test --mvs` | all pass except `TSTSCH` (8 assertions, as before this work) and `TSTLOG` (3 assertions, "the record is stamped", from the log work in main); both are clock/time-stamp tests in files this work does not touch, and pass on the host |
+
+Notes on the runs: `TSTRCVR` needs `REGION=4096K` (S878 with the default
+region: the test holds an `OFTP_MON`). The two OFTPDs hold both class-A
+initiators of the container, so a third initiator is started
+(`$SI4`) before `TSTRCVM1` can run. A bad line marks its own rule bad, and
+a rule that is bad is not checked for `FROM=` again: the broken member of
+`TSTRCVW3` therefore puts `BOGUS=1` into the first rule, so that all three
+errors are reported.
+
 **Not measured on MVS**: a receive that fails halfway with `REPLACE=Y` (the
 temporary file is removed; the old data set is untouched by construction,
 because nothing renames it before the close); the `XLATE=` override; `SPACE=`
 for a file whose SFID gives no size (`tstdsf` covers the allocation string,
-the container run sent files with a size); a crash between the two renames.
-`TSTRCVM` needs two running monitors and is run from its JCL, not by
-`mbt test --mvs` (`host = false`, it skips there). On the container
-`TSTSCH` fails 8 assertions in each of batch and TSO (the "today 22:00",
-"tomorrow", "day 300" cases) that pass on the host; the file is untouched
-by this work and the cause is not investigated.
+the container run sent files with a size); a real stop of a running OFTPD
+between the two renames and the restore at its next start (TSTRCVR runs the
+same function on prepared data sets, not after a crash); the console text of
+`OFTP239I` and `OFTP243W`. `TSTRCVM` and `TSTRCVR` need their JCL, not
+`mbt test --mvs` (`host = false`, they skip there).
