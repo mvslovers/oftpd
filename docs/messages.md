@@ -46,7 +46,7 @@ different messages share the number; each is listed.
 | `OFTP004P` | Log only | `AUTHORIZED BY LIBRARY` or `BY SVC`: how OFTPD got authorization |
 | `OFTP005W` | Console + log | `NOT AUTHORIZED, RC=n, CONTINUING` |
 | `OFTP006W` | Console + log | `NO ABEND RECOVERY (ESTAE FAILED)`: an abend of OFTPD will not close its sockets |
-| `OFTP010W` | Console + log | `<member>: <line>`: a line of `OFTPPRM` or `OFTPPTN` that was not understood; the entry is skipped or disabled |
+| `OFTP010W` | Console + log | `<member>: <line>`: a line of `OFTPPRM` or `OFTPPTN` that was not understood, for example `line 12: a word is longer than 99 characters` (such a word is refused, never cut); the entry is skipped or disabled |
 | `OFTP011E` | Console + log | `DD OFTPPRM CANNOT BE OPENED`; OFTPD ends |
 | `OFTP012E` | Console + log | `OFTPPRM HAS NO ODETTEID`; OFTPD ends |
 | `OFTP013W` | Console + log | `DD OFTPPTN CANNOT BE OPENED, NO PARTNERS` |
@@ -173,13 +173,16 @@ except for a refusal for lack of authority.
 
 ## The OFTP utility
 
-`OFTP001E`, `OFTP002E`, `OFTP003E` and `OFTP010E` come from the utility
-itself and are written to its own output (SYSPRINT or the terminal). They
-do not use the console or the log.
+`OFTP001E`, `OFTP002E`, `OFTP003E`, `OFTP004E`, `OFTP007E` and `OFTP010E`
+come from the utility itself and are written to its own output (SYSPRINT or
+the terminal). They do not use the console or the log. Except for
+`OFTP010E`, they are found before OFTPD is asked, and the return code is 8.
 
 | Id | Text and meaning |
 |---|---|
 | `OFTP001E` | `NO COMMAND IN PARM OR SYSIN` |
-| `OFTP002E` | `UNKNOWN COMMAND <word>` |
-| `OFTP003E` | `COMMAND TOO LONG` / `OPERAND TOO LONG` |
-| `OFTP010E` | the reply of OFTPD to a request that failed |
+| `OFTP002E` | `UNKNOWN COMMAND <word>`; `UNKNOWN PARTNER COMMAND <word>`; or, for `PARTNER` alone, the list `LIST, SHOW, ADD, CHANGE, ENABLE, DISABLE OR DELETE` |
+| `OFTP003E` | `COMMAND TOO LONG`, or `OPERAND TOO LONG: <keyword>`: the value of that operand is longer than 79 characters. The keyword is shown as typed, never the value, which may be a password. A keyword of more than 15 characters, or a word without a value that long, gives `OPERAND TOO LONG` alone |
+| `OFTP004E` | `PARTNER <sub> NEEDS A PARTNER NAME`: `PARTNER ADD`, `CHANGE`, `SHOW` or `DELETE` without a name (`ENABLE` and `DISABLE` are shown as `CHANGE`) |
+| `OFTP007E` | `OPERAND <n> HAS NO VALUE: WRITE KEYWORD(VALUE)`: a word after the name of the partner or the key that is no `KEYWORD(VALUE)` or `KEYWORD=VALUE`, for example `PARTNER CHANGE ACME OURPASS`. `<n>` is the place of the word, counted after the verb (after `PARTNER CHANGE` for a partner command); the word is not shown, because it may be a password. `XLATE` and `HOLD` alone are taken as `Y` |
+| `OFTP010E` | the answer of OFTPD to a request that ends with return code 12, such as an unknown partner or OFTPD not reached (`docs/partners.md`, "What is refused") |
