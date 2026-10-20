@@ -264,10 +264,16 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 - ~~#13: about 520 bytes per session abend~~ -- libc370's `try()`
   retried without `SDWAFREE` and nobody freed the SDWA (the 6 KB of
   dev1 were the largest-block probe, not a loss). Fixed in libc370
-  2.23.0 (mvslovers/libc370#640), now the floor; measured again in a
+  2.23.0 (mvslovers/libc370#640); measured again in a
   container 2026-10-19: 50 abends and 50 normal sessions, the region's
   free storage the same to the byte. The `OFTP103I`/`D MH` instrument
   is gone with it.
+- ~~#66: raise the libc370 floor~~ -- now **2.24.1** (cc370 stays 1.6.1).
+  Measured in a container 2026-10-20: host tests 363/363, `TSTSPL` 33/33,
+  an inbound and an outbound transfer byte for byte, `module-data` with
+  the same output as on 2.23.0. `TSTSCH` fails 8 of 32 assertions on
+  MVS/CE with 2.23.0 and with 2.24.1 alike, so the bump did not cause it
+  (the test reads the zone through `localtime_r()`); not yet understood.
 
 ## After the MVP
 
