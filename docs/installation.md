@@ -177,11 +177,16 @@ the console; classes `I`, `W` and `E` go to both. Every session message
 begins with the partner's name, so a partner's lines can be picked out of
 the log. `docs/messages.md` lists every message with its destination.
 
-- Give the DD `RECFM=F` or `FB` (the procedure has `LRECL=160`). A line is
-  at most 143 characters with its time; a longer one is cut and ends in
-  `>`. A record length below 143 cuts lines the same way.
+- Give the DD `RECFM=F` or `FB` and say so in a `DCB=`, as the procedure
+  does (`DCB=(RECFM=FB,LRECL=160,BLKSIZE=160)`). A SYSOUT DD without a DCB
+  is refused with `OFTP022W`. A line is at most 143 characters with its
+  time; a longer one is cut and ends in `>`. A record length below 143
+  cuts lines the same way.
 - JES2 keeps a SYSOUT data set for the job, and you read it when the
   started task ends or when you `$` it free; the console is the live view.
+  With `SYSOUT=*` a started task's output usually goes to a class that
+  JES2 prints and purges at once, so the log is gone when you look. Use a
+  held class (`SYSOUT=H`, say) if you want to read it afterwards.
   There is no log switching and no size limit: stop and start OFTPD to get
   a new data set.
 - Without the DD, or if it will not open, OFTPD says `OFTP022W` and
