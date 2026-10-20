@@ -140,8 +140,8 @@ extern OFTP_PARTNER *oftp_cfg_route(OFTP_CONFIG *c, const char *odetteid,
 
 /* The route of oftp_cfg_route() looked up without the lock; this asks
 ** again with it. 1 when next is still enabled under the name it had
-** (nextname) and, if the final partner is another one, that is still
-** enabled with the ID dest. *tname gets the final partner's name, read
+** (nextname) and the final partner (the same one, for a direct route) is
+** still enabled with the ID dest. *tname gets the final partner's name, read
 ** here under the caller's lock, or "" when next is the final partner.
 */
 extern int oftp_cfg_relay_live(const OFTP_PARTNER *next, const char *nextname,

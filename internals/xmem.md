@@ -341,6 +341,33 @@ second decrement here would take `inflight` below zero (the `BCTR`
 loops do not guard against it) and leave every later `P OFTPD`
 draining forever.
 
+**The state alone does not say whose slot it is (#124).** The `CS` from
+DONE only helps while the slot is still DONE. A caller that wakes after
+the sweep has freed its slot and another caller has claimed it finds
+FREE, CLAIMED, PENDING or someone else's DONE -- and a routine that went
+by the state alone freed and wiped the other caller's request, took the
+count down a second time, or collected the other caller's reply. So the
+claim number is checked as well. At claim time the routine copies
+`SLCLAIM` into word 5 of its SVRB extended save area (`RBEXSAVE`+20, 48
+bytes, IHARB), which nobody else writes. On wake-up (`WAKEOWN`):
+
+- FREE or CLAIMED: `SWEPT` whatever the number says. A new claimant sits
+  in CLAIMED until it stores its own number, so the slot still shows
+  ours.
+- Any other state with a different `SLCLAIM`: `SWEPT`.
+- DONE with our number: `CS` to COPYOUT, then the number is read once
+  more; if it changed in between, the `CS` is undone (COPYOUT to DONE)
+  and the exit is `SWEPT`.
+
+`SWEPT` touches nothing and decrements nothing, as before. The window the
+last step closes is the sweep and a new claimant running between the
+first compare and the `CS`. What remains is a very short one: a foreign
+DONE is in COPYOUT for the length of those two instructions, and its own
+caller, waking then, loses its `CS` and takes `SWEPT`, leaving that slot
+to the sweep's timeouts. `free_done()` counts down only when its second
+`CS` (COPYOUT to FREE) wins, for the same reason: the decrement belongs to
+whoever frees the slot.
+
 **One case remains, and it is why a long timeout still has a job.** A
 client whose task is purged while parked -- a cancelled TSO command,
 `S322` -- never wakes, so it never writes COPYOUT: the slot stays DONE
@@ -1001,7 +1028,7 @@ than assumed:
 | `FREEDEC` (`BADHDR`/`BADREPLY`/`BADSTATE`/`POSTBAD`) | routine sets FREE | routine decrements | nothing |
 | `STOPDEC` (woken in STOP: `RCSTOP`, since #34) | routine sets FREE | routine decrements | **not free, not decrement** |
 | `WAKEDOWN` (woken in another state with ACTIVE off) | routine sets FREE | routine decrements | **not free, not decrement** |
-| `SWEPT` (its `CS` from DONE lost) | untouched | untouched | **free and decrement** -- the sweep took it |
+| `SWEPT` (its `CS` from DONE lost, or the slot's claim number is not the one it stored, #124) | untouched | untouched | **free and decrement** -- the sweep took it |
 
 So OFTPD decrements in exactly one place: after it has **won** a
 `CS` that freed a slot. A second decrement takes the count below zero
@@ -1022,7 +1049,9 @@ not wipe a CLAIMED or COPYOUT slot it frees: a wipe before the `CS`
 could hit a new claimant. `oftp_svc_stop()` calls `oftp_svc_scrub()` as
 its last step before the FREEMAIN of the anchor, which wipes all four
 slots whatever their state. Measured by `TSTSVC` (step 8) and
-`TSTTAKE`.
+`TSTTAKE`; a caller waking on a slot that is no longer its own, by
+`TSTWAKE` (it installs the routine under a free SVC number itself, so no
+OFTPD runs, and plays the sweep and the other caller from a subtask).
 Until #34 the routine tested `ANCFLAG` before the state, and that
 discarded an answer: the stop clears ACTIVE before it joins the slot
 thread, so a request being served at that moment was carried out,

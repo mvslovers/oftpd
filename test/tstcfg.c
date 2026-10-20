@@ -256,6 +256,9 @@ main(void)
                                          "O0013000000FAR", tname, sizeof(tname)),
                      1, "a direct partner is its own route");
             CHECK(tname[0] == '\0', "with no separate final name");
+            CHECK_EQ(oftp_cfg_relay_live(fin, fin->peer.name, fin,
+                                         "O0013000000OTHER", tname, sizeof(tname)),
+                     0, "a direct partner whose ID changed since the lookup: no route");
         }
     }
     return mbt_test_summary("TSTCFG");
