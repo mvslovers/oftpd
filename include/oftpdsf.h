@@ -28,6 +28,8 @@ typedef struct oftp_dsopt {
     unsigned    ublksize;               /* U files: BLKSIZE, e.g. 6144   */
     char        unit[9];                /* "" lets the system choose     */
     char        volser[7];
+    unsigned    space;                  /* tracks when the SFID has no
+                                        ** size, 0: the default          */
 } OFTP_DSOPT;
 
 /* Opens dsn ("A.B.C" or "A.B(MEM)") for sending. fmt 0 takes the format

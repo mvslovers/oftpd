@@ -302,7 +302,10 @@ oftp_dsf_open_in(const char *dsn, const OFTP_SFIDCMD *sfid, int xl,
     ** OFTPD itself sent before #21: TRK(15,15), up to 240 tracks, about
     ** 4 MB on a 3350, instead of the 50 tracks the estimate rule gives.
     */
-    if (sfid->fsiz == 0) {
+    if (sfid->fsiz == 0 && opt->space > 0) {
+        trk = opt->space;               /* what a receive rule says */
+        sec = trk / 2 + 1;
+    } else if (sfid->fsiz == 0) {
         trk = 15;
         sec = 15;
     } else {

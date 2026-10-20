@@ -1,6 +1,7 @@
 /* OFTPD - the OFTP monitor (started task)
 **
 ** DD OFTPPRM  the monitor's settings      DD OFTPPTN  the partners
+** DD OFTPRCV  the receive rules (optional)
 ** DD OFTPSPL  the spool, a KSDS KEYS(8 0) RECORDSIZE(512 512)
 **
 ** Operator: F OFTPD,D P | D Q | D S | D M | CALL partner | REFRESH     P OFTPD
@@ -121,6 +122,7 @@ main(int argc, char **argv)
     on = oftp_cfg_finish(&m->cfg, cfgmsg, (void *)"OFTPPTN");
     oftp_mon_msg("OFTP014I ODETTE ID %s, %d OF %d PARTNERS ENABLED",
                  m->cfg.odetteid, on, m->cfg.nptn);
+    oftp_mon_rules(m, 0);
 
     if ((m->spool = oftp_spl_open("OFTPSPL", why, sizeof(why))) == NULL) {
         oftp_mon_msg("OFTP020E SPOOL NOT OPEN: %s", why);

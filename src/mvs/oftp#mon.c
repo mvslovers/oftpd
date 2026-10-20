@@ -25,6 +25,7 @@
 #include "oftpdsf.h"
 #include "oftpdsn.h"
 #include "oftpmon.h"
+#include "oftprcv.h"
 #include "oftpsch.h"
 #include "oftpsec.h"
 #include "oftpnet.h"
@@ -188,6 +189,9 @@ typedef struct sesctx {
     OFTP_DSF   *odsf;
     OFTP_SPREC  in;                     /* the file being received       */
     OFTP_DSF   *idsf;
+    OFTP_RULE   rule;                   /* the receive rule it matched,  */
+    int         hasrule;                /* a copy: REFRESH may replace
+                                        ** the set under the session    */
     char        tmp[45];
     char        erpkey[8];
     int         rc;                     /* oftp_sess_run(): try() keeps
@@ -355,8 +359,12 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
 
     OFTP_PARTNER *next = NULL, *target = NULL;
     OFTP_SFIDCMD alloc;
+    const OFTP_RULE *rule = NULL;
+    int named = 0;                      /* the rule makes the name, and
+                                        ** %KEY needs the spool record  */
 
     *retry = 'N';
+    c->hasrule = 0;
     /* for us, by our own ID or the one we have towards this partner; for
     ** anyone else only as a node (RELAY=Y) towards a partner we know */
     if (strcmp(f->dest, c->m->cfg.odetteid) != 0
@@ -371,7 +379,20 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
             return 2;
         }
     }
-    if (next != NULL)
+    /* a file that ends here may meet a receive rule: the first that
+    ** matches decides, none leaves it as it always was */
+    if (next == NULL) {
+        lock(c->m, 0);
+        rule = oftp_rcv_match(&c->m->rules, c->pt->peer.name, f->dsn);
+        if (rule != NULL) {
+            c->rule = *rule;
+            c->hasrule = 1;
+        }
+        unlock(c->m, 0);
+        rule = c->hasrule ? &c->rule : NULL;
+        named = rule != NULL && rule->dsn[0];
+    }
+    if (next != NULL || named)
         snprintf(final, sizeof(final), "%s", "");
     /* any virtual file name becomes a valid data set name */
     else if (oftp_dsn_map(c->m->cfg.inprefix, f->dsn, "", final) != 0)
@@ -398,6 +419,8 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
     r.fmt = f->fmt;
     r.lrecl = f->lrecl;
     r.xlate = c->pt->xlate ? 'Y' : 'N';
+    if (rule != NULL && rule->xlate >= 0)
+        r.xlate = rule->xlate ? 'Y' : 'N';
     strcpy(r.partner, c->pt->peer.name);
     strcpy(r.dsn, f->dsn);
     strcpy(r.date, f->date);
@@ -419,6 +442,41 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
         *retry = 'Y';
         return 99;
     }
+    if (named) {
+        OFTP_RCVCTX x;
+        char key[9], arrival[15];
+        time_t now = time(NULL);
+        struct tm tm;
+
+        memcpy(key, r.key, 8);
+        key[8] = '\0';
+        localtime_r(&now, &tm);
+        snprintf(arrival, sizeof(arrival), "%04d%02d%02d%02d%02d%02d",
+                 tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
+                 tm.tm_min, tm.tm_sec);
+        x.vfn = f->dsn;
+        x.partner = c->pt->peer.name;
+        x.key = key;
+        x.arrival = arrival;
+        x.sfidtime = f->time;
+        if (oftp_rcv_name(rule, &x, final) != 0) {
+            oftp_spl_del(c->m->spool, r.key);
+            oftp_mon_msg("OFTP224W %s: %s REFUSED, RULE %s MAKES NO VALID"
+                         " DATA SET NAME", r.partner, f->dsn, rule->name);
+            return 1;
+        }
+        strcpy(r.local, final);
+        oftp_spl_put(c->m->spool, &r);
+        /* a name the rule fixed is not changed: REPLACE=Y replaces it
+        ** at the end, REPLACE=N refuses the file */
+        if (!rule->replace && exists(final)) {
+            oftp_spl_del(c->m->spool, r.key);
+            oftp_mon_msg("OFTP225W %s: %s REFUSED, %s EXISTS (RULE %s,"
+                         " REPLACE=N)", r.partner, f->dsn, final, rule->name);
+            *retry = 'Y';
+            return 13;
+        }
+    } else
     /* the name is taken: the transfer number makes it unique */
     if (next == NULL && exists(final)) {
         char key[9];
@@ -440,6 +498,13 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
     opt.ublksize = c->m->cfg.ublksize;
     strcpy(opt.unit, c->m->cfg.unit);
     strcpy(opt.volser, c->m->cfg.volser);
+    if (rule != NULL) {
+        if (rule->unit[0])
+            strcpy(opt.unit, rule->unit);
+        if (rule->volser[0])
+            strcpy(opt.volser, rule->volser);
+        opt.space = rule->space;
+    }
     /* a relayed T file is kept as it came: a byte stream, format U */
     alloc = *f;
     if (next != NULL && f->fmt == 'T')
@@ -483,7 +548,8 @@ f_close_in(void *ctx, OFTP_FH *fh, int ok)
 {
     SESCTX *c = ctx;
     OFTP_SPREC *r = &c->in;
-    int rc;
+    char bak[45];
+    int rc, replaced = 0;
 
     (void)fh;
     r->recs = oftp_dsf_records(c->idsf);
@@ -509,13 +575,39 @@ f_close_in(void *ctx, OFTP_FH *fh, int ok)
         ecb_post(&c->m->wake, 0);
         return 0;
     }
+    /* REPLACE=Y: the old data set goes aside first and is deleted only
+    ** when the new one is under its name, so a rename that fails (the
+    ** old one in use, a full catalog) costs nothing
+    */
+    if (c->hasrule && c->rule.replace && exists(r->local)) {
+        snprintf(bak, sizeof(bak), "%s.B%.7s", c->m->cfg.tmpprefix, r->key + 1);
+        if (rename(r->local, bak) != 0) {
+            remove(c->tmp);
+            oftp_spl_del(c->m->spool, r->key);
+            oftp_mon_msg("OFTP226E %s: %s NOT RECEIVED, %s CANNOT BE REPLACED,"
+                         " IT STAYS", r->partner, r->dsn, r->local);
+            r->key[0] = '\0';
+            return 12;
+        }
+        replaced = 1;
+    }
     if (rename(c->tmp, r->local) != 0) {
+        if (replaced && rename(bak, r->local) != 0)
+            oftp_mon_msg("OFTP227E %s: THE OLD %s IS NOW %s, NOT RENAMED BACK",
+                         r->partner, r->local, bak);
         remove(c->tmp);
         oftp_spl_del(c->m->spool, r->key);
         oftp_mon_msg("OFTP221E %s: %s NOT RENAMED TO %s", r->partner,
                      c->tmp, r->local);
         r->key[0] = '\0';
         return 12;
+    }
+    if (replaced) {
+        if (remove(bak) != 0)
+            oftp_mon_msg("OFTP228W %s: THE OLD %s IS NOW %s, NOT DELETED",
+                         r->partner, r->local, bak);
+        else
+            oftp_mon_msg("OFTP229I %s: %s REPLACED", r->partner, r->local);
     }
     r->state = SPL_RECEIVED;
     r->tdone = (long)time(NULL);
@@ -2179,6 +2271,48 @@ oftp_mon_load(OFTP_CONFIG *c, const char *dd, int partner)
 }
 
 int
+oftp_mon_rules(OFTP_MON *m, int refresh)
+{
+    OFTP_RULES *n;
+    char line[256];
+    FILE *fp;
+    int lineno = 0, errors;
+
+    if ((n = malloc(sizeof(*n))) == NULL)
+        return -1;
+    oftp_rcv_clear(n);
+    if ((fp = fopen("DD:OFTPRCV", "r")) == NULL) {
+        free(n);
+        /* no DD is no rules, and nothing to say; a member that was read
+        ** once and cannot be now keeps what it said */
+        if (refresh && m->rules.n > 0)
+            oftp_mon_msg("OFTP026W DD OFTPRCV CANNOT BE OPENED, THE %d RULES"
+                         " STAY", m->rules.n);
+        return -1;
+    }
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        /* fixed records: columns 73-80 are sequence numbers */
+        if (strlen(line) > 72)
+            line[72] = '\0';
+        oftp_rcv_line(n, line, ++lineno, cfgmsg, (void *)"OFTPRCV");
+    }
+    fclose(fp);
+    errors = oftp_rcv_finish(n, &m->cfg, cfgmsg, (void *)"OFTPRCV");
+    if (errors > 0) {
+        oftp_mon_msg("OFTP025E RECEIVE RULES NOT USED, %d ERRORS%s", errors,
+                     refresh ? ", THE OLD RULES STAY" : "");
+        free(n);
+        return -1;
+    }
+    lock(m, 0);
+    m->rules = *n;
+    unlock(m, 0);
+    oftp_mon_msg("OFTP024I RECEIVE RULES: %d READ", n->n);
+    free(n);
+    return 0;
+}
+
+int
 oftp_mon_refresh(OFTP_MON *m)
 {
     OFTP_CONFIG *n;
@@ -2230,6 +2364,7 @@ oftp_mon_refresh(OFTP_MON *m)
     free(n);
     oftp_mon_msg("OFTP016I PARTNERS RELOADED: %d ENABLED, %d NEW, %d DISABLED",
                  on, added, dropped);
+    oftp_mon_rules(m, 1);
     return on;
 }
 
