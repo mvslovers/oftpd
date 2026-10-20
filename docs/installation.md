@@ -401,7 +401,21 @@ included, one `OFTP290P` line each, such as
 the DATA buffers of a run are one line. With a partner name only that
 partner's sessions are traced; `TRACE OFF` without one ends all tracing.
 The lines carry the commands' fields, never a password and never file
-data. `F OFTPD,D` and `D P` show what is traced (`OFTP127I`).
+data; a character in a file name or an ID that cannot be printed shows as
+a dot. `F OFTPD,D` and `D P` show what is traced (`OFTP127I`): `D` names at
+most about ten partners, `D P` marks every traced partner.
+
+Tracing is a diagnostic: switch it off when you are done. Every protocol
+command is a line in the log, and a session that moves three small files
+takes about 28 of them, so a busy partner fills the log data set quickly
+(there is no size limit). With `TRACE ON` for all sessions, the first two
+lines of a session a partner started, `SEND SSRM` and `RECV SSID`, carry the
+caller's address instead of the partner name, because OFTPD does not know the
+partner yet; a trace for one partner starts with the `RECV SSID` line.
+
+The operator commands `PURGE`, `HOLD`, `RELEASE` and `CALL` take one
+operand at most. A second one, as in `F OFTPD,HOLD P1,P2`, is refused with
+`OFTP122E`; nothing is done for the first.
 
 ## 8. The OFTP utility
 

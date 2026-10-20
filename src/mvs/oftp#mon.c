@@ -32,6 +32,7 @@
 #include "oftpsch.h"
 #include "oftpsec.h"
 #include "oftpnet.h"
+#include "oftpopr.h"
 #include "oftpsess.h"
 
 /* ---- messages ---------------------------------------------------- */
@@ -282,8 +283,13 @@ failed(OFTP_MON *m, OFTP_SPREC *r)
 typedef struct sesctx {
     OFTP_MON   *m;
     OFTP_PARTNER *pt;
-    const OFTP_PARTNER *tp;             /* the caller's entry, even when
-                                        ** disabled: for TRACE only    */
+    const OFTP_PARTNER *tp;             /* the first entry with the caller's
+                                        ** ID, even when disabled or behind
+                                        ** another, so a refused caller can
+                                        ** be traced. Where oftp_cfg_byid()
+                                        ** finds one it is this entry: a
+                                        ** second entry with an ID is
+                                        ** always disabled (TSTCFG).     */
     char        ip[16];
     int         sock;
     int         slot;                   /* in m->ssock, or -1            */
@@ -3454,28 +3460,11 @@ oftp_mon_command(OFTP_MON *m, const char *cmd)
     char verb[16], arg[40], arg2[40];
     OFTP_PARTNER *p;
 
-    /* split by hand: verb, then the first operand */
-    {
-        const char *p = cmd;
-        size_t n = 0;
-
-        while (*p == ' ')
-            p++;
-        while (*p && *p != ' ' && *p != ',' && n < sizeof(verb) - 1)
-            verb[n++] = *p++;
-        verb[n] = '\0';
-        while (*p == ' ' || *p == ',')
-            p++;
-        n = 0;
-        while (*p && *p != ' ' && *p != ',' && n < sizeof(arg) - 1)
-            arg[n++] = *p++;
-        arg[n] = '\0';
-        while (*p == ' ' || *p == ',')
-            p++;
-        n = 0;
-        while (*p && *p != ' ' && *p != ',' && n < sizeof(arg2) - 1)
-            arg2[n++] = *p++;
-        arg2[n] = '\0';
+    oftp_opr_split(cmd, verb, sizeof(verb), arg, sizeof(arg), arg2,
+                   sizeof(arg2));
+    if (oftp_opr_extra(verb, arg2)) {
+        oftp_mon_msg("OFTP122E %s: UNEXPECTED OPERAND %s", verb, arg2);
+        return;
     }
     if (strcmp(verb, "D") == 0 || strcmp(verb, "DISPLAY") == 0)
         cmd_display(m, arg);

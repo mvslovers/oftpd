@@ -109,7 +109,7 @@ These answer a command, so they stay on the console.
 | `OFTP111I` | Console + log | `n TRANSFERS IN THE SPOOL` |
 | `OFTP120E` | Console + log | `<name> IS NOT A PARTNER THAT CAN BE CALLED` / `IS NOT A PARTNER` |
 | `OFTP121I` | Console + log | `CALL OF <name> REQUESTED` |
-| `OFTP122E` | Console + log | `PURGE: DAYS MUST BE 0-9999` / `PURGE NEEDS DAYS: KEEPDAYS=0 KEEPS EVERYTHING` |
+| `OFTP122E` | Console + log | `PURGE: DAYS MUST BE 0-9999` / `PURGE NEEDS DAYS: KEEPDAYS=0 KEEPS EVERYTHING` / `<verb>: UNEXPECTED OPERAND <text>`: `PURGE`, `HOLD`, `RELEASE` and `CALL` take one operand, a second is refused |
 | `OFTP123E` | Console + log | `<verb> NEEDS A PARTNER OR ALL` |
 | `OFTP124I` | Console + log | `TRACE ON\|OFF FOR ALL SESSIONS` / `FOR PARTNER <partner>`: the answer to `F OFTPD,TRACE` |
 | `OFTP125E` | Console + log | `TRACE IS ON FOR ALL SESSIONS, TRACE OFF WITHOUT A PARTNER ENDS IT` |

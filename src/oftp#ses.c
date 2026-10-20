@@ -5,6 +5,7 @@
 ** ends the session with ESID 02, except an ESID, which ends it with the
 ** partner's reason. Rules: internals/protocol.md section 1.
 */
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -79,6 +80,21 @@ slogw(OFTP_SESS *s, const char *fmt, ...)
     va_end(ap);
 }
 
+/* s into d with every character that is not printable replaced by a dot.
+** What the partner sent goes into the log through this: a file name or an
+** ID may hold anything, the operator's console must not get it.
+*/
+static const char *
+printable(char *d, size_t sz, const char *s)
+{
+    size_t i;
+
+    for (i = 0; i + 1 < sz && s[i]; i++)
+        d[i] = isprint((unsigned char)s[i]) ? s[i] : '.';
+    d[i] = '\0';
+    return d;
+}
+
 /* The level commands are coded at; before negotiation the 1.3 layouts,
 ** which every partner reads.
 */
@@ -145,23 +161,27 @@ static void
 tr_ssid(char *d, size_t sz, const unsigned char *c, unsigned n)
 {
     OFTP_SSIDCMD t;
+    char id[OFTP_IDLEN + 1];
 
     if (oftp_dec_ssid(c, n, &t) != 0)
         snprintf(d, sz, NODEC);
     else
         snprintf(d, sz, "level %d id %s sdeb %u mode %c cmpr %c cred %u",
-                 t.level, t.code, t.sdeb, t.sr, t.cmpr, t.cred);
+                 t.level, printable(id, sizeof(id), t.code), t.sdeb,
+                 t.sr, t.cmpr, t.cred);
 }
 
 static void
 tr_sfid(OFTP_SESS *s, char *d, size_t sz, const unsigned char *c, unsigned n)
 {
     OFTP_SFIDCMD t;
+    char dsn[OFTP_DSNLEN + 1];
 
     if (oftp_dec_sfid(lev(s), c, n, &t) != 0)
         snprintf(d, sz, NODEC);
     else
-        snprintf(d, sz, "dsn %s fmt %c lrecl %u", t.dsn, t.fmt, t.lrecl);
+        snprintf(d, sz, "dsn %s fmt %c lrecl %u",
+                 printable(dsn, sizeof(dsn), t.dsn), t.fmt, t.lrecl);
 }
 
 static void
@@ -217,13 +237,15 @@ tr_erp(OFTP_SESS *s, char code, char *d, size_t sz, const unsigned char *c,
        unsigned n)
 {
     OFTP_ERPCMD t;
+    char dsn[OFTP_DSNLEN + 1];
 
     if (oftp_dec_erp(lev(s), code, c, n, &t) != 0)
         snprintf(d, sz, NODEC);
     else if (code == OFTP_NERP)
-        snprintf(d, sz, "dsn %s reason %02d", t.dsn, t.reas);
+        snprintf(d, sz, "dsn %s reason %02d",
+                 printable(dsn, sizeof(dsn), t.dsn), t.reas);
     else
-        snprintf(d, sz, "dsn %s", t.dsn);
+        snprintf(d, sz, "dsn %s", printable(dsn, sizeof(dsn), t.dsn));
 }
 
 /* The fields of a command that identify it, into d. The SSID is decoded
@@ -463,7 +485,10 @@ start_initiator(OFTP_SESS *s)
 
     s->level = known_level(t.level) && t.level <= o.level ? t.level : 0;
     if (strcmp(t.code, s->peer.code) != 0) {
-        slogw(s, "answered by %s, not %s", t.code, s->peer.code);
+        char id[OFTP_IDLEN + 1];
+
+        slogw(s, "answered by %s, not %s", printable(id, sizeof(id), t.code),
+              s->peer.code);
         return end_local(s, ESID_USER);
     }
     if (strcmp(t.pswd, s->peer.pswd_in) != 0) {
@@ -506,7 +531,7 @@ start_responder(OFTP_SESS *s)
 {
     OFTP_SSIDCMD o, t;
     unsigned n;
-    char mode;
+    char mode, id[OFTP_IDLEN + 1];
     int rc, level;
 
     s->sdeb = 0;
@@ -526,11 +551,12 @@ start_responder(OFTP_SESS *s)
     if (!s->rx_traced && tracing(s))
         trace_cmd(s, 1, s->ib + 4, n);
     if (rc > 0) {
-        slog(s, "caller %s refused, reason %02d", t.code, rc);
+        slog(s, "caller %s refused, reason %02d",
+             printable(id, sizeof(id), t.code), rc);
         return end_local(s, rc);
     }
     if (rc != 0) {
-        slogw(s, "unknown caller %s", t.code);
+        slogw(s, "unknown caller %s", printable(id, sizeof(id), t.code));
         return end_local(s, ESID_USER);
     }
     if (strcmp(t.pswd, s->peer.pswd_in) != 0) {
@@ -822,15 +848,16 @@ recv_file(OFTP_SESS *s, unsigned n)
     unsigned rlen = 0, credit;
     unsigned long rcnt = 0, ucnt = 0, eors = 0;
     int recfmt, fixed, fail = 0, rc, reas;
-    char retry = 'N', code;
+    char retry = 'N', code, shown[OFTP_DSNLEN + 1];
 
     rc = oftp_dec_sfid(s->level, s->ib + 4, n, &f);
     if (rc == OFTP_ERANGE)
         return put_reas(s, OFTP_SFNA, 6, 'N');
     if (rc != 0)
         return end_local(s, ESID_DATA);
+    printable(shown, sizeof(shown), f.dsn);
     if ((reas = refuse(s, &f)) != 0) {
-        slog(s, "%s refused, SFNA %02d", f.dsn, reas);
+        slog(s, "%s refused, SFNA %02d", shown, reas);
         return put_reas(s, OFTP_SFNA, reas, 'N');
     }
     recfmt = f.fmt == 'F' || f.fmt == 'V';
@@ -839,7 +866,7 @@ recv_file(OFTP_SESS *s, unsigned n)
         return put_reas(s, OFTP_SFNA, 99, 'Y');
     if ((reas = s->f.open_in(s->f.ctx, &s->peer, &f, &fh, &retry)) != 0) {
         drop_buf(s);
-        slog(s, "%s refused, SFNA %02d retry %c", f.dsn, reas, retry);
+        slog(s, "%s refused, SFNA %02d retry %c", shown, reas, retry);
         return put_reas(s, OFTP_SFNA, reas, retry);
     }
     rc = oftp_enc_sfpa(s->level, 0, s->ob + 4, s->sdeb);
@@ -946,10 +973,10 @@ recv_file(OFTP_SESS *s, unsigned n)
     if (!fail && rc != 0)
         fail = rc;
     if (fail) {
-        slog(s, "%s not accepted, EFNA %02d", f.dsn, fail);
+        slog(s, "%s not accepted, EFNA %02d", shown, fail);
         return put_reas(s, OFTP_EFNA, fail, 'N');
     }
-    slog(s, "%s received, %lu records, %lu octets", f.dsn, rcnt, ucnt);
+    slog(s, "%s received, %lu records, %lu octets", shown, rcnt, ucnt);
     s->files_in++;
     rc = oftp_enc_efpa('N', s->ob + 4, s->sdeb);
     return put_cmd(s, (unsigned)rc);
@@ -1056,7 +1083,13 @@ oftp_sess_run(OFTP_SESS *s)
 {
     int rc = run_session(s);
 
-    trace_flush(s);
+    /* a run counted before TRACE OFF is dropped, not logged after it */
+    if (tracing(s))
+        trace_flush(s);
+    else {
+        s->tr_nbuf[0] = s->tr_nbuf[1] = 0;
+        s->tr_noct[0] = s->tr_noct[1] = 0;
+    }
     return rc;
 }
 

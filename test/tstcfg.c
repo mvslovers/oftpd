@@ -148,6 +148,21 @@ main(void)
     }
     CHECK(oftp_cfg_find(&c, "LOOP") == NULL, "VIA to a routed partner disabled");
     CHECK(oftp_cfg_find(&c, "GHOST") == NULL, "VIA to an unknown partner disabled");
+    /* The monitor traces a refused caller by the first entry with its ID,
+    ** disabled or behind another (p_lookup, #86). That is the entry byid
+    ** accepts whenever there is one: a second entry with an ID is always
+    ** disabled, so no later entry can be the enabled one.
+    */
+    for (i = 0; i < c.nptn; i++) {
+        OFTP_PARTNER *b = oftp_cfg_byid(&c, c.ptn[i].peer.code);
+        int j, first = -1;
+
+        for (j = 0; first < 0 && j < c.nptn; j++)
+            if (strcmp(c.ptn[j].peer.code, c.ptn[i].peer.code) == 0)
+                first = j;
+        CHECK(b == NULL || b == &c.ptn[first],
+              "byid finds the first entry with an ID, if any");
+    }
     CHECK(msgs == 5, "five messages for the partner member");
     CHECK_EQ(oftp_cfg_line(&c, 1, "PARTNER=S0 SESSIONS=0", 20, count, NULL), 1,
              "SESSIONS=0 refused");
