@@ -250,11 +250,12 @@ main(int argc, char **argv)
                  "putif of a key not there: NOTFOUND");
 #ifdef OFTP_DEBUG_ABEND
         abend_recovery(sp);
-#else
-        printf("  SKIP: the abend recovery needs -DOFTP_DEBUG_ABEND\n");
-#endif
         oftp_spl_close(sp);
         printf("  the spool thread ended and closed after the abends\n");
+#else
+        printf("  SKIP: the abend recovery needs -DOFTP_DEBUG_ABEND\n");
+        oftp_spl_close(sp);
+#endif
     }
     return mbt_test_summary("TSTSPL");
 }
