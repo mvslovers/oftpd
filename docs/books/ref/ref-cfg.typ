@@ -412,8 +412,11 @@ The job is not submitted instead (see below).
 === When a Job Is Not Submitted <cfg-job-not>
 
 OFTPD reads the member twice. The first pass checks every record and opens no
-reader\; the second pass sends the cards. A member that fails a check therefore
-never leaves a half-written job in JES. No job is submitted when:
+reader\; the second pass sends the cards. A member that fails a check of the
+first pass therefore leaves nothing in JES. If the member is edited between the
+two passes, or the reader fails while the cards are written, a part of the job
+may already be in JES, and it may run although the message says that the job
+was not submitted. No job is submitted when:
 
 - the data set or the member cannot be opened, or it has no records\;
 - a record is longer than 80 columns (#cmd("RECORD PAST COLUMN 80"))\;
@@ -426,7 +429,10 @@ never leaves a half-written job in JES. No job is submitted when:
 - the record format is undefined (#cmd("RECFM=U")) or the record length is not
   positive (#cmd("RECORD FORMAT NOT SUPPORTED"))\;
 - there is no storage for the record, or the internal reader cannot be opened,
-  written or closed.
+  written or closed (#cmd("INTERNAL READER OPEN FAILED"), #cmd("INTERNAL READER WRITE FAILED"),
+  #cmd("INTERNAL READER CLOSE FAILED"))\;
+- the second pass finds another number of records than the first, or cannot read
+  the member to its end (#cmd("MEMBER CHANGED DURING READ")).
 
 The file is kept and acknowledged all the same. The receipt tells the partner
 that the file has arrived\; whether a job came of it concerns only you.
@@ -436,8 +442,8 @@ that the file has arrived\; whether a job came of it concerns only you.
 #idx("OFTP246P")#idx("OFTP247W")
 A submitted job is reported by #cmd("OFTP246P") in the log, with the job
 number. A job that is not submitted is reported by #cmd("OFTP247W") on the
-console and in the log, with the reason and, for a fault in a record, the number
-of the record. #cmd("OFTP246P") comes before the #cmd("OFTP222P") of the same
+console and in the log. The reason stands first, followed by the member and the
+data set\; for a fault in a record it ends in the number of the record. #cmd("OFTP246P") comes before the #cmd("OFTP222P") of the same
 file.
 
 The result is also kept in the record of the transfer, and #cmd("OFTP SHOW key")
