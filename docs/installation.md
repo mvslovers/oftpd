@@ -96,10 +96,10 @@ through SVC 244, where RAKF permits that. To authorize `OFTPD.LINKLIB`,
 add it with its volume to `SYS1.PARMLIB(IEAAPF00)`; MVS 3.8j reads that
 member only at IPL.
 
-The console says which route it took: `OFTP004I AUTHORIZED BY LIBRARY` or
-`OFTP004I AUTHORIZED BY SVC`. This release needs no authorization yet, so
-`OFTP005W NOT AUTHORIZED, RC=n, CONTINUING` is a warning only; later
-releases will need it.
+The log (section 7) says which route it took: `OFTP004P AUTHORIZED BY
+LIBRARY` or `OFTP004P AUTHORIZED BY SVC`. This release needs no
+authorization yet, so `OFTP005W NOT AUTHORIZED, RC=n, CONTINUING` (on the
+console as well) is a warning only; later releases will need it.
 
 ## 5. The spool
 
@@ -154,11 +154,39 @@ spool and the authority to create data sets under `INPREFIX` and
 `TMPPREFIX`.
 
 Start it with `S OFTPD` (or `S OFTPD,S='MY.SPOOL'`). The console shows
-`OFTP000I` with the version, `OFTP004I` (step 4), `OFTP014I` with the Odette ID and the number
-of partners enabled, `OFTP001I OFTPD READY`, `OFTP051I LISTENING ON PORT
-3305, SOCKET n` and `OFTP039I CROSS MEMORY ACTIVE ON SVC 237, SUBSYSTEM OFT1`. A partner entry
-with an error is reported with `OFTP010W` and disabled; the others still
-work.
+`OFTP000I` with the version and `OFTP001I OFTPD READY`; a partner entry
+with an error is reported with `OFTP010W` and disabled, the others still
+work. The rest of the start -- `OFTP004P` (step 4), `OFTP014P` with the
+Odette ID and the number of partners enabled, `OFTP051P LISTENING ON PORT
+3305, SOCKET n` and `OFTP039P CROSS MEMORY ACTIVE ON SVC 237, SUBSYSTEM
+OFT1` -- is in the log only.
+
+### The log
+
+`DD OFTPLOG` of the procedure is a SYSOUT data set that gets every
+message, one per line, with the date and time in front:
+
+```
+2026-10-20 14:03:51 OFTP211P PEER1: T0000012 PEER1.TEST.DATA SENT, 120 RECORDS
+```
+
+The console gets only the messages an operator must act on: start and
+stop, errors, a partner that is not authorized, a transfer held or given
+up. A message of class `P` (as in `OFTP211P`) goes to the log and never to
+the console; classes `I`, `W` and `E` go to both. Every session message
+begins with the partner's name, so a partner's lines can be picked out of
+the log. `docs/messages.md` lists every message with its destination.
+
+- Give the DD `RECFM=F` or `FB` (the procedure has `LRECL=160`). A line is
+  at most 143 characters with its time; a longer one is cut and ends in
+  `>`. A record length below 143 cuts lines the same way.
+- JES2 keeps a SYSOUT data set for the job, and you read it when the
+  started task ends or when you `$` it free; the console is the live view.
+  There is no log switching and no size limit: stop and start OFTPD to get
+  a new data set.
+- Without the DD, or if it will not open, OFTPD says `OFTP022W` and
+  sends everything to the console, class `P` included. If a write to the
+  log fails later, it says `OFTP023E` once and does the same from then on.
 
 The operator commands are listed at the top of the procedure: `F OFTPD,D P`
 (partners), `D Q` (the spool), `D S` (sessions), `F OFTPD,CALL name`,

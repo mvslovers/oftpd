@@ -6,6 +6,7 @@
 ** session engine does the protocol. No writable static data: OFTPD is
 ** AC(1) and reentrant, everything lives in the OFTP_MON block.
 */
+#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,22 +25,119 @@
 #include "oftp.h"
 #include "oftpdsf.h"
 #include "oftpdsn.h"
+#include "oftplog.h"
 #include "oftpmon.h"
 #include "oftpsch.h"
 #include "oftpsec.h"
 #include "oftpnet.h"
 #include "oftpsess.h"
 
+/* ---- messages ---------------------------------------------------- */
+
+/* The log is a RFILE on DD OFTPLOG, in the OFTP_MON block; OFTPD holds no
+** writable static data, so the block is found through the GRT slot that
+** oftp_mon_logopen() sets (the GRT is the process's and every subtask sees
+** the same one). Before it is set, and after oftp_mon_logclose(), a message
+** goes to the console alone.
+*/
+static int
+log_put(void *file, const char *rec, unsigned len)
+{
+    errno = 0;
+    if (rwrite((RFILE *)file, rec, len) == 0)
+        return 0;
+    return errno != 0 ? errno : -1;
+}
+
+/* wait: lock the log; else only if it is free. A call that cannot lock it
+** (the ESTAE, which may have interrupted a write in this very task) puts
+** the line on the console, whatever its class: lost is worse than loud.
+*/
+static void
+msgv(const char *fmt, va_list ap, int wait)
+{
+    char line[OFTP_MSG_MAX + 1];
+    CLIBGRT *grt;
+    OFTP_LOG *lg;
+    OFTP_LOG_IO io;
+
+    oftp_log_vformat(line, sizeof(line), fmt, ap);
+    grt = __grtget();
+    lg = grt != NULL ? (OFTP_LOG *)grt->grtapp2 : NULL;
+    if (lg == NULL || (wait ? lock(lg, 0) : trylock(lg, 0)) != 0) {
+        wto(line);
+        return;
+    }
+    io.put = log_put;
+    io.console = wto;
+    oftp_log_route(lg, &io, (long)time(NULL), line);
+    unlock(lg, 0);
+}
+
 void
 oftp_mon_msg(const char *fmt, ...)
 {
-    char line[124];
     va_list ap;
 
     va_start(ap, fmt);
-    vsnprintf(line, sizeof(line), fmt, ap);
+    msgv(fmt, ap, 1);
     va_end(ap);
-    wto(line);
+}
+
+void
+oftp_mon_msg_nowait(const char *fmt, ...)
+{
+    va_list ap;
+
+    va_start(ap, fmt);
+    msgv(fmt, ap, 0);
+    va_end(ap);
+}
+
+int
+oftp_mon_logopen(OFTP_MON *m)
+{
+    CLIBGRT *grt = __grtget();
+    RFILE *rf = NULL;
+
+    if (grt != NULL)
+        grt->grtapp2 = &m->log;
+    if (ropen("dd:OFTPLOG", 1, &rf) != 0) {
+        oftp_mon_msg("OFTP022W DD OFTPLOG CANNOT BE OPENED, MESSAGES GO TO"
+                     " THE CONSOLE");
+        return -1;
+    }
+    if (rf->recfm != RFILE_RECFM_F) {
+        rclose(rf);
+        oftp_mon_msg("OFTP022W DD OFTPLOG IS NOT RECFM=F OR FB, MESSAGES GO"
+                     " TO THE CONSOLE");
+        return -1;
+    }
+    m->log.file = rf;
+    m->log.reclen = (unsigned)rf->lrecl;
+    return 0;
+}
+
+void
+oftp_mon_logclose(OFTP_MON *m)
+{
+    CLIBGRT *grt = __grtget();
+    RFILE *rf;
+    int rc = 0;
+
+    lock(&m->log, 0);
+    rf = (RFILE *)m->log.file;
+    m->log.file = NULL;
+    if (rf != NULL) {
+        errno = 0;
+        if (rclose(rf) != 0)
+            rc = errno != 0 ? errno : -1;
+    }
+    if (grt != NULL && grt->grtapp2 == &m->log)
+        grt->grtapp2 = NULL;
+    unlock(&m->log, 0);
+    if (rc != 0)
+        oftp_mon_msg("OFTP023E LOG CLOSE FAILED, ERRNO %d", rc);
 }
 
 /* ---- helpers ----------------------------------------------------- */
@@ -133,8 +231,8 @@ queue_erp(OFTP_MON *m, const OFTP_SPREC *sent, char code, int reas,
     snprintf(e.text, sizeof(e.text), "relay: %s to pass back to %s",
              code == OFTP_EERP ? "EERP" : "NERP", sent->from);
     if (oftp_spl_add(m->spool, &e) == 0)
-        oftp_mon_msg("OFTP240I %.8s RELAY: %s FOR %s QUEUED FOR %s", e.key,
-                     code == OFTP_EERP ? "EERP" : "NERP", e.dsn, e.partner);
+        oftp_mon_msg("OFTP240P %s: %.8s RELAY: %s FOR %s QUEUED", e.partner,
+                     e.key, code == OFTP_EERP ? "EERP" : "NERP", e.dsn);
     ecb_post(&m->wake, 0);
 }
 
@@ -157,15 +255,16 @@ failed(OFTP_MON *m, OFTP_SPREC *r)
     settext(r, t);
     if (r->relay == 'Y') {
         r->state = SPL_REJECTED;
-        oftp_mon_msg("OFTP242W %.8s RELAY: %s FOR %s GIVEN UP AFTER %u ATTEMPTS",
-                     r->key, r->dsn, r->dest, r->attempts);
+        oftp_mon_msg("OFTP242W %s: %.8s RELAY: %s FOR %s GIVEN UP AFTER %u"
+                     " ATTEMPTS", r->partner, r->key, r->dsn, r->dest,
+                     r->attempts);
         queue_erp(m, r, OFTP_NERP, r->reasby == 'P' && r->reas ? r->reas : 99,
                   m->cfg.odetteid);
         remove(r->local);
     } else {
         r->state = SPL_HELD;
-        oftp_mon_msg("OFTP215W %.8s %s: %s HELD AFTER %u ATTEMPTS", r->key,
-                     r->partner, r->dsn, r->attempts);
+        oftp_mon_msg("OFTP215W %s: %.8s %s HELD AFTER %u ATTEMPTS", r->partner,
+                     r->key, r->dsn, r->attempts);
     }
 }
 
@@ -262,8 +361,8 @@ f_next_out(void *ctx, const OFTP_PEER *peer, OFTP_SFIDCMD *f, OFTP_FH **fh)
             settext(&r, "data set cannot be opened");
             oftp_spl_put(c->m->spool, &r);
             c->out.key[0] = '\0';
-            oftp_mon_msg("OFTP210E %.8s %s: %s CANNOT BE OPENED", r.key,
-                         r.partner, name);
+            oftp_mon_msg("OFTP210E %s: %.8s %s CANNOT BE OPENED", r.partner,
+                         r.key, name);
             continue;
         }
         if (r.relay == 'Y') {
@@ -319,15 +418,15 @@ f_out_done(void *ctx, OFTP_FH *fh, int reas, char retry)
         r->state = SPL_SENT;
         r->reas = 0;
         settext(r, "accepted by the partner, EERP outstanding");
-        oftp_mon_msg("OFTP211I %.8s %s: %s SENT, %lu RECORDS", r->key,
-                     r->partner, r->dsn, r->recs);
+        oftp_mon_msg("OFTP211P %s: %.8s %s SENT, %lu RECORDS", r->partner,
+                     r->key, r->dsn, r->recs);
     } else {
         r->reas = reas;
         r->reasby = 'P';
         snprintf(t, sizeof(t), "refused by the partner, reason %02d", reas);
         settext(r, t);
-        oftp_mon_msg("OFTP212W %.8s %s: %s REFUSED, REASON %02d RETRY %c",
-                     r->key, r->partner, r->dsn, reas, retry);
+        oftp_mon_msg("OFTP212P %s: %.8s %s REFUSED, REASON %02d RETRY %c",
+                     r->partner, r->key, r->dsn, reas, retry);
         if (retry == 'Y')
             failed(c->m, r);
         else {
@@ -503,8 +602,9 @@ f_close_in(void *ctx, OFTP_FH *fh, int ok)
         r->tdone = (long)time(NULL);
         settext(r, "relay: received, queued to go on");
         oftp_spl_put(c->m->spool, r);
-        oftp_mon_msg("OFTP241I %.8s RELAY: %s FROM %s FOR %s QUEUED FOR %s",
-                     r->key, r->dsn, r->from, r->dest, r->partner);
+        oftp_mon_msg("OFTP241P %s: %.8s RELAY: %s FROM %s FOR %s QUEUED FOR %s",
+                     c->pt->peer.name, r->key, r->dsn, r->from, r->dest,
+                     r->partner);
         r->key[0] = '\0';
         ecb_post(&c->m->wake, 0);
         return 0;
@@ -521,8 +621,8 @@ f_close_in(void *ctx, OFTP_FH *fh, int ok)
     r->tdone = (long)time(NULL);
     settext(r, "received, EERP owed");
     oftp_spl_put(c->m->spool, r);
-    oftp_mon_msg("OFTP222I %.8s %s: %s RECEIVED AS %s, %lu RECORDS", r->key,
-                 r->partner, r->dsn, r->local, r->recs);
+    oftp_mon_msg("OFTP222P %s: %.8s %s RECEIVED AS %s, %lu RECORDS",
+                 r->partner, r->key, r->dsn, r->local, r->recs);
     r->key[0] = '\0';
     return 0;
 }
@@ -632,12 +732,12 @@ f_erp_recv(void *ctx, const OFTP_PEER *peer, char code, const OFTP_ERPCMD *e)
             if (r.disp == 'D' && r.relay != 'Y') {
                 if (remove(r.local) == 0) {
                     settext(&r, "delivered, EERP received, data set deleted");
-                    oftp_mon_msg("OFTP215I %.8s %s DELETED (DISP=DELETE)",
-                                 r.key, r.local);
+                    oftp_mon_msg("OFTP215P %s: %.8s %s DELETED (DISP=DELETE)",
+                                 r.partner, r.key, r.local);
                 } else {
                     settext(&r, "delivered, EERP received, data set NOT deleted");
-                    oftp_mon_msg("OFTP216W %.8s %s NOT DELETED (DISP=DELETE)",
-                                 r.key, r.local);
+                    oftp_mon_msg("OFTP216W %s: %.8s %s NOT DELETED (DISP=DELETE)",
+                                 r.partner, r.key, r.local);
                 }
             }
         } else {
@@ -648,7 +748,7 @@ f_erp_recv(void *ctx, const OFTP_PEER *peer, char code, const OFTP_ERPCMD *e)
             settext(&r, t);
         }
         oftp_spl_put(c->m->spool, &r);
-        oftp_mon_msg("OFTP213I %.8s %s: %s %s", r.key, r.partner, r.dsn,
+        oftp_mon_msg("OFTP213P %s: %.8s %s %s", r.partner, r.key, r.dsn,
                      code == OFTP_EERP ? "DELIVERED" : "NOT DELIVERED (NERP)");
         if (r.relay == 'Y') {
             queue_erp(c->m, &r, code, e->reas, e->crea);
@@ -656,7 +756,7 @@ f_erp_recv(void *ctx, const OFTP_PEER *peer, char code, const OFTP_ERPCMD *e)
         }
         return;
     }
-    oftp_mon_msg("OFTP214W %s: %s FOR UNKNOWN FILE %s", c->pt->peer.name,
+    oftp_mon_msg("OFTP214P %s: %s FOR UNKNOWN FILE %s", c->pt->peer.name,
                  code == OFTP_EERP ? "EERP" : "NERP", e->dsn);
 }
 
@@ -693,11 +793,12 @@ p_lookup(void *ctx, const char *code, OFTP_PEER *peer)
 }
 
 static void
-s_log(void *ctx, const char *line)
+s_log(void *ctx, int warn, const char *line)
 {
     SESCTX *c = ctx;
 
-    oftp_mon_msg("OFTP290I %s: %s", c->pt ? c->pt->peer.name : c->ip, line);
+    oftp_mon_msg(warn ? "OFTP290W %s: %s" : "OFTP290P %s: %s",
+                 c->pt ? c->pt->peer.name : c->ip, line);
 }
 
 static int
@@ -864,11 +965,11 @@ session_thread(void *arg1, void *arg2)
     }
     oftp_net_close(c->sock);
     if (ab != 0)
-        oftp_mon_msg("OFTP203I %s: SESSION ENDED BY ABEND %s, FILES %u OUT %u IN",
+        oftp_mon_msg("OFTP203P %s: SESSION ENDED BY ABEND %s, FILES %u OUT %u IN",
                      c->pt ? c->pt->peer.name : c->ip, abt,
                      c->s.files_out, c->s.files_in);
     else
-        oftp_mon_msg("OFTP203I %s: SESSION ENDED, ESID %02d %s, FILES %u OUT %u IN",
+        oftp_mon_msg("OFTP203P %s: SESSION ENDED, ESID %02d %s, FILES %u OUT %u IN",
                      c->pt ? c->pt->peer.name : c->ip, c->rc,
                      c->s.esid_local ? "(OURS)" : "(PARTNER)",
                      c->s.files_out, c->s.files_in);
@@ -881,7 +982,7 @@ session_thread(void *arg1, void *arg2)
         && c->s.files_out == 0 && c->s.files_in == 0) {
         long w = busy_pause();
 
-        oftp_mon_msg("OFTP218I %s BUSY, CALLED AGAIN IN %ld S",
+        oftp_mon_msg("OFTP218P %s BUSY, CALLED AGAIN IN %ld S",
                      c->pt->peer.name, w);
         m->tcall[ptn_index(m, c->pt)] = (long)time(NULL) + w;
     } else if (c->initiator && (ab != 0 || (c->rc != 0 && c->s.files_out == 0
@@ -1038,12 +1139,12 @@ listen_thread(void *arg1, void *arg2)
         if ((s = oftp_net_accept(m->lsock, ip, sizeof(ip))) < 0)
             continue;
         if (m->nsess >= m->cfg.maxsess) {
-            oftp_mon_msg("OFTP204W CALL FROM %s REFUSED, %d SESSIONS",
-                         ip, m->nsess);
+            oftp_mon_msg("OFTP204W %s: CALL REFUSED, %d SESSIONS", ip,
+                         m->nsess);
             oftp_net_close(s);
             continue;
         }
-        oftp_mon_msg("OFTP205I CALL FROM %s", ip);
+        oftp_mon_msg("OFTP205P %s: CALL RECEIVED", ip);
         start_session(m, m->lsess, s, ip, NULL);
     }
     reap_all(m->lsess, "LISTENER");
@@ -1190,10 +1291,10 @@ sched_thread(void *arg1, void *arg2)
             m->calling[i]++;
             unlock(m, 0);
             m->callreq[i] = 0;
-            oftp_mon_msg("OFTP206I CALLING %s AT %s PORT %d", p->peer.name,
+            oftp_mon_msg("OFTP206P %s: CALLING AT %s PORT %d", p->peer.name,
                          p->host, p->port);
             if ((s = oftp_net_connect(p->host, p->port, 5)) < 0) {
-                oftp_mon_msg("OFTP207W %s NOT REACHED", p->peer.name);
+                oftp_mon_msg("OFTP207W %s: NOT REACHED", p->peer.name);
                 lock(m, 0);
                 others = m->busy[i] - 1;
                 unlock(m, 0);
@@ -1436,7 +1537,7 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
              r.target[0] ? r.partner : "", r.dsn,
              empty ? " -- the data set is empty" : "");
     ctl_put(o, reply);
-    oftp_mon_msg("OFTP230I %.8s QUEUED FOR %s: %s AS %s", r.key, r.partner,
+    oftp_mon_msg("OFTP230P %.8s QUEUED FOR %s: %s AS %s", r.key, r.partner,
                  dsn, r.dsn);
     ecb_post(&m->wake, 0);
 }
@@ -1634,7 +1735,7 @@ ctl_change(OFTP_MON *m, CTLOUT *o, const char *verb, const char *line)
         snprintf(out, sizeof(out), "200 %u sends %s", n,
                  verb[0] == 'H' ? "held" : "released");
         ctl_put(o, out);
-        oftp_mon_msg("OFTP233I %u SENDS FOR %s%s%s %s BY %s", n, ptn,
+        oftp_mon_msg("OFTP233P %u SENDS FOR %s%s%s %s BY %s", n, ptn,
                      vfn[0] ? " " : "", vfn,
                      verb[0] == 'H' ? "HELD" : "RELEASED", ctl_by(o));
         return;
@@ -1658,7 +1759,7 @@ ctl_change(OFTP_MON *m, CTLOUT *o, const char *verb, const char *line)
         }
         snprintf(out, sizeof(out), "200 %.8s deleted", r.key);
         ctl_put(o, out);
-        oftp_mon_msg("OFTP231I %.8s DELETED BY %s", r.key, ctl_by(o));
+        oftp_mon_msg("OFTP231P %.8s DELETED BY %s", r.key, ctl_by(o));
         return;
     }
     if (r.dir != SPL_SEND) {
@@ -1706,7 +1807,7 @@ ctl_change(OFTP_MON *m, CTLOUT *o, const char *verb, const char *line)
     }
     snprintf(out, sizeof(out), "200 %.8s %s", r.key, state_name(r.state));
     ctl_put(o, out);
-    oftp_mon_msg("OFTP232I %.8s %s BY %s", r.key, verb, ctl_by(o));
+    oftp_mon_msg("OFTP232P %.8s %s BY %s", r.key, verb, ctl_by(o));
     ecb_post(&m->wake, 0);
 }
 
@@ -2245,7 +2346,7 @@ oftp_mon_start(OFTP_MON *m)
                      m->cfg.port, err);
         return -1;
     }
-    oftp_mon_msg("OFTP051I LISTENING ON PORT %d, SOCKET %d", m->cfg.port,
+    oftp_mon_msg("OFTP051P LISTENING ON PORT %d, SOCKET %d", m->cfg.port,
                  m->lsock);
     m->t_listen = cthread_create_ex(listen_thread, m, NULL, 32 * 1024);
     m->t_sched = cthread_create_ex(sched_thread, m, NULL, 32 * 1024);
@@ -2354,7 +2455,7 @@ oftp_mon_recover(OFTP_MON *m)
         }
     }
     if (sends || recvs)
-        oftp_mon_msg("OFTP040I RECOVERED %d SENDS, DISCARDED %d PARTIAL RECEIVES",
+        oftp_mon_msg("OFTP040P RECOVERED %d SENDS, DISCARDED %d PARTIAL RECEIVES",
                      sends, recvs);
 }
 

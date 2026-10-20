@@ -629,6 +629,43 @@ starts with the partner name, so a log of several sessions can be read.
 The log is a SYSOUT data set; the console sees only what an operator must
 act on.
 
+How it is built (#47, `src/oftp#log.c`, `src/mvs/oftp#mon.c`):
+
+- **Routing is one function** (`oftp_log_route()`), host-tested with a
+  fake data set and console (`test/tstlog.c`); the MVS side only supplies
+  `rwrite()` and `wto()`. The class is read from the message text itself,
+  the letter after the three digits, so a call site cannot disagree with
+  the text. `P` goes to the log, the rest to both.
+- **The log is `DD OFTPLOG`**, opened with `ropen()` as RECFM=F (the
+  record is padded; a SYSOUT data set with a variable format is refused
+  with `OFTP022W`). The record is `YYYY-MM-DD HH:MM:SS ` and the
+  message; a message is at most 123 characters (a WTO line), so the
+  record is 143. The cut is explicit: `vsnprintf()` into a 124 byte
+  buffer, and a line that did not fit ends in `>`; the partner name is
+  first, so it is never what is cut. A record length below 143 cuts the
+  same way. Nothing is wrapped: one message, one record.
+- **No writable static.** The `OFTP_LOG` state is in the `OFTP_MON` block
+  and found through `grtapp2` (FTPD's way); the GRT is the process's, so
+  every session subtask sees it. Before `oftp_mon_logopen()` and after
+  `oftp_mon_logclose()` the slot is empty and a message goes to the
+  console.
+- **Serialized with `lock()`** on the log block: sessions are subtasks,
+  and two `rwrite()` calls on one RFILE must not overlap. The ESTAE
+  (`OFTP098E`) uses `trylock()`: the abend may have come inside a log
+  write of the same task, where waiting for the lock would wait for
+  itself. When the lock is not free the line goes to the console.
+- **Failure is loud, once.** No DD, or an open that fails: `OFTP022W`,
+  everything on the console, class `P` too, so nothing is lost. A write or
+  close that fails: `OFTP023E`, once, and the log is given up for the rest
+  of the run. Open, every write and the close are checked.
+- **Out of scope**: a log viewer, switching to a new data set, size
+  limits.
+- **Class changes keep the number and change the letter** (`OFTP211I` is
+  now `OFTP211P`); a number is never reused for something else.
+  `OFTP215`, `OFTP216` and `OFTP233` exist with two letters because the
+  two messages of one number differ in who needs to see them. The list is
+  `docs/messages.md`.
+
 ## 9. Phases
 
 1. Codec and session engine on the host (tests against the RFC examples),

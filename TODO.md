@@ -257,8 +257,9 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   was called at 17:03:02, not before); `TSTSCH` 32/32. libc370#392
   (`mktime()` ignores the zone) is worked around. Later from rvs: a
   deadline (`ENDDATE`/`ENDTIME`) and `ERRJOB`.
-- Log to a SYSOUT data set instead of every line by WTO; a log-only
-  message class (design 8).
+- ~~Log to a SYSOUT data set instead of every line by WTO; a log-only
+  message class (design 8)~~ -- #47: `DD OFTPLOG`, class `P`,
+  `docs/messages.md`. Not done: a log viewer, log switching, size limits.
 - `docs/`: a configuration guide beside `docs/installation.md`.
 - ~~GitHub repository, CI~~ — `mvslovers/oftpd` (2026-10-13).
 

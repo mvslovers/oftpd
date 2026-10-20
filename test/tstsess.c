@@ -286,9 +286,10 @@ lookup(void *ctx, const char *code, OFTP_PEER *peer)
 }
 
 static void
-quiet(void *ctx, const char *line)
+quiet(void *ctx, int warn, const char *line)
 {
     (void)ctx;
+    (void)warn;
     (void)line;
 }
 
