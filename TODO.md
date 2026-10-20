@@ -267,8 +267,8 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   records in the spool and win over `OFTPPTN` by name, `REFRESH` reads
   `OFTPPTN` only (design 4). A partner with transfers in the spool is
   never deleted. Measured (container, 2026-10-20, after the review
-  fixes; after the security review: A 60/60, TSTSPL 64/64, the rest as
-  before): `TSTPTM` A 29/29, P1 10/10, P2 4/4, B 13/13, C 8/8 (two
+  fixes; after the security review A is 60/60 and `TSTSPL` 64/64, the
+  rest unchanged): `TSTPTM` A 29/29, P1 10/10, P2 4/4, B 13/13, C 8/8 (two
   OFTPDs: add, change, send, refused delete, OFTPPTN partners, REFRESH,
   restart, delete, non-admin refusals), `TSTPTN`, `TSTSPL`; the trace of
   a deleted partner is gone from the slot a new one takes (by hand,
