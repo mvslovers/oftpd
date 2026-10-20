@@ -69,6 +69,10 @@ sources = ["test/tstptn.c"]
 sources = ["test/tstsess.c"]
 mvs = false
 
+[test.TSTUTL]            # the OFTP utility's operands and SYSIN echo; POSIX
+sources = ["test/tstutl.c"]
+mvs = false
+
 [test.TSTKSDS]           # VSAM on MVS; runs for real only from test/mvs/tstksds.jcl
 sources = ["test/mvs/tstksds.c"]
 host = false

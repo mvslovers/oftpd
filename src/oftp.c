@@ -102,26 +102,92 @@ static const char *const verbs[][2] = {
     { "PURGE", "DAYS" }, { "PARTNER", "PARTNER" },
 };
 
-/* A password does not belong in a listing: PASSWORD(x) and OURPASSWORD=x
-** of an echoed line become stars
+/* A password does not belong in a listing: the value of PASSWORD(x),
+** OURPASSWORD=x or PASSWORD('x y') in an echoed line becomes eight stars,
+** whatever its own length. cap is the size of line.
 */
 static void
-mask(char *line)
+mask(char *line, size_t cap)
 {
-    char *p, *e;
+    char *p, *s, *e;
 
     for (p = line; strlen(p) > 8; p++) {
         char k[9];
+        size_t head, stars, tail;
 
         memcpy(k, p, 8);
         k[8] = '\0';
         upcase(k);
         if (strcmp(k, "PASSWORD") != 0 || (p[8] != '(' && p[8] != '='))
             continue;
-        for (e = p + 9; *e && *e != ')' && *e != ' '; e++)
-            *e = '*';
-        p = e - 1;
+        s = p + 9;
+        if (*s == '\'') {
+            for (e = s + 1; *e && *e != '\''; e++)
+                ;
+            if (*e)
+                e++;
+        } else {
+            for (e = s; *e && *e != ')' && *e != ' '; e++)
+                ;
+        }
+        if (e == s)
+            continue;
+        head = (size_t)(s - line);
+        stars = 8;
+        if (head + stars >= cap)
+            stars = cap - 1 - head;
+        tail = strlen(e);
+        if (head + stars + tail >= cap)
+            tail = cap - 1 - head - stars;
+        memmove(s + stars, e, tail);
+        memset(s, '*', stars);
+        s[stars + tail] = '\0';
+        p = s + stars - 1;
     }
+}
+
+/* The echo of a command in lines of at most 72 columns, a long one
+** continued with " -" as SYSIN continues it: the SYSPRINT of a job cuts
+** what is longer than its record. It breaks at a blank; a word of more
+** than 65 characters is broken inside.
+*/
+static void
+put_echo(FILE *out, const char *text)
+{
+    const char *p = text;
+    const char *lead = "OFTP ";
+
+    for (;;) {
+        size_t room = 72 - 5, cut;
+
+        if (strlen(p) <= room) {
+            fprintf(out, "%s%s\n", lead, p);
+            return;
+        }
+        for (cut = room - 2; cut > 0 && p[cut] != ' '; cut--)
+            ;
+        if (cut == 0)
+            cut = room - 2;
+        fprintf(out, "%s%.*s -\n", lead, (int)cut, p);
+        p += cut;
+        while (*p == ' ')
+            p++;
+        lead = "     ";
+    }
+}
+
+/* What OFTP003E says of an operand that does not fit: its keyword and
+** nothing of its value, which can be a password
+*/
+static void
+too_long(FILE *out, const char *arg)
+{
+    const char *p = strpbrk(arg, "(=");
+
+    if (p != NULL && p - arg < 16)
+        fprintf(out, "OFTP003E OPERAND TOO LONG: %.*s\n", (int)(p - arg), arg);
+    else
+        fprintf(out, "OFTP003E OPERAND TOO LONG\n");
 }
 
 /* One command: argv[0] the verb. Returns its RC. */
@@ -130,7 +196,7 @@ command(int argc, char **argv, FILE *out)
 {
     char req[256], final[256], verb[12], psub[10];
     const char *pos = NULL, *setting = NULL;
-    int i, rc, mine = 0;
+    int i, rc, mine = 0, named = 0;
     size_t n;
 
     snprintf(verb, sizeof(verb), "%s", argv[0]);
@@ -184,7 +250,7 @@ command(int argc, char **argv, FILE *out)
         const char *a = argv[i];
 
         if (operand(a, key, sizeof(key), val, sizeof(val)) != 0) {
-            fprintf(out, "OFTP003E OPERAND TOO LONG: %s\n", a);
+            too_long(out, a);
             return 8;
         }
         upcase(key);
@@ -192,12 +258,21 @@ command(int argc, char **argv, FILE *out)
             mine = 1;
             continue;
         }
-        /* a lone word after SHOW, CALL, ...: the key or the partner */
+        /* a lone word after SHOW, CALL, ...: the key or the partner, once;
+        ** a second one is a keyword that lost its value */
         if (val[0] == '\0' && pos[0] && strchr(argv[i], '(') == NULL
             && strchr(argv[i], '=') == NULL) {
-            snprintf(val, sizeof(val), "%s", key);
-            snprintf(key, sizeof(key), "%s", pos);
+            if (!named) {
+                snprintf(val, sizeof(val), "%s", key);
+                snprintf(key, sizeof(key), "%s", pos);
+            } else if (strcmp(key, "XLATE") != 0 && strcmp(key, "HOLD") != 0) {
+                fprintf(out, "OFTP007E OPERAND %s NEEDS A VALUE: WRITE "
+                        "%s(VALUE)\n", key, key);
+                return 8;
+            }
         }
+        if (pos[0] && strcmp(key, pos) == 0)
+            named = 1;
         if (strcmp(key, "FORMAT") == 0)
             strcpy(key, "FMT");
         upcase(val);
@@ -299,8 +374,8 @@ main(int argc, char **argv)
                 line[0] = '\0';
                 continue;
             }
-            mask(echo);
-            fprintf(out, "OFTP %s\n", echo);
+            mask(echo, sizeof(echo));
+            put_echo(out, echo);
             r = command(n, w, out);
             if (r > rc)
                 rc = r;
