@@ -16,6 +16,11 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   stored as before. `F OFTPD,REFRESH` reads the member again and keeps the
   old rules when the new member has an error. The sample procedure names
   the member in a mandatory `OFTPRCV` DD: copy `OFTPRCV0` to the parmlib
-  before using it. `%VFN` and `%Q1`..`%Q9` in a pattern carry partner-chosen
-  text into the name, so start patterns with a fixed qualifier.
+  before using it. `%VFN`, `%Q1`..`%Q9` and `%CTR` carry partner-chosen
+  text into the name, so a pattern with one of them in its first qualifier
+  is refused when the member is read, as is a pattern that can name a data
+  set under `TMPPREFIX`. `REPLACE=Y` replaces a plain sequential data set
+  only; a PDS or VSAM name is refused and left alone. If a stop between the
+  two renames of a replace leaves the old data set only under its backup
+  name, the next start renames it back.
 - Project skeleton: the monitor `OFTPD` and the utility `OFTP` as stubs.

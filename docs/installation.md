@@ -156,7 +156,7 @@ from your copy of the procedure.)
 RULE=ORDERS  FROM=PARTNER1  VFN=ORDERS.*
              DSN=PROD.ORDERS.Y%YYYY.D%MM%DD.T%HH%MI%SS
 RULE=INVOICE FROM=*  VFN=INV?????.DATA
-             DSN=ACCT.IN.%VFN  REPLACE=Y  VOLSER=WORK01  SPACE=30
+             DSN=ACCT.IN.%ID.%VFN  REPLACE=Y  VOLSER=WORK01  SPACE=30
 ```
 
 `RULE=name` opens a rule (1 to 8 characters, unique) and the keywords after
@@ -186,7 +186,7 @@ Symbols in `DSN=`; everything else is taken literally (letters, digits,
 | `%Q1` to `%Q9` | its first to ninth qualifier (between the dots) |
 | `%ID` | the partner's name |
 | `%YYYY` `%MM` `%DD` `%HH` `%MI` `%SS` | the time the file arrived |
-| `%CTR` | the 4 digits of the sender's file counter |
+| `%CTR` | the 4 digits of the sender's file counter; a file whose time field has no such counter is refused (reason 01) |
 | `%KEY` | the transfer's spool key, `T` and 7 digits |
 
 The name is checked as a data set name when the file arrives: qualifiers of
@@ -203,16 +203,30 @@ With `REPLACE=Y` the old data set is renamed out of the way only when the
 new file is complete and closed, then the new one takes its name and the old
 one is deleted (`OFTP229I`). A file that fails on the way costs nothing. A
 data set that is in use makes the replace fail: the file is refused at the
-end (reason 12, `OFTP221E` or `OFTP226E`) and the old data set stays. If a crash leaves an old
-copy behind, it is `TMPPREFIX.B<key>` (`OFTP228W` names it); delete it by
-hand.
+end (reason 12, `OFTP221E` or `OFTP226E`) and the old data set stays.
+`REPLACE=Y` works on a plain sequential data set only: if the name is a PDS,
+a VSAM cluster or a member, the file is refused (reason 12, `OFTP234W`) and
+nothing is touched.
 
-**Take care with `%VFN` and `%Q1` to `%Q9`:** they carry text chosen by the
-partner into the data set name, and nothing restricts the high-level
-qualifier. `DSN=%VFN`, or `DSN=%Q1.X`, lets a partner create -- and with
-`REPLACE=Y` replace -- any data set the OFTPD started task may write. Start
-every pattern with a fixed qualifier of your own (`DSN=ACCT.IN.%VFN`), and
-use `REPLACE=Y` only for a partner and a name you trust.
+While a replace is running, the old content is under the name
+`TMPPREFIX.B<key>`; protect `TMPPREFIX` like the data sets your rules write
+to. If OFTPD or the system stops in the instant between the two renames,
+that backup is the **only copy** of the old data set. At the next start OFTPD
+renames it back if the target is missing (`OFTP239I`); if both exist it
+leaves both and says `OFTP243W`. If you have to do it by hand: look whether
+the target data set exists. If it does not, rename `TMPPREFIX.B<key>` back
+to the target name. Delete the backup only when the target exists and is the
+file you want.
+
+**The first qualifier must be fixed.** `%VFN`, `%Q1` to `%Q9` and `%CTR`
+carry text chosen by the partner into the data set name; if they could
+stand in the first qualifier, a partner could create -- and with
+`REPLACE=Y` replace -- any data set the OFTPD started task may write.
+OFTPD therefore refuses a rule whose `DSN=` has any of them before the
+first `.` (`DSN=%VFN`, `DSN=PROD%VFN` and `DSN=%Q1.X` are errors, `DSN=ACCT.IN.%VFN`
+is fine; the member is not used, see `OFTP010W`). A `DSN=` that can name a
+data set under your `TMPPREFIX` is refused for the same reason. Even so, use
+`REPLACE=Y` only for a partner and a name you trust.
 
 `F OFTPD,REFRESH` reads the rule member again together with the other two,
 and replaces the whole set. **A member with any error is not used at all**:

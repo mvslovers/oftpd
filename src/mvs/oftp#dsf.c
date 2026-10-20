@@ -109,6 +109,24 @@ size_kb(const char *dsn)
 }
 
 int
+oftp_dsf_kind(const char *dsn)
+{
+    LOCWORK lw;
+    DSCB    d;
+
+    if (strchr(dsn, '(') != NULL || strlen(dsn) > 44)
+        return OFTP_DSK_OTHER;
+    memset(&lw, 0, sizeof(lw));
+    if (__locate(dsn, &lw) != 0)
+        return OFTP_DSK_NONE;
+    memset(&d, 0, sizeof(d));
+    if (__dscbdv(dsn, lw.volser, &d) != 0)
+        return OFTP_DSK_OTHER;
+    return d.dscb1.dsorg1 == DSGPS && d.dscb1.dsorg2 == 0 ? OFTP_DSK_PS
+                                                         : OFTP_DSK_OTHER;
+}
+
+int
 oftp_dsf_open_out(const char *dsn, char fmt, int xl, OFTP_SFIDCMD *sfid,
                   OFTP_DSF **out)
 {

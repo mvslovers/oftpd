@@ -74,7 +74,7 @@ Proposed symbols, a superset of rvs's `DSNNEW` placeholders:
 | `%ID` | the partner's name (rvs `?ID`) |
 | `%YYYY` `%MM` `%DD` | date of arrival |
 | `%HH` `%MI` `%SS` | time of arrival |
-| `%CTR` | the OFTP counter of the file's time field, 4 digits (rvs `COUNTER=YES`) |
+| `%CTR` | the OFTP counter of the file's time field, 4 digits (rvs `COUNTER=YES`); a file whose SFID time field is not the full `HHMMSScccc` with digits in the counter has no value, so the name does not come out and the file is refused like any invalid name |
 | `%KEY` | the spool key, `T` + 7 digits: unique on this system |
 
 A date or time can never start a qualifier, and a qualifier has at most
@@ -93,12 +93,20 @@ at the end with SFNA 12, and the old one stays). Section 7 has the
 mechanism: the old one is renamed aside, not deleted, until the new one
 has its name.
 
-A pattern that starts with `%VFN` or `%Qn` hands the partner the whole
-name space the started task may write, and `REPLACE=Y` on top of it the
-right to replace data sets there. The parser does not forbid it (an
-installation may mean it); `docs/installation.md` and the sample member
-warn. Whether the parser should refuse a first qualifier that is not
-literal is open for the security review.
+A pattern whose first qualifier is built from `%VFN`, `%Qn` or `%CTR` would
+hand the partner the whole name space the started task may write, and
+`REPLACE=Y` on top of it the right to replace data sets there. **Decided:
+the parser refuses it** (reason: the recommendation of the security review
+of #44). The part of `DSN=` before the first literal `.` must not contain
+`%VFN`, `%Q1`..`%Q9` or `%CTR`; the line is `OFTP010W`, the member is not
+used (`OFTP025E`). `DSN=PROD.IN.%VFN` is fine, `DSN=%VFN`, `DSN=PROD%VFN`
+and `DSN=%Q1.X` are not. `%ID`, `%KEY` and the date symbols are not
+partner text and may stand anywhere. A pattern with no `.` at all is its
+own first qualifier, so `DSN=PROD%VFN` is refused too. A `DSN=` that can
+name a data set under `TMPPREFIX` (`TMPPREFIX.<anything>`, the received
+file's own temporary names and the `.B<key>` backups) is refused as well:
+the literal head of the pattern up to its first symbol is compared with
+`TMPPREFIX.` and a rule that could clash is not used.
 
 ## 4. The job after receipt
 
@@ -191,13 +199,35 @@ them.
 until `f_close_in` has the closed, complete file. With an existing target
 and `REPLACE=Y`: rename the old data set to `TMPPREFIX.B<key without T>`,
 rename the temporary one to the final name, then remove the backup.
+Only a plain sequential data set (DSORG=PS, nothing else in the DSCB) is
+renamed: a PDS, a VSAM cluster or a member name is not something the
+backup rename can treat as "a data set to replace". The check is made
+twice, at `F_OPEN` (`OFTP234W`, SFNA 12, retry `N`: the file is not
+received at all, no space is spent on it) and again at the close before the
+first rename (`OFTP226E`, SFNA 12), because the target can change in
+between. Either way the old data set is untouched. `oftp_dsf_kind()` in
+`oftp#dsf.c` answers it from the DSCB (`__locate`/`__dscbdv`): NONE if the
+catalog has no such name, PS, or OTHER for everything else (a PDS or VSAM
+name, a member, a name over 44 characters, a DSCB that cannot be read).
 A failed first rename (catalog full, say) refuses the file with SFNA 12 and
 leaves everything as it was (`OFTP226E`); a failed second rename, which
 is what an old data set in use produced when measured, renames the old
 one back (`OFTP227E` if even that fails, naming the
 backup). A failed remove of the backup leaves the new file in place and
-says `OFTP228W`: a backup `TMPPREFIX.B<key>` after a crash or that warning
-is the only trace and is deleted by hand. `REPLACE=N` on an existing name
+says `OFTP228W`: the new file is complete under the final name and the
+backup is a spare copy that is deleted by hand.
+
+**After a crash between the two renames** the final name does not exist and
+`TMPPREFIX.B<key>` is the *only* copy of the old data set. Never delete it
+first. The transfer's spool record is still ACTIVE (the close did not
+complete), so at the next start `oftp_mon_recover` discards the partial
+receive and `restore_old()` looks at its backup: target missing and backup
+there, it renames the backup back to the target (`OFTP239I`; `OFTP227E` if
+that rename fails, naming the backup); both there (the second rename had
+happened already), it leaves both and says `OFTP243W` -- the operator
+compares and deletes the backup. By hand it is the same rule: check
+whether the target exists; if not, rename the backup back; only if the
+target exists, delete the backup. `REPLACE=N` on an existing name
 is refused at `F_OPEN`, before any allocation, with SFNA 13 and retry `Y`
 (`OFTP225W`), the answer an ordinary duplicate gets; a sender that keeps
 trying keeps being refused until the data set is deleted or the rule
@@ -207,8 +237,15 @@ checked before the EFPA as before: the rename comes after the close.
 Messages: `OFTP024I` rules read, `OFTP025E` not used, `OFTP026W` DD cannot
 be opened on a refresh; `OFTP224W` invalid name, `OFTP225W` exists, `OFTP226E`
 cannot be replaced, `OFTP227E` not renamed back, `OFTP228W` backup not
-deleted, `OFTP229I` replaced; `OFTP221E` (older) the rename of the temporary
-file failed.
+deleted, `OFTP229I` replaced; `OFTP234W` the existing data set is not a
+sequential one and is not replaced, `OFTP239I` the old data set restored
+from its backup at start, `OFTP243W` both the target and the backup exist
+after a crash; `OFTP221E` (older) the rename of the temporary file failed.
+
+**Visibility of the backup.** For the short time of a replace the old
+content lives under `TMPPREFIX.B<key>`, readable by anyone whom the
+installation's security product lets read under that prefix. Protect
+`TMPPREFIX` like the data sets the rules write to.
 
 ### Measured
 

@@ -169,6 +169,20 @@ main(void)
     CHECK_EQ(load((const char *[]){ "RULE=A DSN=X_Y", NULL }), 1, "a literal no name may hold");
     CHECK_EQ(load((const char *[]){ "RULE=A DSN=X.%YYYY%MM%DD.%HH%MI%SS", NULL }), 0,
              "all six date and time symbols");
+    CHECK_EQ(load((const char *[]){ "RULE=A DSN=%VFN", NULL }), 1, "DSN=%VFN: first qualifier is the partner's");
+    CHECK_EQ(load((const char *[]){ "RULE=A DSN=PROD%VFN", NULL }), 1, "DSN=PROD%VFN");
+    CHECK_EQ(load((const char *[]){ "RULE=A DSN=%Q1.X", NULL }), 1, "DSN=%Q1.X");
+    CHECK_EQ(load((const char *[]){ "RULE=A DSN=P%Q9.X", NULL }), 1, "DSN=P%Q9.X");
+    CHECK_EQ(load((const char *[]){ "RULE=A DSN=%CTR.X", NULL }), 1, "DSN=%CTR.X");
+    CHECK_EQ(msgs, 1, "refused with a message");
+    CHECK_EQ(load((const char *[]){ "RULE=A DSN=PROD.IN.%VFN", NULL }), 0, "DSN=PROD.IN.%VFN");
+    CHECK_EQ(load((const char *[]){ "RULE=A DSN=PROD.%Q1.%CTR", NULL }), 0, "symbols after the first qualifier");
+    CHECK_EQ(load((const char *[]){ "RULE=A DSN=%ID.IN.%VFN", NULL }), 0, "%ID may lead");
+    CHECK_EQ(load((const char *[]){ "RULE=A DSN=%KEY.X", NULL }), 0, "so may %KEY");
+    CHECK_EQ(load((const char *[]){ "RULE=A DSN=OFTP.TMP.X", NULL }), 1, "a name under TMPPREFIX");
+    CHECK_EQ(load((const char *[]){ "RULE=A DSN=OFTP.%Q1", NULL }), 1, "a name that may reach TMPPREFIX");
+    CHECK_EQ(load((const char *[]){ "RULE=A DSN=OFTP.TMP", NULL }), 1, "TMPPREFIX itself");
+    CHECK_EQ(load((const char *[]){ "RULE=A DSN=OFTP.IN.%VFN", NULL }), 0, "next to TMPPREFIX");
     CHECK_EQ(load((const char *[]){ "VFN=X", NULL }), 1, "a keyword before the first RULE=");
     CHECK_EQ(load((const char *[]){ "RULE=A BOGUS=1", NULL }), 1, "an unknown keyword");
     CHECK_EQ(load((const char *[]){ "RULE=A REPLACE=MAYBE", NULL }), 1, "REPLACE=MAYBE");
@@ -211,6 +225,29 @@ main(void)
         oftp_rcv_line(&rs, "RULE=N DSN=A.%Q2.B.%VFN", 1, count, NULL);
         CHECK_EQ(oftp_rcv_name(&rs.r[0], &nx, out), -1,
                  "a context with nothing in it gives no name, and no crash");
+
+        oftp_rcv_clear(&rs);
+        oftp_rcv_line(&rs, "RULE=C DSN=PROD.X%CTR.DATA", 1, count, NULL);
+        oftp_rcv_line(&rs, "RULE=D DSN=PROD.Y%YYYY%MM", 2, count, NULL);
+        nx.vfn = "F";
+        nx.partner = "P";
+        nx.key = "T0000001";
+        nx.arrival = "20261020140509";
+        nx.sfidtime = "1405090007";
+        CHECK_EQ(oftp_rcv_name(&rs.r[0], &nx, out), 0, "%CTR of a full time field");
+        CHECK(strcmp(out, "PROD.X0007.DATA") == 0, "is its last four digits");
+        nx.sfidtime = "      ";
+        CHECK_EQ(oftp_rcv_name(&rs.r[0], &nx, out), -1, "a blank time field has no counter");
+        nx.sfidtime = "1405";
+        CHECK_EQ(oftp_rcv_name(&rs.r[0], &nx, out), -1, "nor a short one");
+        nx.sfidtime = "14050900 7";
+        CHECK_EQ(oftp_rcv_name(&rs.r[0], &nx, out), -1, "nor one with a blank in the counter");
+        nx.sfidtime = "14050900AB";
+        CHECK_EQ(oftp_rcv_name(&rs.r[0], &nx, out), -1, "nor letters");
+        nx.sfidtime = NULL;
+        CHECK_EQ(oftp_rcv_name(&rs.r[0], &nx, out), -1, "nor a missing one");
+        nx.arrival = "2026";
+        CHECK_EQ(oftp_rcv_name(&rs.r[1], &nx, out), -1, "a short arrival time is refused too");
     }
     return mbt_test_summary("TSTRCV");
 }

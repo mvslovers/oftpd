@@ -65,6 +65,13 @@ extern int  oftp_dsf_write(OFTP_DSF *f, const unsigned char *b, unsigned n,
 */
 extern int  oftp_dsf_close(OFTP_DSF *f, int keep)       asm("OFTPDSCL");
 
+/* What dsn is, by its catalog entry and format-1 DSCB */
+#define OFTP_DSK_NONE   0               /* not catalogued                */
+#define OFTP_DSK_PS     1               /* DSORG=PS and nothing else     */
+#define OFTP_DSK_OTHER  2               /* a PDS, VSAM, anything else, or
+                                        ** a DSCB that cannot be read   */
+extern int  oftp_dsf_kind(const char *dsn)              asm("OFTPDSKD");
+
 /* Counts, for the log and the spool */
 extern unsigned long oftp_dsf_records(const OFTP_DSF *f) asm("OFTPDSRC");
 

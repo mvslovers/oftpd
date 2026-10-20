@@ -11,7 +11,8 @@
 **           (REPLACE=N: SFNA 13, the first stays), a replace of a
 **           data set that is in use (SFNA 12, the old one stays), a file no rule
 **           names (INPREFIX.<vfn>), and a rule that makes an invalid
-**           name (SFNA 01, nothing allocated)
+**           name (SFNA 01, nothing allocated), and REPLACE=Y onto a PDS
+**           and onto a VSAM cluster (SFNA 12, they stay)
 **   RUN 2   the member was replaced by a second set and B told REFRESH:
 **           the new pattern decides, a rule that left the member no
 **           longer does
@@ -262,6 +263,33 @@ phase1(void)
         snprintf(req, sizeof(req), "DELETE KEY=%s", key);
         ask(req);
         CHECK(find("200") != NULL, "busy: the waiting send is deleted");
+    }
+
+    /* REPLACE=Y onto a name that is a PDS, and one that is a VSAM cluster
+    ** (made by tstrcvmd.jcl): a rename of either would damage it, so the
+    ** file is refused (SFNA 12); the PDS is compared in tstrcvm.jcl
+    */
+    CHECK(!transfer(D1, "TSTRCV.PDS.ONE", key, st, why),
+          "pds: the file is not delivered");
+    CHECK(strstr(why, "reason 12") != NULL,
+          "pds: refused with SFNA 12, the PDS is not replaced");
+    if (key[0]) {
+        char req[40];
+
+        snprintf(req, sizeof(req), "DELETE KEY=%s", key);
+        ask(req);
+        CHECK(find("200") != NULL, "pds: the waiting send is deleted");
+    }
+    CHECK(!transfer(D1, "TSTRCV.PDS.TWO", key, st, why),
+          "vsam: the file is not delivered");
+    CHECK(strstr(why, "reason 12") != NULL,
+          "vsam: refused with SFNA 12, the cluster is not replaced");
+    if (key[0]) {
+        char req[40];
+
+        snprintf(req, sizeof(req), "DELETE KEY=%s", key);
+        ask(req);
+        CHECK(find("200") != NULL, "vsam: the waiting send is deleted");
     }
 
     /* REPLACE=N: DSN=IBMUSER.RCVTEST.NOR.%Q3 */

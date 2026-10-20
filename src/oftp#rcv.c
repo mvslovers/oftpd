@@ -137,11 +137,14 @@ symbol(const char *p, int *len, int *arg)
     return S_NONE;
 }
 
-/* A literal character of a data set name pattern */
+/* A literal character of a data set name pattern. The letters in three
+** ranges: EBCDIC has gaps between I and J and between R and S.
+*/
 static int
 literal_ok(char c)
 {
-    return (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.'
+    return (c >= 'A' && c <= 'I') || (c >= 'J' && c <= 'R')
+           || (c >= 'S' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.'
            || c == '-' || c == '@' || c == '#' || c == '$';
 }
 
@@ -184,22 +187,40 @@ qualifier(const char *vfn, int n, const char **v, size_t *len)
     *len = e == NULL ? strlen(q) : (size_t)(e - q);
 }
 
-/* What a symbol stands for: *v and *n */
-static void
+/* The SFID time field is HHMMSScccc; the counter is its last four digits.
+** A field that is shorter or not all digits has none: -1.
+*/
+static int
+counter(const char *sfidtime, const char **v, size_t *n)
+{
+    int i;
+
+    if (sfidtime == NULL || strlen(sfidtime) < 10)
+        return -1;
+    for (i = 6; i < 10; i++)
+        if (sfidtime[i] < '0' || sfidtime[i] > '9')
+            return -1;
+    *v = sfidtime + 6;
+    *n = 4;
+    return 0;
+}
+
+/* What a symbol stands for: *v and *n; -1 when it stands for nothing */
+static int
 symvalue(int kind, int arg, const OFTP_RCVCTX *x, const char **v, size_t *n)
 {
     switch (kind) {
     case S_QUAL:
         qualifier(x->vfn, arg, v, n);
-        return;
+        return 0;
     case S_ARR:
-        *v = nz(x->arrival) + arg;
         *n = arg == 0 ? 4 : 2;
-        return;
+        if (strlen(nz(x->arrival)) < (size_t)arg + *n)
+            return -1;
+        *v = x->arrival + arg;
+        return 0;
     case S_CTR:
-        *v = nz(x->sfidtime) + 6;
-        *n = 4;
-        return;
+        return counter(x->sfidtime, v, n);
     case S_ID:
         *v = nz(x->partner);
         break;
@@ -211,6 +232,7 @@ symvalue(int kind, int arg, const OFTP_RCVCTX *x, const char **v, size_t *n)
         break;
     }
     *n = strlen(*v);
+    return 0;
 }
 
 /* The pattern with its symbols replaced. -1: a symbol or a character that
@@ -236,7 +258,8 @@ expand(const char *pat, const OFTP_RCVCTX *x, char *out, size_t cap)
                 pat += len;
                 continue;
             }
-            symvalue(kind, arg, x, &v, &n);
+            if (symvalue(kind, arg, x, &v, &n) != 0)
+                return -1;
         } else if (!literal_ok(*pat))
             return -1;
         if (append(out, cap, &at, v, n) != 0)
@@ -280,6 +303,29 @@ put(char *dst, size_t cap, const char *v)
     return 0;
 }
 
+/* The part of a pattern before its first literal '.' is the data set's
+** high-level qualifier. What the partner sends (%VFN, %Q1..%Q9) or what
+** comes with the file (%CTR) must not be in it: -3 when it is, else 0.
+*/
+static int
+first_qualifier(const char *pat)
+{
+    int kind, len, arg;
+
+    while (*pat != '\0' && *pat != '.') {
+        len = 1;
+        if (*pat == '%') {
+            kind = symbol(pat, &len, &arg);
+            if (kind == S_VFN || kind == S_QUAL || kind == S_CTR)
+                return -3;
+            if (kind == S_NONE)
+                len = 1;
+        }
+        pat += len;
+    }
+    return 0;
+}
+
 static int
 rule_kw(OFTP_RULE *r, const char *k, const char *v)
 {
@@ -294,7 +340,9 @@ rule_kw(OFTP_RULE *r, const char *k, const char *v)
 
         if (put(r->dsn, sizeof(r->dsn), v) != 0)
             return -1;
-        return expand(r->dsn, NULL, t, sizeof(t)) == 0 ? 0 : -1;
+        if (expand(r->dsn, NULL, t, sizeof(t)) != 0)
+            return -1;
+        return first_qualifier(r->dsn);
     }
     if (strcmp(k, "REPLACE") == 0)
         return (b = yesno(v)) < 0 ? -1 : (r->replace = b, 0);
@@ -382,6 +430,9 @@ apply(OFTP_RULES *s, const char *k, const char *v, int lineno, char *m,
     s->r[s->n - 1].bad = 1;
     if (rc == -2)
         snprintf(m, mcap, "line %d: unknown keyword %s", lineno, k);
+    else if (rc == -3)
+        snprintf(m, mcap, "line %d: DSN: the first qualifier must be literal"
+                 " (no %%VFN, %%Q1-%%Q9, %%CTR)", lineno);
     else
         snprintf(m, mcap, "line %d: invalid value for %s", lineno, k);
     return m;
@@ -414,6 +465,27 @@ oftp_rcv_line(OFTP_RULES *s, const char *text, int lineno, OFTP_CFGMSG msg,
     return errors;
 }
 
+/* 1 when a name the pattern can make may start with prefix + ".": the
+** literal head of the pattern, up to its first symbol, and prefix agree on
+** as many characters as the shorter of the two has. A pattern whose first
+** qualifier is built from symbols (%ID, %KEY, the date) is left alone.
+*/
+static int
+clashes(const char *pat, const char *prefix)
+{
+    char q[OFTP_RCV_DSN + 40];
+    size_t n = 0, i;
+
+    snprintf(q, sizeof(q), "%s.", prefix);
+    for (i = 0; pat[i] != '\0' && pat[i] != '%'; i++)
+        n++;
+    if (pat[n] == '%' && memchr(pat, '.', n) == NULL)
+        return 0;                       /* the first qualifier is built */
+    if (n > strlen(q))
+        n = strlen(q);
+    return strncmp(pat, q, n) == 0;
+}
+
 int
 oftp_rcv_finish(OFTP_RULES *s, const OFTP_CONFIG *c, OFTP_CFGMSG msg, void *ctx)
 {
@@ -437,6 +509,14 @@ oftp_rcv_finish(OFTP_RULES *s, const OFTP_CONFIG *c, OFTP_CFGMSG msg, void *ctx)
                 r->bad = 1;
                 continue;
             }
+        }
+        if (r->dsn[0] != '\0' && clashes(r->dsn, c->tmpprefix)) {
+            snprintf(m, sizeof(m), "line %d: rule %s: DSN may name a data set"
+                     " under TMPPREFIX=%s", r->line, r->name, c->tmpprefix);
+            say(msg, ctx, m);
+            s->errors++;
+            r->bad = 1;
+            continue;
         }
         for (j = 0; j < i; j++)
             if (strcmp(s->r[j].name, r->name) == 0) {

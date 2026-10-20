@@ -6,7 +6,8 @@
 //* order:
 //*
 //*   TSTRCVM1  rule set 1: pattern, date, replace, refused replace,
-//*             no rule, invalid name; then what B made, listed
+//*             no rule, invalid name, REPLACE=Y onto a PDS and onto a
+//*             VSAM cluster (refused, SFNA 12); then what B made, listed
 //*   TSTRCVW2  writes rule set 2 into the member
 //*   -----     F TSTRCVMB,REFRESH   (OFTP024I: 5 rules)
 //*   TSTRCVM2  the second set decides
@@ -59,6 +60,14 @@
 //SYSUT2   DD  DISP=SHR,DSN=IBMUSER.RCVTEST.REP.BUSY
 //SYSIN    DD  *
          COMPARE TYPORG=PS
+/*
+//* the PDS a REPLACE=Y rule would not rename is as it was (RC 0)
+//CMPPDS   EXEC PGM=IEBCOMPR
+//SYSPRINT DD  SYSOUT=*
+//SYSUT1   DD  DISP=SHR,DSN=IBMUSER.RCVTEST.PDS.ONE
+//SYSUT2   DD  DISP=SHR,DSN=IBMUSER.RCVTEST.PDS.ONE.COPY
+//SYSIN    DD  *
+         COMPARE TYPORG=PO
 /*
 //* the data sets B made, where they are, and that no backup or
 //* temporary name is left behind

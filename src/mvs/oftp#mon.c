@@ -64,6 +64,13 @@ exists(const char *dsn)
     return 1;
 }
 
+/* Where REPLACE=Y puts the old data set while the new one is renamed in */
+static void
+bakname(const OFTP_MON *m, const char *key, char *bak, size_t cap)
+{
+    snprintf(bak, cap, "%s.B%.7s", m->cfg.tmpprefix, key + 1);
+}
+
 static void
 settext(OFTP_SPREC *r, const char *text)
 {
@@ -476,6 +483,15 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
             *retry = 'Y';
             return 13;
         }
+        /* REPLACE=Y renames, and a rename takes only a sequential data
+        ** set safely: a PDS or a VSAM name is refused, and stays */
+        if (rule->replace && oftp_dsf_kind(final) == OFTP_DSK_OTHER) {
+            oftp_spl_del(c->m->spool, r.key);
+            oftp_mon_msg("OFTP234W %s: %s REFUSED, %s IS NOT A SEQUENTIAL DATA"
+                         " SET AND IS NOT REPLACED (RULE %s)", r.partner,
+                         f->dsn, final, rule->name);
+            return 12;
+        }
     } else
     /* the name is taken: the transfer number makes it unique */
     if (next == NULL && exists(final)) {
@@ -549,7 +565,7 @@ f_close_in(void *ctx, OFTP_FH *fh, int ok)
     SESCTX *c = ctx;
     OFTP_SPREC *r = &c->in;
     char bak[45];
-    int rc, replaced = 0;
+    int rc, kind, replaced = 0;
 
     (void)fh;
     r->recs = oftp_dsf_records(c->idsf);
@@ -579,9 +595,10 @@ f_close_in(void *ctx, OFTP_FH *fh, int ok)
     ** when the new one is under its name, so a rename that fails (the
     ** old one in use, a full catalog) costs nothing
     */
-    if (c->hasrule && c->rule.replace && exists(r->local)) {
-        snprintf(bak, sizeof(bak), "%s.B%.7s", c->m->cfg.tmpprefix, r->key + 1);
-        if (rename(r->local, bak) != 0) {
+    if (c->hasrule && c->rule.replace
+        && (kind = oftp_dsf_kind(r->local)) != OFTP_DSK_NONE) {
+        bakname(c->m, r->key, bak, sizeof(bak));
+        if (kind != OFTP_DSK_PS || rename(r->local, bak) != 0) {
             remove(c->tmp);
             oftp_spl_del(c->m->spool, r->key);
             oftp_mon_msg("OFTP226E %s: %s NOT RECEIVED, %s CANNOT BE REPLACED,"
@@ -2463,6 +2480,32 @@ oftp_mon_abend(OFTP_MON *m)
     return n;
 }
 
+/* A stop between the two renames of a REPLACE=Y leaves the old data set
+** under its backup name and nothing under its own. Put it back; when both
+** exist the new one is complete and the backup is the old, which is for
+** the operator to delete.
+*/
+static void
+restore_old(const OFTP_MON *m, const OFTP_SPREC *r)
+{
+    char bak[45];
+
+    if (r->relay == 'Y' || r->local[0] == '\0')
+        return;
+    bakname(m, r->key, bak, sizeof(bak));
+    if (!exists(bak))
+        return;
+    if (exists(r->local))
+        oftp_mon_msg("OFTP243W %s: %s EXISTS AND SO DOES THE OLD VERSION %s,"
+                     " DELETE %s BY HAND", r->partner, r->local, bak, bak);
+    else if (rename(bak, r->local) == 0)
+        oftp_mon_msg("OFTP239I %s: THE OLD %s PUT BACK FROM %s", r->partner,
+                     r->local, bak);
+    else
+        oftp_mon_msg("OFTP227E %s: THE OLD %s IS NOW %s, NOT RENAMED BACK",
+                     r->partner, r->local, bak);
+}
+
 void
 oftp_mon_recover(OFTP_MON *m)
 {
@@ -2484,6 +2527,7 @@ oftp_mon_recover(OFTP_MON *m)
         } else {
             snprintf(tmp, sizeof(tmp), "%s.%.8s", m->cfg.tmpprefix, r.key);
             remove(tmp);
+            restore_old(m, &r);
             oftp_spl_del(m->spool, r.key);
             recvs++;
         }

@@ -11,7 +11,7 @@
 **   RULE=ORDERS  FROM=PARTNER1  VFN=ORDERS.*
 **                DSN=PROD.ORDERS.Y%YYYY.D%MM%DD.T%HH%MI%SS
 **   RULE=INVOICE FROM=*  VFN=INV?????.DATA
-**                DSN=ACCT.IN.%VFN  REPLACE=Y  VOLSER=WORK01  SPACE=30
+**                DSN=ACCT.IN.%ID.%VFN  REPLACE=Y  VOLSER=WORK01  SPACE=30
 **
 **   RULE=     a name for the rule, 1-8 characters, unique; messages use it
 **   FROM=     a partner name from OFTPPTN, or * (the default)
@@ -39,6 +39,10 @@
 ** checked as a data set name when the file arrives, so a date in one
 ** qualifier needs a year of two digits or less: %YYYY%MM%DD is eight
 ** characters and a letter in front of it makes nine.
+**
+** The first qualifier (up to the first '.') must not contain %VFN, %Q1..%Q9
+** or %CTR, text the partner chooses: such a rule is an error. A DSN= that
+** can name a data set under TMPPREFIX is an error too (oftp_rcv_finish).
 **
 ** A member with any error is not used as a whole (the caller keeps the
 ** rules it had). internals/receive-rules.md.

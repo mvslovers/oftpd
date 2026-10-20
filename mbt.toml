@@ -74,6 +74,10 @@ host = false
 sources = ["test/mvs/tstdsf.c"]
 host = false
 
+[test.TSTRCVR]           # REPLACE=Y recovery and oftp_dsf_kind; runs for real only from test/mvs/tstrcvr.jcl
+sources = ["test/mvs/tstrcvr.c"]
+host = false
+
 [test.TSTSPL]            # the spool; runs for real only from test/mvs/tstspl.jcl
 sources = ["test/mvs/tstspl.c"]
 host = false
