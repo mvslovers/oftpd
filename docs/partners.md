@@ -49,9 +49,12 @@ PARTNER DELETE PARTNER2
 `COMPRESS`, `CALL`, `SESSIONS`, `ADDRESS`, `VIA`, `XLATE`, `SDEB`, `CREDIT`
 and `ENABLED`. `KEYWORD=VALUE` works as well as `KEYWORD(VALUE)`. `CHANGE`
 alters only what you name. A keyword that is none, or a value that does not
-fit, is refused (return code 8) and nothing is changed. So is a word of
-more than 99 characters: OFTPD never cuts it (`a word is longer than 99
-characters`).
+fit, is refused (return code 8) and nothing is changed.
+
+A word of more than 99 characters is never cut. In a line of `OFTPPTN` it
+is refused with `OFTP010W OFTPPTN: line n: a word is longer than 99
+characters`, and the partner entry being read is disabled. `OFTP` does not
+get that far: it refuses an operand much earlier (`OFTP003E`, below).
 
 Write every value after `=` or in parentheses. A word without one, such as
 `PARTNER CHANGE ACME OURPASS`, is refused by `OFTP` itself, before OFTPD
@@ -106,7 +109,7 @@ OFTPD not reached. An answer with return code 12 is printed after
 | any change by a userid not in `ADMIN=` | `needs ADMIN= in OFTPPRM` | 8 |
 | `ADD` of a name that exists | `partner exists: use CHANGE` | 8 |
 | `ADD` when the table holds 32 partners | `the partner table is full` | 8 |
-| a keyword that is none, or a value that does not fit | for example `unknown keyword TOKEN`, `invalid value for TOKEN`, `ODETTEID is required`, `a word is longer than 99 characters` | 8 |
+| a keyword that is none, or a value that does not fit | for example `unknown keyword TOKEN`, `invalid value for TOKEN`, `ODETTEID is required` | 8 |
 | `CHANGE`, `ENABLE`, `DISABLE` or `DELETE` of a name that is not there | `OFTP010E no such partner` | 12 |
 | `CHANGE` while a session with the partner runs (or OFTPD is calling it); only `ENABLE` and `DISABLE` are taken at once | `the partner has a session now, try again` | 4 |
 | `DELETE` while a session with it runs | `the partner has a session now, try again` | 4 |
@@ -134,8 +137,9 @@ OFTPD looks through the spool without holding up the sessions of other
 partners. If the partner changes meanwhile (a session or a call starts,
 someone enables it, another partner is now reached through it, or the entry
 is a different one), `DELETE` deletes nothing and answers `the partner was
-changed meanwhile, try again`. It does not enable the partner again. Give
-the command again.
+changed meanwhile, try again` (return code 4). A partner that this `DELETE`
+disabled stays disabled, and the refusal does not enable it again. Give the
+command again.
 
 OFTPD writes the console messages `OFTP243I` (added), `OFTP244I` (changed)
 and `OFTP245I` (deleted) with the userid, and at start `OFTP018I` with the
