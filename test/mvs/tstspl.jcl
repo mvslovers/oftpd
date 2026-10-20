@@ -5,6 +5,9 @@
 //* Edit the data set names (IBMUSER, the test library) and the volume
 //* (one with VSAM space in your user catalog), then submit.
 //* The test library is the one `mbt test --mvs` deployed.
+//* The spool thread's abend recovery (#49) is part of the run only in a
+//* build with -DOFTP_DEBUG_ABEND (cflags under [build]); otherwise the
+//* test says SKIP for it.
 //* ------------------------------------------------------------------
 //DEFINE   EXEC PGM=IDCAMS
 //SYSPRINT DD  SYSOUT=*
