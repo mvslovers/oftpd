@@ -50,7 +50,18 @@ main(void)
     now_tm.tm_min = 30;
     now_tm.tm_sec = 15;
     now_tm.tm_isdst = -1;
+    /* now must be a real epoch whose localtime() is now_tm, as in the
+    ** monitor. libc370's mktime() reads the struct as UTC, so on MVS it is
+    ** off by the zone: shift by what localtime() adds (0 on the host). */
     now = (long)mktime(&now_tm);
+    {
+        time_t t = (time_t)now;
+        struct tm l;
+
+        localtime_r(&t, &l);
+        now -= (long)mktime(&l) - now;
+    }
+    CHECK(strcmp(at(now), "2026-10-18 21:30") == 0, "now is 21:30 local");
 
     CHECK_EQ(start("", ""), 0, "nothing given: no limit");
     CHECK_EQ(start("*", "*"), 0, "* and *: no limit either");
