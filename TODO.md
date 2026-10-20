@@ -243,7 +243,7 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   change) and `F OFTPD,HOLD|RELEASE name|ALL`; the changes and the
   single-key HOLD/RELEASE/RETRY are conditional puts now
   (`oftp_spl_putif()`). Measured in an MVS/CE container, `TSTSPL` 33/33.
-  Still open from design 8: `STOP partner`, `TRACE`, the three stop
+  Still open from design 8: `STOP partner`, the three stop
   strengths, and rvs `C-sid` (cancel the running transfer into HELD).
   The session's own claim (`claim_out`) is still a plain get and put.
 - ~~Delete after EERP~~ (rvs `DISP=DELETE`): `SEND ... DISP(DELETE)`,

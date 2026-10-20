@@ -268,6 +268,7 @@ static const OFTP_FILES mfiles_ops = {
 
 /* ---- partners ---------------------------------------------------- */
 
+static int looked_up;           /* the responder knows the partner      */
 static OFTP_PEER resp_view;     /* how the responder sees the initiator */
 static int lookup_rc;           /* not 0: the lookup answers this        */
 
@@ -275,6 +276,7 @@ static int
 lookup(void *ctx, const char *code, OFTP_PEER *peer)
 {
     (void)ctx;
+    looked_up = 1;
     if (lookup_rc != 0)
         return lookup_rc;
     if (strcmp(code, resp_view.code) != 0)
@@ -290,6 +292,11 @@ quiet(void *ctx, const char *line)
     (void)line;
 }
 
+/* The responder's log and trace switch; the initiator's side is quiet */
+static OFTP_LOGFN g_log = quiet;
+static OFTP_TRACEFN g_traced;
+static const char *g_pw = "PW";         /* both sides' password         */
+
 static void
 peer_init(OFTP_PEER *p, const char *name, const char *code,
           const char *ourcode, int level, unsigned sdeb, unsigned cred,
@@ -299,8 +306,8 @@ peer_init(OFTP_PEER *p, const char *name, const char *code,
     strcpy(p->name, name);
     strcpy(p->code, code);
     strcpy(p->ourcode, ourcode);
-    strcpy(p->pswd_in, "PW");
-    strcpy(p->pswd_out, "PW");
+    strcpy(p->pswd_in, g_pw);
+    strcpy(p->pswd_out, g_pw);
     p->level = level;
     p->sdeb = sdeb;
     p->cred = cred;
@@ -364,7 +371,8 @@ sess_init(OFTP_SESS *s, int *fd, MFILES *m, int initiator)
     s->f = mfiles_ops;
     s->f.ctx = m;
     s->p.lookup = lookup;
-    s->log = quiet;
+    s->log = initiator ? quiet : g_log;
+    s->traced = initiator ? NULL : g_traced;
     s->initiator = initiator;
     s->timeout = 5;
 }
@@ -385,7 +393,7 @@ run_initiator(const SCEN *sc, int fd)
 
     if (sess.xbuf != NULL)
         return 20;
-    if (strcmp(sc->ipw, "PW") != 0)
+    if (strcmp(sc->ipw, g_pw) != 0)
         return rc == 4 && !sess.esid_local ? 0 : 10;
     if (sc->refuse)
         return rc == 0 && m.out[0].done == 2 && m.out[0].reas == sc->refuse ? 0 : 11;
@@ -451,7 +459,7 @@ scenario(const SCEN *sc)
              WIFEXITED(status) ? WEXITSTATUS(status) : -1);
     CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0, msg);
 
-    if (strcmp(sc->ipw, "PW") != 0) {
+    if (strcmp(sc->ipw, g_pw) != 0) {
         snprintf(msg, sizeof(msg), "%s: responder ends with ESID 04", sc->name);
         CHECK(rc == 4 && sess.esid_local, msg);
         return;
@@ -579,6 +587,88 @@ refuse_scenario(int lrc, int esid)
     CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0, msg);
 }
 
+/* ---- trace ---------------------------------------------------------- */
+
+static char trlog[96][160];
+static int ntr;
+
+static void
+capture(void *ctx, const char *line)
+{
+    (void)ctx;
+    if (strncmp(line, "TRACE ", 6) == 0 && ntr < 96)
+        snprintf(trlog[ntr++], sizeof(trlog[0]), "%s", line);
+}
+
+static int
+trace_always(void *ctx)
+{
+    (void)ctx;
+    return 1;
+}
+
+/* a partner-only switch: off until the responder has identified it */
+static int
+trace_known(void *ctx)
+{
+    (void)ctx;
+    return looked_up;
+}
+
+static int
+tr_count(const char *what)
+{
+    int i, n = 0;
+
+    for (i = 0; i < ntr; i++)
+        if (strstr(trlog[i], what) != NULL)
+            n++;
+    return n;
+}
+
+static void
+trace_scenario(const char *name, OFTP_TRACEFN fn, int level)
+{
+    SCEN sc = { "trace", 5, 5, 4096, 99, 0, "TOPSECR1", 0, 0 };
+    char msg[120];
+
+    sc.ilevel = sc.rlevel = level;
+    sc.name = name;
+    ntr = 0;
+    looked_up = 0;
+    g_log = capture;
+    g_traced = fn;
+    g_pw = "TOPSECR1";
+    scenario(&sc);
+    g_log = quiet;
+    g_traced = NULL;
+    g_pw = "PW";
+
+    snprintf(msg, sizeof(msg), "%s: no password in any trace line", name);
+    CHECK(tr_count("TOPSECR1") == 0, msg);
+    if (fn == NULL) {
+        snprintf(msg, sizeof(msg), "%s: switch off, no trace line", name);
+        CHECK(ntr == 0, msg);
+        return;
+    }
+    snprintf(msg, sizeof(msg), "%s: SSID both ways, once each (%d lines)", name, ntr);
+    CHECK(tr_count("RECV SSID") == 1 && tr_count("SEND SSID") == 1, msg);
+    snprintf(msg, sizeof(msg), "%s: SSID shows level and buffer", name);
+    CHECK(tr_count("RECV SSID") == 1 && tr_count("level") >= 1
+          && tr_count("sdeb 4096") >= 1, msg);
+    snprintf(msg, sizeof(msg), "%s: both files' SFID, EFID and the EERP", name);
+    CHECK(tr_count("RECV SFID") == 2 && tr_count("PAYROLL.DATA") >= 1
+          && tr_count("SEND SFID") == 1 && tr_count("RECV EFID") == 2
+          && tr_count("EERP") >= 1, msg);
+    snprintf(msg, sizeof(msg), "%s: DATA reported as a run, not per buffer", name);
+    CHECK(tr_count("RECV DATA") >= 1 && tr_count("RECV DATA") < 4
+          && tr_count("buffer") >= 1, msg);
+    if (fn == trace_always)
+        CHECK(tr_count("SEND SSRM") == 1, "trace on from the start: SSRM seen");
+    else
+        CHECK(tr_count("SSRM") == 0, "partner-only trace: SSRM came before the partner was known");
+}
+
 int
 main(void)
 {
@@ -606,5 +696,10 @@ main(void)
     abend_scenario('R');
     refuse_scenario(-1, 3);
     refuse_scenario(8, 8);
+    trace_scenario("trace off", NULL, 5);
+    trace_scenario("trace on 2.0", trace_always, 5);
+    trace_scenario("trace on 1.4", trace_always, 4);
+    trace_scenario("trace on 1.3", trace_always, 2);
+    trace_scenario("trace partner", trace_known, 5);
     return mbt_test_summary("TSTSESS");
 }

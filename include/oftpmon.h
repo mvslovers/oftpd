@@ -25,6 +25,13 @@ typedef struct oftp_mon {
     volatile char calling[OFTP_MAXPTN]; /* of them, our calls that have
                                         ** not yet claimed anything      */
     volatile char callreq[OFTP_MAXPTN]; /* operator asked for a call     */
+    /* F OFTPD,TRACE: protocol trace for every session, or for the
+    ** sessions of the partners flagged (same index as cfg.ptn). Each
+    ** session asks before every command, so a change reaches the
+    ** sessions already running.
+    */
+    volatile char trace_all;
+    volatile char trace[OFTP_MAXPTN];
     long        tcall[OFTP_MAXPTN];     /* not reached: no call before   */
     unsigned    counter;                /* time counter of virtual files */
     long        tpurge;                 /* last housekeeping (KEEPDAYS=) */

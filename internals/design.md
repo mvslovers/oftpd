@@ -589,6 +589,18 @@ conditional put (`oftp_spl_putif()`): a send a session claimed in the
 meantime keeps its new state. The single-key `HOLD`, `RELEASE` and
 `RETRY` use the same put now and answer `450` instead of overwriting.
 
+`TRACE` (#48): the session engine asks a switch before every command it
+sends or receives (`OFTP_SESS.traced`), so the operator's change reaches
+sessions already running. The monitor keeps the state in its block -- one
+flag for all sessions, one per partner, same index as the partner table --
+and the line goes out as `OFTP290I partner: TRACE SEND|RECV CMD len: fields`.
+The fields are decoded for SSID (level, ID, buffer, mode, credit; the
+password is never formatted), SFID, SFPA, SFNA/EFNA/ESID, EFID, EFPA and
+EERP/NERP; DATA buffers are counted and reported as one line per run.
+The responder learns the partner from the SSID, so with a trace for one
+partner its SSRM is not traced and its SSID is logged once the partner is
+known. `TRACE OFF partner` while all sessions are traced is refused.
+
 Stopping a session or OFTPD comes in three strengths: **graceful** (at the
 next file boundary), **cancel** (now; the transfer goes to `WAITING`) and
 **break** (now, and the transfer goes to `HELD`).
