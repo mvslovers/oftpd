@@ -102,6 +102,13 @@ typedef struct oftp_files {
 /* Log callback: one line, without the newline */
 typedef void (*OFTP_LOGFN)(void *ctx, const char *line);
 
+/* Trace switch: asked before each command, with logctx; non-zero logs
+** that command (never a password, never file data) through the log
+** callback. Asking every time is what lets F OFTPD,TRACE reach a session
+** that is already running.
+*/
+typedef int (*OFTP_TRACEFN)(void *ctx);
+
 /* Largest buffer the engine is built for: 99999 is the protocol's limit,
 ** a cap far below it keeps a session small. A partner offering more is
 ** answered with this.
@@ -115,6 +122,7 @@ typedef struct oftp_sess {
     OFTP_PEERS  p;
     OFTP_LOGFN  log;
     void       *logctx;
+    OFTP_TRACEFN traced;                /* NULL: never traced            */
     int         initiator;              /* 1: we called                  */
     OFTP_PEER   peer;                   /* initiator: the partner called */
     char        localcode[OFTP_IDLEN + 1];  /* responder: our ID         */
@@ -135,6 +143,13 @@ typedef struct oftp_sess {
     /* the record buffer of the file in transfer, NULL between files: an
     ** abend in the middle leaves it here for oftp_sess_free() */
     unsigned char *xbuf;
+
+    /* trace: whether the command last received was logged, and the DATA
+    ** buffers of each direction (0 sent, 1 received) not yet reported --
+    ** one line per run of them, not one per buffer
+    */
+    int         rx_traced;
+    unsigned    tr_nbuf[2], tr_noct[2];
 
     /* buffers: STH + exchange buffer */
     unsigned char ib[4 + OFTP_SDEB_MAX];

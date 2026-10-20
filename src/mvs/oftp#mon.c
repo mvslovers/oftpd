@@ -45,7 +45,7 @@ oftp_mon_msg(const char *fmt, ...)
 /* ---- helpers ----------------------------------------------------- */
 
 static int
-ptn_index(OFTP_MON *m, const OFTP_PARTNER *p)
+ptn_index(const OFTP_MON *m, const OFTP_PARTNER *p)
 {
     return (int)(p - m->cfg.ptn);
 }
@@ -174,6 +174,8 @@ failed(OFTP_MON *m, OFTP_SPREC *r)
 typedef struct sesctx {
     OFTP_MON   *m;
     OFTP_PARTNER *pt;
+    const OFTP_PARTNER *tp;             /* the caller's entry, even when
+                                        ** disabled: for TRACE only    */
     char        ip[16];
     int         sock;
     int         slot;                   /* in m->ssock, or -1            */
@@ -665,6 +667,9 @@ p_lookup(void *ctx, const char *code, OFTP_PEER *peer)
     OFTP_PARTNER *p = oftp_cfg_byid(&c->m->cfg, code);
     int i, n;
 
+    for (i = 0; c->tp == NULL && i < c->m->cfg.nptn; i++)
+        if (strcmp(c->m->cfg.ptn[i].peer.code, code) == 0)
+            c->tp = &c->m->cfg.ptn[i];
     if (p == NULL)
         return -1;
     if (p->address[0] && strcmp(p->address, c->ip) != 0) {
@@ -693,6 +698,17 @@ s_log(void *ctx, const char *line)
     SESCTX *c = ctx;
 
     oftp_mon_msg("OFTP290I %s: %s", c->pt ? c->pt->peer.name : c->ip, line);
+}
+
+static int
+s_trace(void *ctx)
+{
+    SESCTX *c = ctx;
+    OFTP_MON *m = c->m;
+
+    const OFTP_PARTNER *p = c->pt != NULL ? c->pt : c->tp;
+
+    return m->trace_all || (p != NULL && m->trace[ptn_index(m, p)]);
 }
 
 /* The session itself, for try(): which keeps only the abend code */
@@ -797,6 +813,7 @@ session_thread(void *arg1, void *arg2)
     c->s.p.lookup = p_lookup;
     c->s.log = s_log;
     c->s.logctx = c;
+    c->s.traced = s_trace;
     c->s.initiator = c->initiator;
     c->s.timeout = m->cfg.timeout;
     strcpy(c->s.localcode, m->cfg.odetteid);
@@ -2362,6 +2379,73 @@ largest_free(void)
     return lo;
 }
 
+/* What F OFTPD,TRACE has switched on, for D */
+static void
+show_trace(const OFTP_MON *m)
+{
+    char list[100];
+    size_t n = 0;
+    int i;
+
+    if (m->trace_all) {
+        oftp_mon_msg("OFTP127I TRACE ON FOR ALL SESSIONS");
+        return;
+    }
+    list[0] = '\0';
+    for (i = 0; i < m->cfg.nptn; i++) {
+        const char *name = m->cfg.ptn[i].peer.name;
+
+        if (!m->trace[i] || n + strlen(name) + 2 > sizeof(list))
+            continue;
+        n += (size_t)snprintf(list + n, sizeof(list) - n, " %s", name);
+    }
+    if (list[0] == '\0')
+        oftp_mon_msg("OFTP127I TRACE OFF");
+    else
+        oftp_mon_msg("OFTP127I TRACE ON FOR PARTNERS:%s", list);
+}
+
+/* F OFTPD,TRACE ON|OFF [partner]. OFF without a partner clears all of it;
+** OFF for one partner cannot take it out of a trace for all, so it says so.
+*/
+static void
+cmd_trace(OFTP_MON *m, const char *onoff, const char *ptn)
+{
+    int on = strcmp(onoff, "ON") == 0;
+    int i;
+
+    if (!on && strcmp(onoff, "OFF") != 0) {
+        oftp_mon_msg("OFTP126E TRACE NEEDS ON OR OFF, THEN A PARTNER OR NOTHING");
+        return;
+    }
+    if (ptn[0] == '\0') {
+        m->trace_all = (char)on;
+        if (!on)
+            for (i = 0; i < OFTP_MAXPTN; i++)
+                m->trace[i] = 0;
+        oftp_mon_msg("OFTP124I TRACE %s FOR ALL SESSIONS", onoff);
+        return;
+    }
+    {
+        OFTP_PARTNER *p = NULL;
+
+        for (i = 0; p == NULL && i < m->cfg.nptn; i++)
+            if (strcmp(m->cfg.ptn[i].peer.name, ptn) == 0)
+                p = &m->cfg.ptn[i];
+        if (p == NULL) {
+            oftp_mon_msg("OFTP120E %s IS NOT A PARTNER", ptn);
+            return;
+        }
+        if (!on && m->trace_all) {
+            oftp_mon_msg("OFTP125E TRACE IS ON FOR ALL SESSIONS, "
+                         "TRACE OFF WITHOUT A PARTNER ENDS IT");
+            return;
+        }
+        m->trace[ptn_index(m, p)] = (char)on;
+        oftp_mon_msg("OFTP124I TRACE %s FOR PARTNER %s", onoff, p->peer.name);
+    }
+}
+
 static void
 cmd_display(OFTP_MON *m, const char *what)
 {
@@ -2370,17 +2454,20 @@ cmd_display(OFTP_MON *m, const char *what)
     if (what[0] == 'P') {
         for (i = 0; i < m->cfg.nptn; i++) {
             OFTP_PARTNER *p = &m->cfg.ptn[i];
-            char ss[24];
+            char ss[32];
 
             ss[0] = '\0';
             if (m->busy[i])
                 snprintf(ss, sizeof(ss), " %d OF %d SESSIONS", m->busy[i],
                          p->sessions);
+            if (m->trace_all || m->trace[i])
+                strcat(ss, " TRACE");
             oftp_mon_msg("OFTP100I %-8s %-25s %s%s LEVEL %d %s:%d", p->peer.name,
                          p->peer.code, p->enabled ? "ENABLED" : "DISABLED",
                          ss, p->peer.level, p->host[0] ? p->host : "-", p->port);
         }
         oftp_mon_msg("OFTP101I %d PARTNERS, %d SESSIONS", m->cfg.nptn, m->nsess);
+        show_trace(m);
     } else if (what[0] == 'Q') {
         OFTP_SPREC r;
         char last[8];
@@ -2402,14 +2489,16 @@ cmd_display(OFTP_MON *m, const char *what)
 
         oftp_mon_msg("OFTP102I LARGEST FREE BLOCK %u KB, %u SUBTASK HANDLES, "
                      "%d SESSIONS", largest_free() / 1024, th, m->nsess);
-    } else
+    } else {
         oftp_mon_msg("OFTP101I %d SESSIONS", m->nsess);
+        show_trace(m);
+    }
 }
 
 void
 oftp_mon_command(OFTP_MON *m, const char *cmd)
 {
-    char verb[16], arg[40];
+    char verb[16], arg[40], arg2[40];
     OFTP_PARTNER *p;
 
     /* split by hand: verb, then the first operand */
@@ -2425,9 +2514,15 @@ oftp_mon_command(OFTP_MON *m, const char *cmd)
         while (*p == ' ' || *p == ',')
             p++;
         n = 0;
-        while (*p && *p != ' ' && n < sizeof(arg) - 1)
+        while (*p && *p != ' ' && *p != ',' && n < sizeof(arg) - 1)
             arg[n++] = *p++;
         arg[n] = '\0';
+        while (*p == ' ' || *p == ',')
+            p++;
+        n = 0;
+        while (*p && *p != ' ' && *p != ',' && n < sizeof(arg2) - 1)
+            arg2[n++] = *p++;
+        arg2[n] = '\0';
     }
     if (strcmp(verb, "D") == 0 || strcmp(verb, "DISPLAY") == 0)
         cmd_display(m, arg);
@@ -2456,7 +2551,9 @@ oftp_mon_command(OFTP_MON *m, const char *cmd)
         else
             oftp_mon_msg("OFTP233I %u SENDS FOR %s %s BY OPERATOR", n, arg,
                          verb[0] == 'H' ? "HELD" : "RELEASED");
-    } else if (strcmp(verb, "PURGE") == 0) {
+    } else if (strcmp(verb, "TRACE") == 0)
+        cmd_trace(m, arg, arg2);
+    else if (strcmp(verb, "PURGE") == 0) {
         /* F OFTPD,PURGE [days]: without a number, KEEPDAYS */
         char *end;
         long days = arg[0] ? strtol(arg, &end, 10) : m->cfg.keepdays;

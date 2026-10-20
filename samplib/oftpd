@@ -21,6 +21,9 @@
 //*              /F OFTPD,HOLD partner   (every send to it; ALL)
 //*              /F OFTPD,RELEASE partner
 //*              /F OFTPD,PURGE 30       (finished transfers > 30 days)
+//*              /F OFTPD,TRACE ON       (every command of every session
+//*                                       to the log; TRACE ON partner for
+//*                                       one partner; TRACE OFF ends it)
 //* Stopping:    /P OFTPD
 //*
 //OFTPD    EXEC PGM=OFTPD,REGION=8M,TIME=1440

@@ -167,7 +167,15 @@ and `F OFTPD,RELEASE name` (every send to that partner, `ALL` for every
 partner: queued and waiting ones are held, held ones queued again),
 `F OFTPD,PURGE [days]`
 (delete finished transfers older than that now; `KEEPDAYS` without a
-number) and `P OFTPD`.
+number), `F OFTPD,TRACE ON|OFF [partner]` and `P OFTPD`.
+
+`TRACE ON` logs every protocol command of every session, running ones
+included, one `OFTP290I` line each, such as
+`OFTP290I MVS2: TRACE RECV SFID 165: dsn PAYROLL.DATA fmt F lrecl 10`;
+the DATA buffers of a run are one line. With a partner name only that
+partner's sessions are traced; `TRACE OFF` without one ends all tracing.
+The lines carry the commands' fields, never a password and never file
+data. `F OFTPD,D` and `D P` show what is traced (`OFTP127I`).
 
 ## 8. The OFTP utility
 
