@@ -349,33 +349,6 @@ second decrement here would take `inflight` below zero (the `BCTR`
 loops do not guard against it) and leave every later `P OFTPD`
 draining forever.
 
-**The state alone does not say whose slot it is (#124).** The `CS` from
-DONE only helps while the slot is still DONE. A caller that wakes after
-the sweep has freed its slot and another caller has claimed it finds
-FREE, CLAIMED, PENDING or someone else's DONE -- and a routine that went
-by the state alone freed and wiped the other caller's request, took the
-count down a second time, or collected the other caller's reply. So the
-claim number is checked as well. At claim time the routine copies
-`SLCLAIM` into word 5 of its SVRB extended save area (`RBEXSAVE`+20, 48
-bytes, IHARB), which nobody else writes. On wake-up (`WAKEOWN`):
-
-- FREE or CLAIMED: `SWEPT` whatever the number says. A new claimant sits
-  in CLAIMED until it stores its own number, so the slot still shows
-  ours.
-- Any other state with a different `SLCLAIM`: `SWEPT`.
-- DONE with our number: `CS` to COPYOUT, then the number is read once
-  more; if it changed in between, the `CS` is undone (COPYOUT to DONE)
-  and the exit is `SWEPT`.
-
-`SWEPT` touches nothing and decrements nothing, as before. The window the
-last step closes is the sweep and a new claimant running between the
-first compare and the `CS`. What remains is a very short one: a foreign
-DONE is in COPYOUT for the length of those two instructions, and its own
-caller, waking then, loses its `CS` and takes `SWEPT`, leaving that slot
-to the sweep's timeouts. `free_done()` counts down only when its second
-`CS` (COPYOUT to FREE) wins, for the same reason: the decrement belongs to
-whoever frees the slot.
-
 **One case remains, and it is why a long timeout still has a job.** A
 client whose task is purged while parked -- a cancelled TSO command,
 `S322` -- never wakes, so it never writes COPYOUT: the slot stays DONE
@@ -1036,7 +1009,7 @@ than assumed:
 | `FREEDEC` (`BADHDR`/`BADREPLY`/`BADSTATE`/`POSTBAD`) | routine sets FREE | routine decrements | nothing |
 | `STOPDEC` (woken in STOP: `RCSTOP`, since #34) | routine sets FREE | routine decrements | **not free, not decrement** |
 | `WAKEDOWN` (woken in another state with ACTIVE off) | routine sets FREE | routine decrements | **not free, not decrement** |
-| `SWEPT` (its `CS` from DONE lost, or the slot's claim number is not the one it stored, #124) | untouched | untouched | **free and decrement** -- the sweep took it |
+| `SWEPT` (its `CS` from DONE lost) | untouched | untouched | **free and decrement** -- the sweep took it |
 
 So OFTPD decrements in exactly one place: after it has **won** a
 `CS` that freed a slot. A second decrement takes the count below zero
@@ -1057,9 +1030,7 @@ not wipe a CLAIMED or COPYOUT slot it frees: a wipe before the `CS`
 could hit a new claimant. `oftp_svc_stop()` calls `oftp_svc_scrub()` as
 its last step before the FREEMAIN of the anchor, which wipes all four
 slots whatever their state. Measured by `TSTSVC` (step 8) and
-`TSTTAKE`; a caller waking on a slot that is no longer its own, by
-`TSTWAKE` (it installs the routine under a free SVC number itself, so no
-OFTPD runs, and plays the sweep and the other caller from a subtask).
+`TSTTAKE`.
 Until #34 the routine tested `ANCFLAG` before the state, and that
 discarded an answer: the stop clears ACTIVE before it joins the slot
 thread, so a request being served at that moment was carried out,
@@ -1958,3 +1929,145 @@ dispatched inside the routine there was not checked, so this is
 the caller's own bytes or a protection exception in the caller's own
 task, before the slot is PENDING, and the slot stays CLAIMED until the
 sweep frees it (section 15 case 5, by hand-written state).
+
+## 18. How long a request takes over the SVC (2026-10-20, #60)
+
+The old TCP control port took 1.1-1.2 s per request. This is the same
+measurement over the SVC, for the requests the dialog and `OFTP` make:
+`test/mvs/tstlat.c` (`TSTLAT`) calls `oftp_cli_request()`, the function
+the dialog calls (`src/oftpi.c`), and reads the TOD clock around it:
+wall clock, what a user waits for, not CPU. Load: `test/mvs/tstlod.c`.
+
+**These are container figures, not stand figures.** One throwaway MVS/CE
+container (Hercules, one CP) on a Docker host that was running other
+containers; OFTPD from `SYS2.LINKLIB`, `SVC=237`, `PARTNER1` with
+`CALL=N`, so a held `SEND` is only queued. Container and host are shared,
+so the same run again gives other numbers; the three idle runs below show
+how much.
+
+### The clock was checked first
+
+Before anything is measured `TSTLAT` reads `usleep(200000)` on the TOD
+clock five times: 200.4-200.7 ms in every run. At the end it compares the
+elapsed time by the TOD clock with `time()`: 113 s / 114 s, 118 s / 119 s,
+127 s / 127 s, 443 s / 443 s. The program fails on a clock that disagrees,
+never on a slow request; the slow ones are counted and printed.
+
+### What was timed
+
+`STATUS` (30 times), `LIST` and `LIST MINE` (10 times each, with 0, 10,
+50, 100 and 200 held transfers in the spool), `SHOW` of the first and of
+the last transfer (10 times each), every `SEND ... HOLD=Y` (the spool is
+grown in steps, so each size has its own sends), `DELETE` of every
+transfer at the end (200). Min, median and maximum are printed together
+with every sample of the `LIST`. Every request answered 0.
+
+### Idle: three runs (`IDLE1`-`IDLE3`, jobs 34-36)
+
+Only `TSTLAT` ran in the container. The host's CPU pressure ("some",
+`avg10`) was 10.0 before and 16.9 after the runs, the load average 2.4
+and 3.3. Medians of the three runs (the range of the three), maxima over
+the three:
+
+| Request | median, ms | max, ms |
+|---|---|---|
+| `STATUS` | 2.1 - 4.8 | 8.3 |
+| `SHOW` (first or last) | 1.1 - 4.8 | 22 |
+| `DELETE` | 3.1 - 3.5 | 42.4 |
+| `SEND`, spool 0-9 | 27 - 33 | 43 |
+| `SEND`, spool 10-49 | 36 - 46 | 67 |
+| `SEND`, spool 50-99 | 68 - 78 | 156 |
+| `SEND`, spool 100-199 | 130 - 143 | 380 |
+| `LIST`, 0 rows (1 piece) | 2.4 - 6.6 | 11 |
+| `LIST`, 10 rows (1 piece) | 9.2 - 19 | 34 |
+| `LIST`, 50 rows (3 pieces) | 141 - 228 | 352 |
+| `LIST`, 100 rows (5 pieces) | 474 - 569 | **1068** |
+| `LIST`, 200 rows (9 pieces) | **1781 - 2474** | **6604** |
+
+`LIST MINE` is the same within the noise. 40-41 requests per run took
+more than a second: all of them `LIST` of 100 and 200 rows. Nothing else
+did, `SEND` included.
+
+### Loaded: one run (`LOAD1`, job 40)
+
+Five address spaces on the one CP: OFTPD, `TSTLAT`, two jobs spinning the
+processor (`TSTLOD CPU`, classes D and E) and one writing and reading a
+data set over and over (`TSTLOD IO`, class F), the last three started on
+extra initiators 20 s before `TSTLAT`. Each load job got about 90-115 s
+of CPU in the 503 s they lived.
+
+| Request | median, ms | max, ms |
+|---|---|---|
+| `STATUS` | 81 | 338 |
+| `SHOW` | 2.2 - 13.5 | 49 |
+| `DELETE` | 6.5 | 52 |
+| `SEND`, spool 0-9 / 10-49 / 50-99 / 100-199 | 149 / 164 / 308 / 398 | 256 / 540 / 505 / **7099** |
+| `LIST`, 0 rows | 55 | 231 |
+| `LIST`, 10 rows | 125 | 268 |
+| `LIST`, 50 rows | **800** | **1119** |
+| `LIST`, 100 rows | **2126** | **2909** |
+| `LIST`, 200 rows | **6144 - 6600** | **13078** |
+
+68 requests took more than a second. One run only, so no range: the
+host was also busier (load average up to 5.2, CPU pressure "some" `avg10`
+up to 32 % during it; 2.3 and 11 % before, 2.2 and 15 % after).
+
+### Reading it
+
+**A request that is one row (`STATUS`, `SHOW`, `DELETE`) costs 1-5 ms idle
+and stays under 100 ms loaded**, a fraction of the 1.1-1.2 s of the
+control port. `SEND` costs 27 ms on an empty spool and grows with what
+the spool holds (130-143 ms at 100-200 transfers): not a problem at these
+sizes, but not flat either; not investigated, since nothing is optimized
+here. The one 7.1 s `SEND` of the loaded run is a single sample among the 100 sends of that step.
+
+**`LIST` is the request over a second, and it is the number of rows that
+decides.** Idle it passes a second between 100 and 200 transfers; with
+the system loaded already at 50. The cause is in the code and the numbers
+fit it (opened as #101):
+
+- an answer comes in pieces of about 22 rows (the reply area is 2048
+  bytes) and OFTPD keeps nothing between them: the client sends the request
+  again with a resume index and the handler scans the whole spool again;
+- `put_slot()` (`src/mvs/oftp#mon.c`) throws away the rows the caller has
+  and the rows after a full area, but cannot stop the handler, so every
+  piece reads and formats **all** n rows;
+- the work is pieces x rows, about n^2 / 22. Time divided by
+  (pieces x rows) is 0.9-1.1 ms at 10, 50, 100 and 200 rows alike
+  (9.2 ms / 10, 141 / 150, 474 / 500, 1781 / 1800), and the slowest
+  single piece of the 200-row `LIST`, 195-372 ms, is one full scan of 200
+  rows at that rate. OFTPD used 7 min 39 s of CPU in the 17 min 43 s
+  it ran: the time is CPU in the monitor, not waiting on I/O or the SVC.
+
+Fewer than about 150 transfers visible to the caller is under a second on
+an idle system, and a freshly installed OFTPD has none; a dialog on a
+busy monitor with a long spool is where the user waits. `KEEPDAYS`
+bounds how long finished transfers stay in it.
+
+### Traps met on the way
+
+- **A batch OFTPD needs `TIME=1440` on its `EXEC`.** The first attempt
+  ended `S322` after exactly 100 s of CPU, the JES2 default, in the middle
+  of the second `LIST` of 200 rows: `OFTP098E OFTPD ABEND, 1 SOCKETS
+  CLOSED, SVC RESTORED`, so the recovery exit did its work, and the rest
+  of that run (and two more) saw `OFTPD not reached` (rc 12). Those runs
+  are discarded. The started task is not affected.
+- `TSTLAT` prints at most three failed `DELETE`s now; the first attempt
+  printed 200 lines.
+- `TSTLAT` printed a `SEND` line for a size that queued nothing (a second
+  step clamped to `max`); fixed.
+
+### What this does not show
+
+- The ISPF side: building the table and painting the screen come on top
+  of `oftp_cli_request()`. A user at a 3270 over a network adds what the
+  network adds.
+- A real stand, or any machine but this container's Hercules. The ratios
+  between requests and the n^2 are the finding; the milliseconds are not
+  portable.
+- `LIST` with a filter (`PARTNER=`, a state) or with transfers of several
+  owners: all `LIST` here are the caller's own, 512-byte records, one
+  partner.
+- A second client at the same time (slots, `inflight`): one caller at a
+  time here. The sweep of section 11 is not involved.
+- TK5: not run.
