@@ -33,8 +33,8 @@
 #heading(numbering: none)[About This Book] <about>
 
 This book shows how to use OFTPD (oftpd), the OFTP server for MVS 3.8j:
-how it is installed, how the monitor runs as a started task, how partners
-are set up, and how files are sent and received. Every command, parameter
+how it is installed and removed, how the monitor runs as a started task, how
+partners are set up, and how files are sent and received. Every command, parameter
 and message is described in full in the companion volume, the _OFTPD
 Reference_.
 
@@ -47,6 +47,7 @@ Reference_.
   [Chapter 4], [“Partners and Configuration”.],
   [Chapter 5], [“Sending and Receiving Files”.],
   [Chapter 6], [“Operating and Troubleshooting”.],
+  [Chapter 7], [“Removing OFTPD”.],
   [Appendix A], [“Glossary”.],
 )
 
@@ -68,6 +69,7 @@ Reference_.
 #part("ug-partners.html", include "guide/ug-partners.typ")
 #part("ug-transfer.html", include "guide/ug-transfer.typ")
 #part("ug-ops.html", include "guide/ug-ops.typ")
+#part("ug-remove.html", include "guide/ug-remove.typ")
 
 #show: appendices
 #part("ug-glossary.html", include "guide/ug-glossary.typ")

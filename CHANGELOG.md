@@ -18,6 +18,10 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
 
 ### Added
 
+- **Removal.** `docs/uninstall.md` and chapter 7 of the User's Guide take
+  OFTPD off a system: a dummy SMP function deletes every release and its load
+  modules, a `UCLIN` job frees the ids, and a `LIST` proves it. `RESTORE` and
+  `REJECT` do not work on an accepted release, and the text says why.
 - **Cross-memory transport.** The `OFTP` command and the ISPF dialog reach
   the monitor through an SVC of its own, so the monitor knows which job or
   TSO user is asking. `SVC=` in `OFTPPRM0` names the number (200 to 255,
