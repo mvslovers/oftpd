@@ -30,9 +30,10 @@
 ** read rather than assumed: RETREL (a served caller), FREEDEC (every
 ** error exit) and STOPDEC (woken with ACTIVE off) all set FREE and
 ** decrement in the routine, so OFTPD must do neither for those. SWEPT
-** -- the routine losing its CS from DONE -- stores nothing and
-** decrements nothing, which is exactly the case where OFTPD's sweep
-** took the slot and therefore owes the decrement. A second decrement
+** -- the routine losing its CS from DONE, or finding that the slot's
+** claim number is not the one it stored at claim time (#124) -- stores
+** nothing and decrements nothing, which is exactly the case where
+** OFTPD's sweep took the slot and therefore owes the decrement. A second decrement
 ** would take the count below zero (the BCTR loops do not guard) and
 ** leave every later P OFTPD draining forever.
 */
@@ -198,7 +199,9 @@ dec_inflight(OFTP_ANCHOR *a)
 /* A DONE slot nobody will collect, to FREE. It goes through COPYOUT
 ** first: the routine takes a slot out of DONE with the same CS, so a
 ** caller that wakes now finds it taken (SWEPT) and touches nothing,
-** and the wipe cannot meet a copy-out. 1 when this side freed it.
+** and the wipe cannot meet a copy-out. 1 when this side freed it: the
+** decrement belongs to whoever wins the last CS, so a slot found not in
+** COPYOUT any more is not counted down here.
 */
 static int
 free_done(OFTP_ANCHOR *a, OFTP_SLOT *s)
@@ -206,7 +209,8 @@ free_done(OFTP_ANCHOR *a, OFTP_SLOT *s)
     if (!state_cas(s, OFTP_SL_DONE, OFTP_SL_COPYOUT))
         return 0;
     wipe_slot(s);
-    state_cas(s, OFTP_SL_COPYOUT, OFTP_SL_FREE);
+    if (!state_cas(s, OFTP_SL_COPYOUT, OFTP_SL_FREE))
+        return 0;
     dec_inflight(a);
     return 1;
 }
