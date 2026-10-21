@@ -71,3 +71,12 @@ rules (@xfer-rules). If you take the new procedure over your old one, copy
 #cmd("OFTPRCV0") to your parameter library first, or delete the DD from your
 copy\; otherwise the monitor starts without rules and says nothing about the
 missing member.
+
+== Removing <inst-remove>
+
+#idx("removal")
+To take OFTPD off a system, use the steps of @ug-remove. They free the FMID, so
+that OFTPD can be installed again. Do not remove OFTPD to move to a newer
+release: the release deletes its predecessor itself. #cmd("RESTORE") and
+#cmd("REJECT") do not remove OFTPD, because the install job accepts it (see
+@ug-remove-why).

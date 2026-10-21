@@ -1,0 +1,16 @@
+ LIST CDS  SYSMOD(TOFT100) .
+SMPCDS   SYSMOD ENTRIES
+  NAME
+TOFT100   TYPE            = FUNCTION
+          DELBY           = TOFTDEL
+
+ LIST CDS  SYSMOD(TOFTDEL) .
+SMPCDS   SYSMOD ENTRIES
+  NAME
+TOFTDEL   TYPE            = FUNCTION
+          STATUS          = REC  APP  ACC
+          FMID            = TOFTDEL
+          DATE/TIME REC   = 26.294  05:43:43
+                    APP   = 26.294  05:43:52
+                    ACC   = 26.294  05:43:57
+          DELETE VER(001) = TOFT010   TOFT100

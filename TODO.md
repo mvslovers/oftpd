@@ -65,6 +65,12 @@ is not running.
 
 ## Next
 
+- Removal docs (`docs/uninstall.md`, `docs/books/guide/ug-remove.typ`, #175):
+  the outputs under `docs/books/ex/ug-remove/` come from the locally built
+  1.0.0-dev package. Run the jobs again against the 1.0.0 release and replace
+  the files. Every later release adds its FMID to the `DELETE` list of the
+  dummy function `TOFTDEL`, to the `DEL SYSMOD` and `LIST` statements and to
+  the fallback, in both documents.
 - ~~Prerelease 0.1.0 on the M38 stands~~ — 2026-10-13: installed through
   SMP from the release assets on m38l, m38x, m38b and m38r
   (`internals/m38-changes.md`), `OFTP004I AUTHORIZED BY SVC` on all four;

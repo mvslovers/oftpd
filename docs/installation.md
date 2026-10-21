@@ -48,7 +48,8 @@ The SYSMOD is a `++FUNCTION` with the FMID `TOFT` + version digits:
 
 Return code 4 and nothing listed means it is free. Anything listed, even
 an entry showing only `TYPE = FUNCTION` and `DELBY = ...`, means it is
-taken: stop and ask.
+taken: stop and ask. If it is a leftover of an OFTPD you have removed, the
+way to free it is in [Removing it](#removing-it).
 
 ## 2. Upload the three TRANSMIT files
 
@@ -684,8 +685,23 @@ transfers are held and deleted again). It passes on TK5.
 
 ## Removing it
 
-Stop OFTPD, delete the procedure and the parmlib members, take the
-libraries out of the ISPF CLIST and, if you added it, the `IEAAPF00`
-entry. Remove the SYSMOD from both zones with `UCLIN` and delete
-`OFTPD.LINKLIB`, `OFTPD.AOFTPLOD`, `OFTPD.SAMPLIB`, `OFTPD.ISPPLIB` and
-the spool. The FMID stays spent: a later release gets a new one.
+The steps are in [`docs/uninstall.md`](https://github.com/mvslovers/oftpd/blob/main/docs/uninstall.md),
+and in the User's Guide as chapter 7, "Removing OFTPD". In short: stop OFTPD,
+then run a job that receives, applies and accepts a dummy function,
+`TOFTDEL`, with no elements and a `++VER` that deletes every OFTPD id to date.
+SMP removes the load modules from `OFTPD.LINKLIB` and `OFTPD.AOFTPLOD` on the
+way. A `UCLIN` job then deletes `TOFTDEL` and the ids it marked from both
+zones, and a `LIST` of all ids shows that they are gone. A route with `UCLIN`
+alone is the fallback.
+
+`RESTORE` and `REJECT` do not remove OFTPD. The install job accepts the
+SYSMOD, and `RESTORE` refuses an accepted one (`HMA2452`); `REJECT` then fails
+with `HMA2462`, because the system entry of the `SMPPTS` has `PURGE=YES` on
+the systems measured, and SMP has dropped the SYSMOD from the PTS at the
+accept. The same holds for the prerelease `TOFT010`.
+
+The procedure, the parmlib members, the `IEAAPF00` entry, the ISPF
+allocations and the spool are not SMP's and stay until you delete them
+yourself. Removing frees the ids on that system, so that the same release can
+be installed again. For a release that has been published the FMID is spent
+for good: a changed build gets a new one.
