@@ -79,8 +79,10 @@ word 3 is not KEYWORD=VALUE
 ```
 
 The number is the place of the word in the request, counted from the first
-word after `PARTNER ADD` or `PARTNER CHANGE`. The partner name is word 1, so
-in `PARTNER ADD ACME PASSWORD('a b')` the word `B` is word 3. The text
+word after `PARTNER ADD` or `PARTNER CHANGE`, in the order you wrote them.
+The partner name counts as a word where you wrote it: it is word 1 only when
+it comes first, so in `PARTNER ADD ACME PASSWORD('a b')` the word `B` is
+word 3, but in `PARTNER ADD PASSWORD('a b') ACME` it is word 2. The text
 never shows the word: it may be the rest of a password.
 
 OFTPD reads every request in upper case, so values (passwords and the
@@ -91,16 +93,19 @@ host name included) are upper case. `SHOW` never prints a password: it says
 **A password is as secret as the place you type it.** In batch `OFTP`
 echoes each command of `SYSIN` to `SYSPRINT` and prints the value after
 `PASSWORD` and after `OURPASSWORD` as eight stars (`PASSWORD(********)`),
-whatever its length. It does so in every way the command can be written:
-`PASSWORD(x)`, `PASSWORD=x`, `PASSWORD('x y')`, and with blanks between the
-keyword and the value (`PASSWORD x`, `PASSWORD (x)`, `PASSWORD = x`). The
-echo looks for the text `PASSWORD` in any case and anywhere in the line,
-so a keyword that ends in it is masked as well. A `PASSWORD` that stands
-alone masks the word after it, whatever that word is. The echo is cut into
-lines of at most 72 columns; a line that goes on ends in ` -`, as it does in
-`SYSIN`. But the password is in your JCL, and under TSO it is on your
-terminal and in your session's history. Keep the JCL in a data set only you
-can read.
+whatever its length. The echo masks one word: the value ends at the first
+blank that is not inside quotes. So it hides a password written as one word
+(`PASSWORD(x)`, `PASSWORD=x`) or in quotes (`PASSWORD('x y')`). A password
+with a blank in it must therefore be quoted. Unquoted, `PASSWORD(ab cd)` is
+echoed as `PASSWORD(******** cd)`: the rest of the password stands in
+`SYSPRINT`. (`OFTP` then refuses the command, `OFTP007E` above, but the echo
+has been written by then.) A password in quotes is masked whole, yet OFTPD
+still refuses it, because a value cannot hold a blank (above). The echo
+looks for the text `PASSWORD` in any case and anywhere in the line, so a
+keyword that ends in it is masked as well. The echo is cut into lines of at
+most 72 columns; a line that goes on ends in ` -`, as it does in `SYSIN`.
+But the password is in your JCL, and under TSO it is on your terminal and
+in your session's history. Keep the JCL in a data set only you can read.
 
 A password in a `PARTNER` command also travels through common storage
 (CSA): `OFTP` hands the request to OFTPD in a slot there, and OFTPD
