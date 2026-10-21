@@ -326,6 +326,39 @@ first_qualifier(const char *pat)
     return 0;
 }
 
+/* pds(member): a data set name that is valid and a member of 1-8 characters
+** that starts with a letter or a national character. No symbols: the
+** member is the installation's, whoever sends the file cannot steer it.
+*/
+static int
+job_ok(const char *v)
+{
+    char dsn[OFTP_RCV_JOB + 1];
+    const char *open = strchr(v, '('), *m, *close;
+    size_t n;
+
+    if (open == NULL || open == v)
+        return -1;
+    n = (size_t)(open - v);
+    if (n > 44)
+        return -1;
+    memcpy(dsn, v, n);
+    dsn[n] = '\0';
+    if (!oftp_dsn_valid(dsn))
+        return -1;
+    m = open + 1;
+    if ((close = strchr(m, ')')) == NULL || close[1] != '\0'
+        || close == m || close - m > 8)
+        return -1;
+    if (!isupper((unsigned char)*m) && *m != '@' && *m != '#' && *m != '$')
+        return -1;
+    for (; m < close; m++)
+        if (!isupper((unsigned char)*m) && !isdigit((unsigned char)*m)
+            && *m != '@' && *m != '#' && *m != '$')
+            return -1;
+    return 0;
+}
+
 static int
 rule_kw(OFTP_RULE *r, const char *k, const char *v)
 {
@@ -361,6 +394,8 @@ rule_kw(OFTP_RULE *r, const char *k, const char *v)
     }
     if (strcmp(k, "XLATE") == 0)
         return (b = yesno(v)) < 0 ? -1 : (r->xlate = b, 0);
+    if (strcmp(k, "JOB") == 0)
+        return job_ok(v) != 0 ? -1 : put(r->job, sizeof(r->job), v);
     return -2;
 }
 

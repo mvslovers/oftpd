@@ -25,6 +25,8 @@
 **   SPACE=    tracks, 1-9999, secondary half of it plus one; used only
 **             when the SFID gives no size
 **   XLATE=    Y or N, over the partner's XLATE= for this file
+**   JOB=      pds(member): a job to submit once the file is received, its
+**             ?symbols replaced (oftpsub.h); none by default
 **
 ** The first rule in member order that matches the partner and the
 ** virtual file name decides; none matching, the file is treated as it was
@@ -52,6 +54,7 @@
 
 #define OFTP_MAXRULE    64              /* rules in a member             */
 #define OFTP_RCV_DSN    80              /* longest DSN= pattern          */
+#define OFTP_RCV_JOB    56              /* pds(member), 44 + 1 + 8 + 1   */
 
 typedef struct oftp_rule {
     char        name[9];
@@ -63,6 +66,7 @@ typedef struct oftp_rule {
     char        volser[7];
     unsigned    space;                  /* tracks, 0: not given          */
     int         xlate;                  /* -1 partner's, 0 N, 1 Y        */
+    char        job[OFTP_RCV_JOB + 1];  /* pds(member), "" none          */
     int         line;                   /* where the rule starts         */
     int         bad;                    /* an error in one of its lines  */
 } OFTP_RULE;

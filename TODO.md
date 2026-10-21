@@ -293,8 +293,11 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   sections 6 and 7): member `OFTPRCV0`, first match wins, `DSN=` symbols,
   `REPLACE=Y` by renaming the old data set aside, unit/volume/space/XLATE;
   measured between two OFTPDs in a container (`TSTRCVM`). Open from it:
-  the job after receipt (MVS-42, its identity decided there), `TO=`
-  forwarding, GDG, SYSOUT, tape; security review fixes (first qualifier fixed, `%CTR`,
+  ~~the job after receipt~~ (#45, `JOB=`, section 8 of the same file; not
+  built: `?QDATE ?QTIME` and the other rvs date symbols, a job after a
+  send, `ERRJOB=`; open: libc370's `rread()` cannot tell a read error from
+  the end of the member, so the record count of the second pass catches
+  only a read that fails differently from the first), `TO=` forwarding, GDG, SYSOUT, tape; security review fixes (first qualifier fixed, `%CTR`,
   PS-only `REPLACE=Y`, restore of the backup at start); not measured on MVS:
   a receive failing midway with `REPLACE=Y`, `XLATE=`, `SPACE=` with no size
   in the SFID.

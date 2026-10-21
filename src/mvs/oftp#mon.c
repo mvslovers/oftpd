@@ -25,6 +25,7 @@
 #include "oftp.h"
 #include "oftpdsf.h"
 #include "oftpdsn.h"
+#include "oftpjob.h"
 #include "oftplog.h"
 #include "oftpmon.h"
 #include "oftprcv.h"
@@ -671,6 +672,42 @@ f_write(void *ctx, OFTP_FH *fh, const unsigned char *b, unsigned n, int eor)
     return oftp_dsf_write(c->idsf, b, n, eor);
 }
 
+/* JOB= of the rule: the file is under its final name, the job goes to the
+** internal reader. What it did is in the record and on the console; it
+** never refuses the file. The EERP does not wait for the job to run.
+*/
+static void
+run_job(SESCTX *c, OFTP_SPREC *r)
+{
+    OFTP_SUBCTX x;
+    char key[9], jobid[OFTP_JOB_ID], why[OFTP_JOB_WHY];
+
+    r->ppstate = ' ';
+    r->pprc = 0;
+    r->pptext[0] = '\0';
+    if (!c->hasrule || c->rule.job[0] == '\0')
+        return;
+    memcpy(key, r->key, 8);
+    key[8] = '\0';
+    x.pfile = r->local;
+    x.vfile = r->dsn;
+    x.partner = r->partner;
+    x.key = key;
+    if (oftp_job_submit(c->rule.job, &x, jobid, why) == 0) {
+        r->ppstate = 'S';
+        snprintf(r->pptext, sizeof(r->pptext), "%s",
+                 jobid[0] ? jobid : "(JOB NUMBER UNKNOWN)");
+        oftp_mon_msg("OFTP246P %s: %s SUBMITTED AS %s: JOB %s FOR %s",
+                     r->partner, key, r->pptext, c->rule.job, r->local);
+        return;
+    }
+    r->ppstate = 'E';
+    r->pprc = 8;
+    snprintf(r->pptext, sizeof(r->pptext), "%s", why);
+    oftp_mon_msg("OFTP247W %s: %s NOT SUBMITTED, %s: JOB %s FOR %s",
+                 r->partner, key, why, c->rule.job, r->local);
+}
+
 static int
 f_close_in(void *ctx, OFTP_FH *fh, int ok)
 {
@@ -739,6 +776,7 @@ f_close_in(void *ctx, OFTP_FH *fh, int ok)
         else
             oftp_mon_msg("OFTP229I %s: %s REPLACED", r->partner, r->local);
     }
+    run_job(c, r);
     r->state = SPL_RECEIVED;
     r->tdone = (long)time(NULL);
     settext(r, "received, EERP owed");
@@ -1805,6 +1843,12 @@ ctl_show(OFTP_MON *m, CTLOUT *o, const char *line)
                      nb[0] ? ", " : "", r.winfrom / 60U, r.winfrom % 60U,
                      r.winto / 60U, r.winto % 60U);
         snprintf(out, sizeof(out), "100 start %s%s", nb, wn);
+        ctl_put(o, out);
+    }
+    if (r.ppstate == 'S' || r.ppstate == 'E') {
+        snprintf(out, sizeof(out), "100 job %s%s%s", r.ppstate == 'S'
+                 ? "submitted " : "not submitted: ", r.pptext,
+                 r.ppstate == 'S' ? " (JES job id)" : "");
         ctl_put(o, out);
     }
     if (r.reas)
