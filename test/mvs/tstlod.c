@@ -15,30 +15,42 @@
 int
 main(int argc, char **argv)
 {
-    char     parm[100], line[81], *mode, *dsn = NULL, *p;
-    long     secs;
-    unsigned long rounds = 0, x = 12345;
-    time_t   t0;
+    char          parm[100];
+    char          line[81];
+    const char   *mode;
+    const char   *dsn = NULL;
+    char         *p;
+    char         *q;
+    long          secs = 0;
+    unsigned long rounds = 0;
+    unsigned long x = 12345;
+    time_t        t0;
 
     if (argc < 2) {
         printf("TSTLOD: PARM='CPU,secs' or PARM='IO,secs,dsn'\n");
         return 0;
     }
     snprintf(parm, sizeof(parm), "%s", argv[1]);
-    mode = strtok(parm, ",");
-    p    = strtok(NULL, ",");
-    secs = p != NULL ? atol(p) : 0;
-    dsn  = strtok(NULL, ",");
-    if (mode == NULL || secs < 1 || (strcmp(mode, "IO") == 0 && dsn == NULL)) {
+    mode = parm;
+    p    = strchr(parm, ',');
+    if (p != NULL) {
+        *p++ = '\0';
+        q = strchr(p, ',');
+        if (q != NULL) {
+            *q++ = '\0';
+            if (*q != '\0')
+                dsn = q;
+        }
+        secs = atol(p);
+    }
+    if (mode[0] == '\0' || secs < 1 || (strcmp(mode, "IO") == 0 && dsn == NULL)) {
         printf("TSTLOD: PARM='CPU,secs' or PARM='IO,secs,dsn'\n");
         return 8;
     }
     t0 = time(NULL);
     if (strcmp(mode, "CPU") == 0) {
         while ((long)(time(NULL) - t0) < secs) {
-            int i;
-
-            for (i = 0; i < 20000; i++)
+            for (int i = 0; i < 20000; i++)
                 x = x * 1103515245UL + 12345UL;
             rounds++;
         }
@@ -49,13 +61,12 @@ main(int argc, char **argv)
     line[80] = '\0';
     while ((long)(time(NULL) - t0) < secs) {
         FILE *fp = fopen(dsn, "w");
-        int   i;
 
         if (fp == NULL) {
             printf("TSTLOD IO: cannot create %s\n", dsn);
             return 12;
         }
-        for (i = 0; i < 300; i++)
+        for (int i = 0; i < 300; i++)
             fprintf(fp, "%s\n", line);
         fclose(fp);
         if ((fp = fopen(dsn, "r")) == NULL) {

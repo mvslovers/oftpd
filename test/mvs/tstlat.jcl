@@ -17,7 +17,8 @@
 //* For a measurement on a loaded system submit tstlod.jcl first and let
 //* it run while this job does.
 //* ------------------------------------------------------------------
-//RUN      EXEC PGM=TSTLAT,PARM='RUN,PARTNER1,IBMUSER.OFTPD.SAMPLE,200,IDLE'
+//RUN      EXEC PGM=TSTLAT,
+//         PARM='RUN,PARTNER1,IBMUSER.OFTPD.SAMPLE,200,IDLE'
 //STEPLIB  DD  DISP=SHR,DSN=IBMUSER.OFTPD.V0R1M0D.TESTLIB
 //SYSPRINT DD  SYSOUT=*
 //STDOUT   DD  SYSOUT=*
