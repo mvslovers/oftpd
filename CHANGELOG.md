@@ -32,10 +32,12 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   the userids that see and change every transfer, including received ones
   (which belong to nobody), and that may `CALL` a partner and `PURGE`.
   Anyone else gets `not your transfer`.
-- **`SEND` checks the caller's authority.** The monitor asks the security
-  product (RAKF) whether the userid that queued the transfer may read the
-  data set, and refuses with `not authorized` when it may not, an
-  administrator included.
+- **`SEND` checks the caller's authority.** On a system with a security
+  product (RAKF or RACF) the monitor asks it whether the userid that queued
+  the transfer may read the data set (ALTER for `DISP(DELETE)`), and refuses
+  with `not authorized` when it may not, an administrator included, or when
+  the caller has no userid. Without a security product nothing is checked
+  and the send is accepted.
 - **Receive rules.** The new parmlib member `OFTPRCV0` (DD `OFTPRCV`) says,
   per partner and virtual file name, which data set a received file is
   written to: a name built from the virtual file name, the partner and the
@@ -80,8 +82,8 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   start and end, and the start-up detail. The console receives only what an
   operator must act on. Every session message starts with the partner name.
   Without the DD, or if a write fails, everything goes to the console and
-  OFTPD says so once (`OFTP022W`, `OFTP023E`). `docs/messages.md` lists the
-  messages with their destination.
+  OFTPD says so once (`OFTP022W`, `OFTP023E`). Appendix A of the OFTPD
+  Reference (ML09-0002) lists the messages with their destination.
 - **`F OFTPD,TRACE ON|OFF [partner]`** logs the protocol commands of the
   sessions, running ones included, one `OFTP290P` line each; never a
   password and never file data.
@@ -107,8 +109,10 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
 - **`SEND ... STRTTIME(hh:mm) STRTDATE(*|*+n|ddd) SENDWIN(hh:mm-hh:mm)`**
   set the earliest start and a daily window in which a send may start,
   also across midnight.
-- **Documentation:** `docs/installation.md`, `docs/messages.md` (the
-  messages, their class and where they go) and `docs/partners.md`.
+- **Documentation:** `docs/installation.md`, `docs/partners.md` and two
+  books in `docs/books/`: the OFTPD User's Guide (ML09-0001) and the OFTPD
+  Reference (ML09-0002), whose Appendix A lists every message with its
+  class and where it goes. Both are first drafts.
 
 ### Changed
 
