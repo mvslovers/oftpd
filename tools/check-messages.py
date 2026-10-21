@@ -10,6 +10,8 @@
 #   Markdown   a table row whose first cell is the id in backticks
 #   Typst      a #msg("OFTPnnnC", ...) call
 # An id that only appears in running text defines nothing.
+# The source scan sees literal ids only (comments count): an id built at run
+# time, as "OFTP24%cI", needs its literal in a comment beside it.
 import os
 import re
 import sys

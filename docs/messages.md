@@ -192,7 +192,7 @@ except for a refusal for lack of authority.
 
 ## The OFTP utility
 
-`OFTP001E`, `OFTP002E`, `OFTP003E` and `OFTP010E` come from the utility
+`OFTP001E` to `OFTP004E`, `OFTP007E` and `OFTP010E` come from the utility
 itself and are written to its own output (SYSPRINT or the terminal). They
 do not use the console or the log.
 
@@ -201,4 +201,6 @@ do not use the console or the log.
 | `OFTP001E` | `NO COMMAND IN PARM OR SYSIN` |
 | `OFTP002E` | `UNKNOWN COMMAND <word>` |
 | `OFTP003E` | `COMMAND TOO LONG` / `OPERAND TOO LONG` |
+| `OFTP004E` | `PARTNER <sub> NEEDS A PARTNER NAME`: `PARTNER ADD`, `CHANGE`, `DELETE` or `SHOW` with nothing after it (`ENABLE` and `DISABLE` print `CHANGE`) |
+| `OFTP007E` | `OPERAND <n> HAS NO VALUE: WRITE KEYWORD(VALUE)`: a second lone word where a keyword needs its value; the word itself is not echoed, it may be a password |
 | `OFTP010E` | the reply of OFTPD to a request that failed |
