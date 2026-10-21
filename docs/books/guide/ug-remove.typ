@@ -153,21 +153,25 @@ If a step ends higher than 04, the following #cmd("APPLY") or #cmd("ACCEPT")
 step does not run\; the last step does, and shows what is still there. Read the
 output of the failed step\; do not submit the whole job again before you know
 what it did. An #cmd("ACCEPT") that ended with return code 12 on
-#cmd("HMA2833") has still rewritten the ACDS, and the distribution library
-still lists the first module of the function. Submitting the #cmd("ACCEPT") step
-alone, with both #cmd("HMASMP") statements, ends with return code 00 and
-#cmd("HMA2270"), but deletes only the other modules\; the first one stays in
-#cmd("OFTPD.AOFTPLOD"), where SMP no longer knows it. That return code 00 does
-not mean the library is empty: list it as shown above. Scratch the library with
-step 5 if OFTPD goes for good.
+#cmd("HMA2833") has still rewritten the ACDS, but the distribution library
+still holds its modules. Submitting the #cmd("ACCEPT") step alone, with both
+#cmd("HMASMP") statements, ends with return code 00 and #cmd("HMA2270"), but
+deletes only the modules after the first one. On the 1.0.0-dev package it
+deletes #cmd("OFTPD"), #cmd("OFTPI") and #cmd("OFTPSVC")\; #cmd("OFTP"), the
+first module in the order of the #cmd("HMA2240") messages, stays in
+#cmd("OFTPD.AOFTPLOD"), where SMP no longer knows it. On the prerelease the
+first module stays as well. That return code 00 does not mean the library is
+empty: list it as shown above. Scratch the library with step 5 if OFTPD goes
+for good.
 
 *What has been measured.* The job was run on test systems (MVS/CE) in two
 states: with the prerelease 0.1.0-dev alone, and after the upgrade from the
-prerelease to 1.0.0-dev, the build of the tree before the release. A system with
-more than one product in the same zones, a system with other service on it, and
-a dummy function with a #cmd("++MAC") element instead of none have not been
-measured. The recovery after a failed #cmd("ACCEPT") was measured with the
-prerelease only. Whatever the system, the #cmd("LIST") in step 4 is the proof.
+prerelease to 1.0.0-dev, the build of the tree before the release. The recovery
+after a failed #cmd("ACCEPT") was measured on the prerelease and on a new
+install of the 1.0.0-dev package. A system with more than one product in the
+same zones, a system with other service on it, and a dummy function with a
+#cmd("++MAC") element instead of none have not been measured. Whatever the
+system, the #cmd("LIST") in step 4 is the proof.
 
 == Step 3: Free the Ids <ug-remove-free>
 

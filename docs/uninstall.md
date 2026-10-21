@@ -190,28 +190,31 @@ If a step ends higher than 04, the following `APPLY` or `ACCEPT` step does not
 run; the last step does, and shows what is still there. Read the output of the
 failed step; do not submit the whole job again before you know what it did. An
 `ACCEPT` that ended with return code 12 on `HMA2833` has still rewritten the
-ACDS, and the distribution library still lists the first module of the
-function. Submitting the `ACCEPT` step alone, with both `HMASMP` statements,
-ends with return code 00 and `HMA2270`, but deletes only the other modules; the
-first one stays in `OFTPD.AOFTPLOD`, where SMP no longer knows it. That return
-code 00 does not mean the library is empty: list it as shown above. Scratch the
-library with step 5 if OFTPD goes for good.
+ACDS, but the distribution library still holds its modules. Submitting the
+`ACCEPT` step alone, with both `HMASMP` statements, ends with return code 00
+and `HMA2270`, but deletes only the modules after the first one. On the
+1.0.0-dev package it deletes `OFTPD`, `OFTPI` and `OFTPSVC`; `OFTP`, the first
+module in the order of the `HMA2240` messages, stays in `OFTPD.AOFTPLOD`, where
+SMP no longer knows it. On the prerelease the first module stays as well. That
+return code 00 does not mean the library is empty: list it as shown above.
+Scratch the library with step 5 if OFTPD goes for good.
 
 **What has been measured.** The job was run on test systems (MVS/CE) in two
 states: with the prerelease 0.1.0-dev alone, and after the upgrade from the
-prerelease to 1.0.0-dev, the build of the tree before the release. A system
-with more than one product in the same zones, a system with other service on
-it, and a dummy function with a `++MAC` element instead of none have not been
-measured. The recovery after a failed `ACCEPT` was measured with the prerelease
-only. Whatever the system, the `LIST` in step 4 is the proof.
+prerelease to 1.0.0-dev, the build of the tree before the release. The recovery
+after a failed `ACCEPT` was measured on the prerelease and on a new install of
+the 1.0.0-dev package. A system with more than one product in the same zones, a
+system with other service on it, and a dummy function with a `++MAC` element
+instead of none have not been measured. Whatever the system, the `LIST` in
+step 4 is the proof.
 
 ## 3. Free the ids
 
 The dummy function has not made the ids free. It has left `TOFTDEL` itself in
 both zones, with the status `REC APP ACC` (the ACDS adds `RGN`), and a mark
-`DELBY = TOFTDEL` on every id it deleted. This job removes the three entries from the CDS (what is applied)
-and the ACDS (what is accepted). It changes the two SMP data bases and no
-library:
+`DELBY = TOFTDEL` on every id it deleted. This job removes the three entries
+from the CDS (what is applied) and the ACDS (what is accepted). It changes the
+two SMP data bases and no library:
 
 ```
 //OFTPUCL  JOB (SYS),'OFTPD UNINSTALL',
@@ -294,8 +297,8 @@ zones count: an id gone from one and still in the other is not free.
 there answers with return code 00, so it does not raise the return code of the
 step above the 04 that you expect. The job has six `LIST` statements, and all
 six must show the id as not found. A stanza that names `TYPE = FUNCTION` is an
-entry that is still there, whether it shows a status such as `REC APP ACC` or only a
-`DELBY` of its successor. This is what the statements
+entry that is still there, whether it shows a status such as `REC APP ACC` or
+only a `DELBY` of its successor. This is what the statements
 `LIST CDS SYSMOD(TOFT100)` and `LIST CDS SYSMOD(TOFTDEL)` print after step 2,
 before step 3 has run:
 
@@ -468,9 +471,9 @@ library.
 **What has been measured.** The fallback was run on a system with 1.0.0-dev
 installed new and on a system with the prerelease alone. After the first, and
 after scratching the libraries, a new install of 1.0.0-dev ran through with
-return code 00 in every step. A system that went from the prerelease to 1.0.0 was not run through the
-fallback; the mark of `TOFT010` is there as well, so the same result is
-expected, but it has not been seen.
+return code 00 in every step. A system that went from the prerelease to 1.0.0
+was not run through the fallback; the mark of `TOFT010` is there as well, so
+the same result is expected, but it has not been seen.
 
 ## What is not removed, because SMP never owned it
 
