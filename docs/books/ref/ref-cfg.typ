@@ -183,10 +183,9 @@ owner, and may use the #cmd("CALL"), #cmd("REFRESH") and #cmd("PURGE")
 requests. Only an administrator may add, change, enable, disable or delete a
 partner with the #cmd("PARTNER") command or in the ISPF dialog\; showing and
 listing partners is open to every user. Without any #cmd("ADMIN") keyword,
-these requests are refused. For #cmd("CALL"), #cmd("REFRESH") and
-#cmd("PURGE") the text is #cmd("needs ADMIN= in OFTPPRM")\; for #cmd("PARTNER")
-it is #cmd("needs ADMIN= in OFTPRM"), with the member name as the source
-spells it.
+these requests are refused. For #cmd("CALL"), #cmd("REFRESH"),
+#cmd("PURGE") and #cmd("PARTNER") the text is
+#cmd("needs ADMIN= in OFTPPRM").
 
 == The Partner Table: OFTPPTN <cfg-ptn>
 

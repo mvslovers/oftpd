@@ -233,14 +233,21 @@ rest. A partner cannot be renamed\; add the new name and delete the old one.
 The Reference, in the chapter “The OFTP Command”, has the syntax, the limits
 and the answers.
 
-Four points matter in daily use.
+Five points matter in daily use.
 
 - *The case of the values.* OFTPD turns the request into upper case, so a
   partner added by command has its passwords and its host in upper case. If a
   partner needs a host name in lower case, put it in the member.
 - *Show before you change.* #cmd("PARTNER SHOW") tells where the partner comes
   from (the member, or kept by command), and whether the passwords are set. It
-  never shows a password. To change a password, give the new one.
+  never shows a password. To change a password, give the new one. A user who
+  is not an administrator sees a dash in place of #cmd("OURID") and
+  #cmd("ADDRESS").
+- *A partner without a password.* If you add or change a partner so that it is
+  enabled and has no #cmd("PASSWORD"), OFTPD does it, but warns you: the answer
+  ends with #cmd("but it has no PASSWORD"), and the return code is 4. Without
+  a password every peer that knows the Odette ID of the partner can log on, so
+  set one.
 - *A partner in use.* While a partner has a session, or OFTPD is calling it,
   you can enable and disable it, but not change anything else. The command is
   refused with the answer #cmd("the partner has a session now, try again").
@@ -249,7 +256,9 @@ Four points matter in daily use.
   it, and none is running. The transfers that count are all of them, finished
   ones too. If there are transfers, #cmd("DELETE") first disables the partner,
   so that nothing new is queued for it, and tells you how many there are. Delete
-  or purge these (see @xfer-admin), and delete the partner again. A partner that
+  or purge these (see @xfer-admin), and delete the partner again. If the
+  answer is #cmd("the partner was changed meanwhile, try again"), the partner
+  changed while OFTPD looked through the spool\; repeat the command. A partner that
   is only in the member cannot be deleted by command\; take its entry out of the
   member and refresh.
 
@@ -267,7 +276,7 @@ data set, and its backups, as you protect #cmd("OFTPPTN"). A password in a
 #cmd("PARTNER") command is as visible as the place where you type it\: in the
 JCL or SYSIN data, and on the screen at a terminal. The utility masks it in the
 echo of SYSIN, but not in your JCL. On its way to OFTPD the request passes
-through common storage for a short time. Do not give a password in a job whose
+through common storage for a short time, and OFTPD wipes it from there. Do not give a password in a job whose
 JCL others can read.]
 
 == Checking a Partner <ptn-check>

@@ -254,7 +254,10 @@ the passwords as *(set)* or *(none)*, never as text. A blank password keeps the
 password as it is\; type a new one to replace it. Another field that you leave
 as it is stays as it is, and a blank Host, Address or Via is cleared. Enter
 saves, and END leaves the panel without saving. If OFTPD refuses the change, the
-reason is on the panel, and you can correct the entry. On an 80-column screen
+reason is on the panel, and you can correct the entry. If OFTPD takes the entry
+but the partner is enabled and has no password, the panel ends as for any
+other entry that is taken, and the message ends with #cmd("but it has no PASSWORD").
+The dialog does not show the longer warning that the utility writes. On an 80-column screen
 the message line has 80 columns, and a longer answer is cut\; the answer of a refused
 #cmd("DELETE") is one of these. The command #cmd("OFTP PARTNER DELETE") gives
 the whole answer.

@@ -244,11 +244,14 @@ messages are in the Reference.
       that is kept by command or take an entry out of the member, and use
       #cmd("REFRESH").],
     [A #cmd("PARTNER") command is refused], [The answer, the last line of the
-      output, says why. #cmd("needs ADMIN= in OFTPRM") means that the user is
+      output, says why. #cmd("needs ADMIN= in OFTPPRM") means that the user is
       not an administrator\; #cmd("the partner has a session now, try again")
       means that a partner with a session cannot be changed or deleted\; and
-      #cmd("transfers in the spool name partner") means that a partner with
-      transfers in the spool cannot be deleted. The Reference lists the
+      #cmd("transfers name partner") means that a partner with
+      transfers in the spool cannot be deleted\; and
+      #cmd("the partner was changed meanwhile, try again") means that the
+      partner changed while OFTPD looked through the spool, so repeat the
+      command. The Reference lists the
       answers, in the chapter “The OFTP Command”.],
     [A file is received, but no job runs (#cmd("OFTP247W"))], [The receive rule of
       the file has a #cmd("JOB="), and the job was not submitted. The message gives

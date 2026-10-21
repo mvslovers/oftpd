@@ -327,6 +327,12 @@ with the code 512 if it would disable a partner through which an enabled
 partner is reached (see @cfg-via). A #cmd("CHANGE") that would change nothing is
 answered with #cmd("partner name unchanged").
 
+If the partner is enabled after #cmd("ADD"), #cmd("CHANGE") or #cmd("ENABLE")
+and has no #cmd("PASSWORD"), the command is carried out, but the answer ends
+with #cmd(", but it has no PASSWORD") (the code 210), and a line before it
+warns that every peer that knows the Odette ID of the partner can log on. Set a
+password with #cmd("CHANGE").
+
 === SHOW <cmd-partner-show>
 
 #idx("PARTNER", "SHOW")
@@ -337,7 +343,9 @@ with #cmd("ODETTEID") and #cmd("OURID")\; #cmd("HOST"), #cmd("PORT"),
 #cmd("SESSIONS"), #cmd("COMPRESS") and #cmd("XLATE")\; #cmd("SDEB"),
 #cmd("CREDIT"), #cmd("ADDRESS") and #cmd("VIA")\; and #cmd("PASSWORD") and
 #cmd("OURPASSWORD"). The passwords are never shown\: each one reads
-#cmd("SET") or #cmd("NONE"). The sixth line starts with #cmd("source:") and
+#cmd("SET") or #cmd("NONE"). For a user who is not an administrator,
+#cmd("OURID") and #cmd("ADDRESS") read #cmd("-"), and the lines keep their
+shape. The sixth line starts with #cmd("source:") and
 tells where the partner comes from\: #cmd("OFTPPTN"), #cmd("kept by command"),
 or #cmd("kept by command, overrides OFTPPTN"), followed by the number of
 sessions the partner has now. The answer ends with #cmd("partner").
@@ -363,8 +371,17 @@ in these cases, checking them in this order.
 If the partner is enabled, OFTPD disables it before it looks through the
 spool, so that nothing new is queued for it or accepted from it meanwhile.
 When a transfer in the spool names the partner, the partner stays disabled.
-If it was enabled before, the answer says so with #cmd("(it is disabled now)").
-Enable it again if it should work.
+If it was enabled before, the answer says so with #cmd("(disabled)") after
+the name of the partner. Enable it again if it should work.
+
+OFTPD does not hold the partner table while it looks through the spool, so
+that sessions go on. Afterwards it checks the partner again. If another command
+replaced the partner, enabled it, gave it a session, or made it the
+#cmd("VIA") of another partner meanwhile, nothing is deleted, and the answer
+is #cmd("the partner was changed meanwhile, try again") (code 450). Repeat the
+command. If the spool cannot be read to the end, the answer is
+#cmd("spool not available") (code 451), and the partner stays disabled if
+OFTPD disabled it.
 
 If the partner was kept by command and has an entry of the same name in
 #cmd("OFTPPTN") as well, deleting it brings that entry back at once, and the
@@ -389,24 +406,29 @@ number.
       #cmd("partner name deleted") (with the endings above) \
       #cmd("partner") at the end of a #cmd("SHOW")],
       [Done.],
-    [450], [#cmd("the partner has a session now, try again")],
-      [The partner has a session, or OFTPD is calling it.],
+    [210], [#cmd("partner name added, but it has no PASSWORD") \
+      #cmd("partner name changed, but it has no PASSWORD")],
+      [Done. The partner is enabled and has no #cmd("PASSWORD").],
+    [450], [#cmd("the partner has a session now, try again") \
+      #cmd("the partner was changed meanwhile, try again")],
+      [The partner has a session, or OFTPD is calling it\; or, for a
+      #cmd("DELETE"), the partner changed while OFTPD looked through the
+      spool.],
     [451], [#cmd("spool not available")],
       [Nothing was changed, except that a partner that was being deleted may
       have been disabled.],
     [501], [#cmd("no such partner")], [The partner is not in the table.],
-    [507], [#cmd("needs ADMIN= in OFTPRM")],
-      [The user is not an administrator. (The text spells the member
-      name #cmd("OFTPPRM") as #cmd("OFTPRM").)],
+    [507], [#cmd("needs ADMIN= in OFTPPRM")],
+      [The user is not an administrator.],
     [508], [The reason, for example #cmd("the entry is too long")],
       [The partner name or an operand is not valid, or the entry is too long.],
     [509], [#cmd("partner exists: use CHANGE")],
       [The partner exists\; #cmd("ADD") is refused.],
     [512], [#cmd("partner other is reached through it") \
       #cmd("partner other is reached through it: disable that first") \
-      #cmd("n transfers in the spool name partner name: PURGE or DELETE them first") \
-      (with #cmd("(it is disabled now)") after the name, if OFTPD disabled the
-      partner)],
+      #cmd("n transfers name partner name: PURGE or DELETE them first") \
+      (with #cmd("(disabled)") after the name, if the partner was enabled
+      before)],
       [Another partner is reached through this one, or transfers in the spool
       name it.],
     [513], [#cmd("the partner is in OFTPPTN: remove it there, then REFRESH")],
@@ -416,6 +438,9 @@ number.
       [The table holds 32 partners, from both sources.],
   )
 ] <cmd-partner-tab>
+
+The return code of the utility follows the code\: 0 for 200, 4 for 210, 450 and
+451, 12 for 501, and 8 for every other code.
 
 OFTPD writes a message to the console and the log for each change it makes\:
 #cmd("OFTP243I") for an added partner, #cmd("OFTP244I") for a changed one
@@ -433,11 +458,17 @@ A password given with #cmd("ADD") or #cmd("CHANGE") needs care.
 - It is visible where it is typed: in the JCL or the #cmd("SYSIN") data that
   holds the command, and on the screen at a terminal. When the utility reads
   the commands from #cmd("SYSIN") it echoes each one with the prefix
-  #cmd("OFTP"), and writes a star in place of each character of the value of
-  #cmd("PASSWORD") and #cmd("OURPASSWORD"), so the echo still shows how long the
-  password is. That masks the echo only.
+  #cmd("OFTP"), and writes eight stars in place of the value of
+  #cmd("PASSWORD") and #cmd("OURPASSWORD"), whatever its length. That masks the
+  echo only. A long command is echoed in lines of at most 72 columns, each
+  one but the last ending in #cmd(" -").
 - The request passes through a slot in common storage (CSA) on its way to
-  OFTPD. OFTPD wipes the request from the slot as soon as it has taken it.
+  OFTPD. OFTPD wipes the request from the slot as soon as it has taken it,
+  and the slot is wiped again, request and answer, when it is released. Until
+  then, a program that can read common storage could read the password.
+- An operand that is not #cmd("KEYWORD=VALUE") is named in the answer by its
+  place, as #cmd("word n is not KEYWORD=VALUE"), never by the word itself,
+  because that can be the second half of a password with a blank in it.
 - #cmd("SHOW") and the ISPF dialog show whether a password is set, never the
   password. The messages #cmd("OFTP243I") and #cmd("OFTP244I") do not carry it.
 
