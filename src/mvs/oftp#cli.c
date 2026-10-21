@@ -16,7 +16,7 @@
 */
 static int
 svc_request(const char *req, OFTP_CLILINE line, void *ctx, char *final,
-            int cap)
+            int cap, int *code)
 {
     char buf[OFTP_SVC_REPMAX];
     unsigned len, next = 0;
@@ -36,13 +36,13 @@ svc_request(const char *req, OFTP_CLILINE line, void *ctx, char *final,
         rc = oftp_svc_call(req, buf, sizeof(buf), next, &len, &next);
         switch (rc) {
         case OFTP_SVC_OK:
-            rc = oftp_cli_piece(buf, len, line, ctx, final, cap);
+            rc = oftp_cli_piece(buf, len, line, ctx, final, cap, code);
             if (rc >= 0)
                 return rc;
             snprintf(final, (size_t)cap, "incomplete answer from OFTPD");
             return 12;
         case OFTP_SVC_MORE:
-            if (oftp_cli_piece(buf, len, line, ctx, final, cap) != -1) {
+            if (oftp_cli_piece(buf, len, line, ctx, final, cap, code) != -1) {
                 snprintf(final, (size_t)cap, "incomplete answer from OFTPD");
                 return 12;
             }
@@ -75,8 +75,10 @@ svc_request(const char *req, OFTP_CLILINE line, void *ctx, char *final,
 
 int
 oftp_cli_request(const char *req, OFTP_CLILINE line, void *ctx, char *final,
-                 int cap)
+                 int cap, int *code)
 {
     final[0] = '\0';
-    return svc_request(req, line, ctx, final, cap);
+    if (code != NULL)
+        *code = 0;
+    return svc_request(req, line, ctx, final, cap, code);
 }

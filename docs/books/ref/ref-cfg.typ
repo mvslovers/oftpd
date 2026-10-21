@@ -60,8 +60,13 @@ If OFTPD cannot open the log, all messages go to the console only.
   upper case. The one exception is the value of #cmd("HOST"), which keeps its
   case.
 - A word without an equals sign is not a pair. OFTPD reports it as
-  #cmd("X is not KEYWORD=VALUE") and skips it. A partner is not disabled by
-  it.
+  #cmd("word n is not KEYWORD=VALUE"), where #var("n") is the place of the
+  word on the line, counting from 1 and counting the pairs too. OFTPD does not
+  show the word, because it can be the rest of a password that holds a blank.
+  The word is skipped, and a partner is not disabled by it.
+- A word of more than 99 characters is skipped and reported as
+  #cmd("a word is longer than 99 characters"). In #cmd("OFTPPTN") it disables
+  the partner that the line belongs to.
 - An unknown keyword or a value that is not valid is reported with message
   #cmd("OFTP010W"), which names the member and the line. In #cmd("OFTPPRM")
   OFTPD ignores the pair and the default stays. In #cmd("OFTPPTN") the
@@ -259,18 +264,20 @@ partner, and reports it with message #cmd("OFTP010W").
   [#cmd("VIA")], [The name of another partner, up to 8 characters, through
     which this partner is reached. See @cfg-via.],
   [#cmd("SESSIONS")], [The most sessions that run with this partner at the
-    same time, from 1 to 16 and not above #cmd("MAXSESS"). Default 1. A
-    call from a partner that has reached the limit is refused with the reason
-    code 08 (message #cmd("OFTP202W")). While work is waiting that no session
-    holds, OFTPD opens further sessions to the partner, up to the limit and
-    up to #cmd("MAXSESS").],
+    same time, from 1 to 16. Default 1. OFTPD accepts a value above
+    #cmd("MAXSESS")\; the sessions of all partners together never exceed
+    #cmd("MAXSESS") in any case. A call from a partner that has reached the
+    limit is refused with the reason code 08 (message #cmd("OFTP202W")). While
+    work is waiting that no session holds, OFTPD opens further sessions to
+    the partner, up to the limit and up to #cmd("MAXSESS").],
 )
 
 === Partners Reached Through Another Partner: VIA <cfg-via>
 
 #idx("VIA")
-A partner with #cmd("VIA=name") has no host, port or passwords of its own
-and is never called, nor accepted as a caller. OFTPD sends the files for it
+A partner with #cmd("VIA=name") is never called, and a caller is never
+identified as this partner. Its #cmd("HOST"), #cmd("PORT") and passwords are
+therefore not used\; OFTPD does not refuse them if the entry has them. OFTPD sends the files for it
 in a session with the partner #cmd("name"), addressed to the Odette ID of the
 final partner. #cmd("name") must be a direct partner that is enabled. Only
 one level is allowed: if #cmd("name") is not an enabled direct partner,
@@ -285,17 +292,26 @@ does not read #cmd("OFTPPRM"). OFTPD reports the result for the partners with
 message #cmd("OFTP016I"). It then reads the receive rules again\; see
 @rcv-load.
 
-- A partner that is new is added.
-- A partner whose entry has changed is replaced, and OFTPD calls it again at
-  once.
-- A partner that is no longer in the member is disabled. Its slot in the
-  table stays used until OFTPD is started again.
+- A partner that is new is added. If the table is full, OFTPD skips it and
+  writes #cmd("OFTP015W").
+- A partner that is still in the member is replaced by its entry in the
+  member, whether the entry has changed or not. The wait before OFTPD calls
+  it again after a failed call is cancelled, so that a new #cmd("HOST") is
+  tried at once.
+- A partner that is no longer in the member is taken out of the table, and
+  its slot is free for another partner, if no transfer in the spool names it
+  and no session or call of it is running. Otherwise OFTPD disables it, and
+  a later refresh takes it out when it is free of these.
 
-The table holds 32 slots, so after several changes it can be full even if
-fewer than 32 partners are enabled (message #cmd("OFTP015W")). Restart OFTPD
-to free the slots. If the member cannot be opened, OFTPD writes
-#cmd("OFTP017E") and goes on with the table it has. It does not read the
-receive rules then.
+The message #cmd("OFTP016I") gives the numbers of partners enabled, new,
+disabled and removed. The table holds 32 slots. A refresh frees the slots of
+the removed partners before it adds the new ones. If the table is still
+full, OFTPD writes #cmd("OFTP015W") for each partner that it cannot add\; the
+next refresh reads that partner again. A partner that was disabled and not
+removed keeps its slot until its transfers are deleted from the spool
+(commands #cmd("DELETE") and #cmd("PURGE")) and a refresh finds it free. If
+the member cannot be opened, OFTPD writes #cmd("OFTP017E") and goes on with
+the table it has. It does not read the receive rules then.
 
 The rules are read after the partner table, so a rule may name a partner that
 the same refresh adds.

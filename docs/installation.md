@@ -114,6 +114,13 @@ time. Only spool entries are deleted, never data sets.
 The spool belongs to OFTPD alone: the utilities and the dialog never open
 it, they ask OFTPD.
 
+The spool also holds the partners kept by command (section 6), **with their
+passwords in clear text**, as `OFTPPTN` does. Protect the cluster and every
+backup or copy of it the way you protect `OFTPPTN`: only OFTPD's userid and
+the administrators may read it. If OFTPD cannot read the partner records at
+start it stops with `OFTP019E` instead of starting with the parmlib table
+alone, which could bring back a partner that was disabled by command.
+
 ## 6. Settings and partners
 
 Copy `OFTPD.SAMPLIB(OFTPPRM0)` and `(OFTPPTN0)` to `SYS2.PARMLIB` and edit
@@ -134,24 +141,210 @@ them. Each member describes its keywords at the top.
   default); give both sides the same number, since a call beyond the
   other side's limit is refused and made again after a short pause.
 
+`OFTPPTN0` is the seed. Partners can also be added, changed, disabled and
+deleted while OFTPD runs, from the `OFTP` utility and the ISPF dialog,
+without a parmlib edit or a restart; OFTPD keeps those in its spool and
+the spool wins by name. `docs/partners.md` describes both.
+
 The sockets are the Hercules host's: `127.0.0.1` is the machine Hercules
 runs on, not MVS, and the OFTP port is opened there.
 
-Coming from 0.1.0: the TCP control port is gone. Remove `CONTROLPORT=`
-from `OFTPPRM0` (OFTPD reports it as an unknown keyword with `OFTP010W`)
-and add `SVC=237`, without which the utilities and the dialog cannot
-reach OFTPD at all.
+### Receive rules
+
+Without any rule a received file is stored as `INPREFIX.<virtual file
+name>`; if that name exists already, OFTPD adds the transfer number as a last
+qualifier (`INPREFIX.<virtual file name>.T0000012`) and refuses the file only
+if that exists too. A rule changes this for the files it matches. Copy
+`OFTPD.SAMPLIB(OFTPRCV0)` to `SYS2.PARMLIB` and add rules; the sample
+describes every keyword at the top and has two examples. A member with only
+comments changes nothing.
+
+OFTPD itself does not need the `OFTPRCV` DD: without it there are no rules,
+and the start says nothing about it. It is in the sample procedure, which
+points it at the parmlib member (`R=OFTPRCV0`); there a member that is not in
+the parmlib is a JCL error and OFTPD does not start. So either copy
+`OFTPRCV0` to the parmlib or delete the DD from your copy of the procedure.
+
+```
+RULE=ORDERS  FROM=PARTNER1  VFN=ORDERS.*
+             DSN=PROD.ORDERS.Y%YYYY.D%MM%DD.T%HH%MI%SS
+RULE=INVOICE FROM=*  VFN=INV?????.DATA
+             DSN=ACCT.IN.%ID.%VFN  REPLACE=Y  VOLSER=WORK01  SPACE=30
+```
+
+`RULE=name` opens a rule (1 to 8 characters, unique) and the keywords after
+it belong to it, written as in the partner member. Lines are read to column
+72 (columns 73 to 80 are ignored, so sequence numbers do no harm); `*` in
+column 1 starts a comment. Keywords and values are not case sensitive. A
+member holds at most 64 rules.
+
+| Keyword | Meaning |
+|---|---|
+| `FROM=` | a partner name from `OFTPPTN0`, or `*` (the default) for any |
+| `VFN=` | the virtual file name; `*` is any number of characters, `?` exactly one, case does not matter (default `*`) |
+| `DSN=` | the data set name, with the symbols below, at most 80 characters; without it the file gets the `INPREFIX` name, even if the rule matched |
+| `REPLACE=` | `Y`: an existing data set is replaced once the new file has been received and closed; `N` (default): the file is refused. Both need `DSN=`: without it nothing is replaced or refused, the name is made unique with the transfer number as described above |
+| `UNIT=` `VOLSER=` | where the data set is allocated, instead of the `OFTPPRM0` values |
+| `SPACE=` | primary space in tracks (1 to 9999), the secondary is half of it plus one; used only when the sender's file description gives no size |
+| `XLATE=` | `Y` or `N`: translate this file or not, instead of what the partner entry says |
+| `JOB=` | `pds(member)`: a job to run once the file has been received (see below) |
+
+**The first rule in member order that matches the partner and the file
+name decides**, so put the narrow rules before the wide ones. If none
+matches, the file is treated as it was before rules existed. The rule is
+chosen once, when the file is opened: a `F OFTPD,REFRESH` while the file is
+arriving does not change it. A file that OFTPD passes on (`RELAY=Y`) never
+meets a rule; rules are about files that end here.
+
+Symbols in `DSN=`; everything else is taken literally (letters, digits,
+`@ # $ - .`):
+
+| Symbol | Value |
+|---|---|
+| `%VFN` | the virtual file name |
+| `%Q1` to `%Q9` | its first to ninth qualifier (between the dots) |
+| `%ID` | the partner's name |
+| `%YYYY` `%MM` `%DD` `%HH` `%MI` `%SS` | the time the file arrived |
+| `%CTR` | the 4 digits of the sender's file counter; a file whose time field has no such counter is refused (reason 01) |
+| `%KEY` | the transfer's spool key, `T` and 7 digits |
+
+The name is checked as a data set name when the file arrives: qualifiers of
+1 to 8 characters starting with a letter or a national character, 44 in all.
+A date in a qualifier therefore needs a letter in front of it and at most 7
+characters in all: `Y%YYYY` is 5, `D%MM%DD` is 5, `T%HH%MI%SS` is 7, but
+`D%YYYY%MM%DD` is 9 and comes out invalid. A name that comes out invalid
+refuses the file with reason 01 (the sender does not retry) and the console
+shows `OFTP224W` with the rule's name. A file that exists with `REPLACE=N`
+is refused with reason 13 and `OFTP225W`; the sender tries again later, so
+delete the data set or give the rule `REPLACE=Y`.
+
+With `REPLACE=Y` the old data set is renamed out of the way only when the
+new file is complete and closed, then the new one takes its name and the old
+one is deleted (`OFTP229I`). A file that fails on the way costs nothing. A
+data set that is in use makes the replace fail: the file is refused at the
+end (reason 12, `OFTP221E` or `OFTP226E`) and the old data set stays.
+`REPLACE=Y` works on a plain sequential data set only: if the name is a PDS,
+a VSAM cluster or a member, the file is refused (reason 12, `OFTP234W`) and
+nothing is touched.
+
+While a replace is running, the old content is under the name
+`TMPPREFIX.B<key>`; protect `TMPPREFIX` like the data sets your rules write
+to. If OFTPD or the system stops in the instant between the two renames,
+that backup is the **only copy** of the old data set. At the next start OFTPD
+renames it back if the target is missing (`OFTP239I`); if both exist it
+leaves both and says `OFTP248W`. If you have to do it by hand: look whether
+the target data set exists. If it does not, rename `TMPPREFIX.B<key>` back
+to the target name. Delete the backup only when the target exists and is the
+file you want.
+
+**The first qualifier must be fixed.** `%VFN`, `%Q1` to `%Q9` and `%CTR`
+carry text chosen by the partner into the data set name; if they could
+stand in the first qualifier, a partner could create -- and with
+`REPLACE=Y` replace -- any data set the OFTPD started task may write.
+OFTPD therefore refuses a rule whose `DSN=` has any of them before the
+first `.` (`DSN=%VFN`, `DSN=PROD%VFN` and `DSN=%Q1.X` are errors, `DSN=ACCT.IN.%VFN`
+is fine; the member is not used, see `OFTP010W`). A `DSN=` that can name a
+data set under your `TMPPREFIX` is refused for the same reason. Even so, use
+`REPLACE=Y` only for a partner and a name you trust.
+
+### A job after receipt
+
+`JOB=ACCT.JCL(ORDERS)` makes OFTPD read that member once the file is under
+its final name, put the symbols below into it, and give it to the internal
+reader. The EERP does not wait for the job: it says the file has arrived,
+not that anything was done with it. The data set name and the member are
+read when the file is received, so the member can be changed any time.
+
+| Symbol | Value |
+|---|---|
+| `?PFILE` | the data set the file was received as |
+| `?VFILE` | the virtual file name |
+| `?ID` | the partner's name |
+| `?KEY` | the transfer's spool key, `T` and 7 digits |
+
+The names are upper case. A name ends at the first character that is no
+letter or digit, so `?ID.X` and `?ID-?KEY` are symbols, while `?IDX`,
+`?PFILE1` and `?KEYS` are other names and stay as they are. A `?` followed by
+anything else stays as it is as well.
+A JCL statement (a line starting `//`) has its text in columns 1 to 71
+(72 is the continuation mark); any other line has 80. A line that comes
+out longer, after the symbols went in, is **not** cut: the job is not
+submitted. The file is kept and acknowledged all the same, and the console
+says `OFTP247W` with the reason. A job is
+not submitted either when the member is not there, is empty, or has a
+record past column 80, or its record format is undefined (`RECFM=U`) or
+its record length is not positive, or it is read to a different end the
+second time (`MEMBER CHANGED DURING READ`: it was edited meanwhile, or the
+read failed). The record of the transfer says what happened (`OFTP SHOW`
+prints `job submitted JOBnnnnn (JES job id)`, or `job not submitted:`
+and the reason); a submitted job is `OFTP246P` in the log.
+
+The virtual file name is chosen by the partner and ends up in the JCL, so
+`?VFILE` stands only for letters, digits and `. - _ @ # $`: a name with
+another character (a quote, a blank, a comma, `&`) does not get a job.
+The other three are made by OFTPD.
+
+That filter protects the card, not the meaning. `SYS1.PARMLIB`, `IEFBR14`
+and `A.B.C` all pass it, and each is a valid name in JCL. So the partner's
+file name must never decide by itself what the job touches or runs:
+
+- put `?VFILE` only behind a fixed high-level qualifier the partner cannot
+  leave, as in `DSN=ACCT.IN.?VFILE`;
+- never as a whole name (`DSN=?VFILE`), never as `PGM=?VFILE`, never inside
+  `PARM=`, never on the job card, and never in an operand that names an
+  identity: `USER=`, `PASSWORD=` or `GROUP=`;
+- keep the `VFN=` pattern of the rule as narrow as the application allows
+  (`VFN=INV?????.DATA`, not `VFN=*`).
+
+A partner can have one job queued for every file it may send under a rule
+that matches, so `VFN=` is also what limits how many. A partner name used
+with `?ID` should be a plain name: `OFTPPTN0` does not restrict its
+characters, and OFTPD does not check `?ID` the way it checks `?VFILE`.
+`?PFILE` is the name OFTPD built from the rule's `DSN=`: a valid data set
+name, but one with `%VFN` in it carries the partner's text.
+
+**Whose job it is.** It goes through the internal reader of the OFTPD
+started task, but it does not run as that task. OFTPD sets no `USER=`, and
+on a system with RAKF a job without one starts as the default user
+(`PROD`, measured), not as the started task. The job can do what that user may do under your RAKF
+profiles, and that can be a lot. What the default user may do on your
+system is not something OFTPD knows or this manual can say: before you
+write `JOB=`, look it up in your profiles, and give that user only the
+access the jobs need, or let the member carry a `USER=` and `PASSWORD=` of
+its own on the job card; a `PASSWORD=` there is plain text in the member,
+so protect the member accordingly. A job that fails there fails in the JES log of the
+job, not in OFTPD: `job submitted` says only that JES took it, and not that
+the member was read to its end (`rread()` does not tell an end of file from
+a read error). OFTPD checks nothing more; the member is named in the rules
+member, so whoever may change that member decides what runs. Protect the
+rules member and the library of the jobs like `SYS2.PARMLIB` itself.
+
+Not part of it: a job after a send, a job when a send fails (`ERRJOB`), a
+job for a file that was refused.
+
+`F OFTPD,REFRESH` reads the rule member again together with the other two,
+and replaces the whole set. **A member with any error is not used at all**:
+the lines in error are reported with `OFTP010W`, `OFTP025E` says the old
+rules stay, and the files that arrive meanwhile follow the old rules. A
+good member is acknowledged with `OFTP024I RECEIVE RULES: n READ`, at start
+as well. `OFTP026W` means the DD cannot be opened now and the old rules
+stay. A rule for a partner that is not in `OFTPPTN0` is an error, so
+refresh the partners and the rules together.
+
+Not (yet) part of the rules: passing a file on, GDGs, SYSOUT and tape.
 
 ## 7. The procedure
 
 Copy `OFTPD.SAMPLIB(OFTPD)` to `SYS2.PROCLIB`. Its `STEPLIB` already names
-`OFTPD.LINKLIB`. Its defaults are `SYS2.PARMLIB` (members `OFTPPRM0` and
-`OFTPPTN0`) and the spool `OFTP.SPOOL`; give your spool's name either in
+`OFTPD.LINKLIB`. Its defaults are `SYS2.PARMLIB` (members `OFTPPRM0`,
+`OFTPPTN0` and `OFTPRCV0`; `R=` names another rules member) and the spool `OFTP.SPOOL`; give your spool's name either in
 the procedure (`S=`) or when starting it.
 
 Under RAKF, the started task's userid may need update access to the
 spool and the authority to create data sets under `INPREFIX` and
-`TMPPREFIX`.
+`TMPPREFIX`. Receive rules (section 6) name their data sets themselves,
+under any first qualifier, so it may also need ALTER on those: to create a
+data set, and with `REPLACE=Y` to rename and delete the old one.
 
 Start it with `S OFTPD` (or `S OFTPD,S='MY.SPOOL'`). The console shows
 `OFTP000I` with the version and `OFTP001I OFTPD READY`; a partner entry
@@ -195,7 +388,7 @@ the log. `docs/messages.md` lists every message with its destination.
 
 The operator commands are listed at the top of the procedure: `F OFTPD,D P`
 (partners), `D Q` (the spool), `D S` (sessions), `F OFTPD,CALL name`,
-`F OFTPD,REFRESH` (read the partner member again), `F OFTPD,HOLD name`
+`F OFTPD,REFRESH` (read the partner and rules members again), `F OFTPD,HOLD name`
 and `F OFTPD,RELEASE name` (every send to that partner, `ALL` for every
 partner: queued and waiting ones are held, held ones queued again),
 `F OFTPD,PURGE [days]`
@@ -231,7 +424,8 @@ link list or in the logon procedure's `STEPLIB`, as in the `TSO` step of
 `OFTPBAT`.
 
 The commands are `SEND`, `LIST`, `SHOW`, `DELETE`, `HOLD`, `RELEASE`,
-`RETRY`, `CALL`, `PARTNERS` and `PURGE [DAYS(n)]`. `HOLD` and `RELEASE`
+`RETRY`, `CALL`, `PARTNERS`, `PARTNER` (maintaining the partner table,
+`docs/partners.md`) and `PURGE [DAYS(n)]`. `HOLD` and `RELEASE`
 take a transfer's key, or `PARTNER(name)` (`*` for all) and optionally
 `VFN(name)` or `VFN(prefix*)` for every send that matches and that you
 may change. `OFTP` needs no authorization of its own:
@@ -283,7 +477,20 @@ for example as an entry in a menu panel: a line for the option in the
 body, and `O,'CMD(OFTPI) NEWAPPL(OFTP)'` in its `TRANS` (replace `O` with
 the option you choose). The dialog reaches OFTPD the way `OFTP` does,
 through the SVC and with the same rules. Reading the partner member
-again after option 4 is for an administrator.
+again after option 4 is for an administrator. Option 3 maintains the
+partner table (`docs/partners.md`).
+
+## Upgrading
+
+**From 0.1.0:** the TCP control port is gone. Remove `CONTROLPORT=` from
+`OFTPPRM0` (OFTPD reports it as an unknown keyword with `OFTP010W`) and add
+`SVC=237`, without which the utilities and the dialog cannot reach OFTPD at
+all.
+
+**The procedure:** the sample procedure now has an `OFTPRCV` DD for the
+receive rules (section 6). If you take the new procedure over your old one,
+copy `OFTPRCV0` to your parmlib first, or delete the DD from your copy;
+otherwise the start fails with a JCL error for the missing member.
 
 ## Removing it
 

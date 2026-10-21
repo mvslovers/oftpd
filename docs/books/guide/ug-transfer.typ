@@ -97,16 +97,12 @@ A file can wait before it is sent.
 detail. An administrator sees all of them\; #cmd("LIST MINE") limits the list
 to one's own.
 
-#screen(```
-OFTP LIST
-T0000012 SEND QUEUED    MAC1     REPORT.TXT      IBMUSER.REPORT.TEXT
-T0000013 RECV CONFIRMED MAC1     DAILY           OFTP.IN.DAILY
-2 transfers
-```)
+#screen(raw(read("../ex/ug-transfer/list.txt")))
 
 Each line shows the key, whether it is a send or a receive, the state, the
-partner, the virtual file name and the data set. The example is what an
-administrator sees\; a user sees only the transfers the user queued. A send
+partner, the virtual file name and the data set. The virtual file name has a
+column of 26 characters. The example is what an administrator sees on the
+receiving system\; a user sees only the transfers the user queued. A send
 goes through these states.
 
 #tab(caption: [The states of a send])[

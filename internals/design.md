@@ -162,7 +162,7 @@ Grouped by purpose; field widths are fixed in the header file, not here.
   over the SVC only, never for a member, the caller checked for ALTER
   when it is queued; a NERP keeps the source), and *later* `COPY` (a
   snapshot taken when the send is queued, so the source may change
-  afterwards). rvs also renamed the source when queueing a DELETE; OFTPD
+  afterwards). The Other also renamed the source when queueing a DELETE; OFTPD
   does not, so a source changed before the EERP is deleted as it is.
 - **Restart**: last confirmed position (records for F/V, 1K blocks for
   U/T) and whatever is needed to resume the local data set at that point
@@ -201,25 +201,25 @@ QUEUED --> ACTIVE --> SENT ------> DELIVERED     (EERP received)
   that grows with the attempt count (`RETRY` times the attempts, at most
   a day). It clears itself. `HELD` is the **operator's or user's** hold and
   only a person releases it.
-- **Retry limit** (2026-10-13, after rvsMVS `MAXRETRY`/`TRANSHLD=YES`):
+- **Retry limit** (2026-10-13, after The Other `MAXRETRY`/`TRANSHLD=YES`):
   after `MAXRETRY` attempts (OFTPPRM, default 10, 0 = no limit) our own
   file goes to `HELD` -- not `FAILED`, so a person decides, and `RELEASE`
   or `RETRY` start the count again. A relayed file is given up instead:
   `REJECTED`, a NERP to the partner it came from, the copy deleted; a node
   has no one to release it, and the originator has to learn it (a level
   1.3 originator cannot: the engine drops the NERP). An attempt is a file
-  opened in a session (as rvs counts) **and** a call that did not reach
-  the partner -- unlike rvs, whose dial retries are counted apart, so that
+  opened in a session (as The Other counts) **and** a call that did not reach
+  the partner -- unlike The Other, whose dial retries are counted apart, so that
   a dead next hop ends in a NERP too. A partner not reached, or a call that
   ended in an error before any file (a wrong password, say: not counted),
   is not called again for `RETRY` seconds (CALL overrides); a partner
   that answered ESID 08 after a short pause instead (section 6.1). A file for a partner we do
   not call (no `HOST`) waits for the partner's call and is never counted.
   A stop of the monitor during a transfer does not count. Later, from
-  rvs: per-send `MAXRETRY`, a deadline (`ENDDATE`/`ENDTIME`) and a job
+  The Other: per-send `MAXRETRY`, a deadline (`ENDDATE`/`ENDTIME`) and a job
   when either fires (`ERRJOB`, with post-processing). An abend during a transfer leaves it `HELD`,
   not `WAITING`, so a failure that repeats does not loop.
-- **When a send may start** (2026-10-18, after rvs `STRTDATE`, `STRTTIME`,
+- **When a send may start** (2026-10-18, after the other's `STRTDATE`, `STRTTIME`,
   `SENDWIN`): `tstart` (not before) and `winfrom`/`winto` (a daily
   window) in the record; `send_due()` honours both, for the first attempt
   and every retry. The rules are portable (`src/oftp#sch.c`, `TSTSCH`).
@@ -245,7 +245,7 @@ INTERRUPTED
 
 ### 3.3.1 Housekeeping
 
-From rvsMVS's cleanup job, which deletes finished entries after a number
+From The Other's cleanup job, which deletes finished entries after a number
 of days and leaves pending ones alone (2026-10-18). A transfer is
 **finished** when nothing more happens to it by itself: `DELIVERED`,
 `CONFIRMED`, `REJECTED`, `FAILED`. `HELD`, `WAITING`, `SENT` and
@@ -281,7 +281,7 @@ nothing: the daily run is silent when it deletes none. Not observed: the
 second run 24 hours later, whose only part not shared with the first is
 `now - tpurge >= 86400`.
 
-Later, from rvs: a purge by partner, name or time range, and a backup of
+Later, from The Other: a purge by partner, name or time range, and a backup of
 the spool (a REPRO job in samplib).
 
 ### 3.4 Concurrency
@@ -316,13 +316,101 @@ negotiated per session (`SSIDREST`) and per file (`SFIDREST` / `SFPAACNT`).
 
 ## 4. The partner table
 
-*Decided* for the MVP: **a parmlib member** (`DD:OFTPPTN`), one entry per
-partner, read at startup and on `F OFTPD,REFRESH`. An entry with an error
-disables that partner with a message; it does not stop OFTPD. A refresh
-never deletes a partner that still has transfers in the spool. *Later*: maintenance by
-command and ISPF (rvsMVS had both a table and commands); whether that
-needs a KSDS is decided then. Each entry has an 8-character partner name,
-the name operators and users type.
+*Decided* (2026-10-20, #46): **the authoritative partner table is both
+the parmlib member and the spool, in layers, and the spool wins by name.**
+Each entry has an 8-character partner name, the name operators and users
+type.
+
+- **The parmlib layer** (`DD:OFTPPTN`) is the seed: one entry per partner,
+  read at startup and on `F OFTPD,REFRESH`. An entry with an error
+  disables that partner with a message; it does not stop OFTPD.
+- **The maintained layer** is what the partner commands make: one **P
+  record** in the spool KSDS per partner (key `P` + 7 digits, `OFTP_SPPTN`
+  in `include/oftpspl.h`), holding the entry as the same `KEYWORD=VALUE`
+  text, parsed at startup by the parser the parmlib uses. No second
+  format, no second parser. The P records are not transfers: `LIST`,
+  housekeeping and the purge never see them.
+- **By name the spool wins.** A partner in both layers is the maintained
+  one; the parmlib entry under it is shadowed (`OFTP018I` counts them, and
+  SHOW says "overrides OFTPPTN"). In the table `skey[0] != 0` marks a
+  maintained partner and `ovr` that the name is in OFTPPTN as well.
+  Changing a parmlib partner by command therefore creates the maintained
+  record that shadows it; deleting that record brings the parmlib entry
+  back at once.
+
+**Passwords.** The P record is the entry as text, so `PASSWORD=` and
+`OURPASSWORD=` are in the spool in clear text, as they are in `OFTPPTN`.
+The spool cluster and every backup or copy of it need the protection of
+the parmlib member (`docs/partners.md`, `docs/installation.md` 5). That is
+the reason `SHOW` and every reply print `SET` or `NONE` and never the
+value, and why the utility masks them in its `SYSIN` echo.
+
+**If the P records cannot be read at start**, OFTPD does not start
+(`OFTP019E`): carrying on with the parmlib layer alone would bring back a
+partner that a command had disabled or changed, which is the wrong way to
+fail.
+
+**Why the spool.** OFTPD is the sole owner of the spool and already keeps
+the restart state in it; a partner kept there survives a restart with no
+new data set to allocate, protect and back up, and the write goes through
+the one writer that exists. Rewriting the parmlib member from the monitor
+was rejected: OFTPD would need write authority on `SYS2.PARMLIB`, a
+hand-edited member and a command would race, and the comments and layout
+of the member would be lost.
+
+**REFRESH reads the parmlib layer only.** It re-reads OFTPPTN, adds,
+changes and disables parmlib partners as before, and **leaves every
+maintained partner alone**. A parmlib partner that was removed from the
+member is dropped only when it has no session and no transfer in the
+spool; otherwise it is disabled. To change a maintained partner, use the
+command.
+
+**Commands** (`PARTNER ADD|CHANGE|DELETE|SHOW`, section 7; `OFTP PARTNER
+...`; the ISPF dialog). ADD, CHANGE and DELETE are for an `ADMIN=` userid
+(507 otherwise); SHOW is open to everyone and never returns a password
+(`PASSWORD=SET` or `NONE`). Each works under `lock(m,0)` in this order:
+validate everything, write the spool record, change the table in memory.
+A failed spool write (451) leaves the table as it was.
+
+- ADD of a name that exists is 509; a keyword or value that does not
+  parse or check is 508, and nothing is written. A full table is 514.
+- CHANGE of a partner with a session or a call in progress is 450, unless
+  only `ENABLED` changes. A change that changes nothing (including ENABLE
+of an enabled partner) is answered 200 "unchanged", nothing is written.
+Disabling
+  a partner that an enabled partner names as `VIA` is 512.
+- **DELETE** takes maintained partners only (a parmlib-only partner is
+  513: remove it from the member and REFRESH). It is 450 while the
+  partner has a session or a call, and 512 while another partner is
+  reached through it. Otherwise it **disables the partner first** and
+  writes that, then scans the whole spool for a transfer that names it as
+  partner, target or origin, in any state: a finished transfer is still
+  the record of what was sent. If the scan finds one, the answer is 512
+  and the partner stays disabled, so nothing new is queued while the
+  operator decides; the transfers are deleted or purged and DELETE is
+  repeated. If it finds none (or cannot read the spool: 451), the record
+  is deleted and the table slot freed. A freed slot stays a gap in the
+  table (sessions and the call state work by index) until `ADD` or
+  `REFRESH` takes it again; whatever belonged to the old partner in the
+  slot -- the call timer, an operator's CALL, the trace flag -- is cleared
+  with it (`ptn_slot_reset`).
+- DELETE and REFRESH read the whole spool under `lock(m,0)`, which holds
+  up session set-up for that time. That is fine at the spool sizes of
+  today; an index by partner would be the answer if it stops being so.
+- A disabled partner takes no `SEND` (501) and is not called; its queue is
+  kept.
+
+Operator messages: `OFTP243I` added, `OFTP244I` changed, `OFTP245I`
+deleted (each with the userid), `OFTP018I/W` the maintained records at
+startup, `OFTP015W` table full.
+
+Measured on MVS (`test/mvs/tstptm.c`, two OFTPDs in a throwaway
+container): a partner that is in no parmlib member is added, changed,
+enabled, sent a file (DELIVERED, EERP back), refused its DELETE with the
+transfer in the spool, still there as changed after OFTPD was stopped and
+started (`OFTP018I 1 PARTNERS KEPT BY COMMAND`), and deleted once the
+transfer was. Not measured: the ISPF dialog (built, no script drives it
+yet), and a CHANGE that races a session.
 
 Attributes:
 
@@ -390,7 +478,7 @@ matches everything.
 
 V files with an LRECL above 32752 are refused with SFNA 05 (no spanned
 records in the MVP). *Later*: a naming pattern per partner with symbols such
-as `&PARTNER`, `&DATE`, `&TIME`, `&SEQ` (rvsMVS could be configured so).
+as `&PARTNER`, `&DATE`, `&TIME`, `&SEQ` (The Other could be configured so).
 
 Before EFPA: every write and the CLOSE must have succeeded (a full volume
 is only reported at CLOSE). Otherwise EFNA.
@@ -398,7 +486,7 @@ is only reported at CLOSE). Otherwise EFNA.
 ### 5.3 After receiving
 
 *Later*, but planned for: both a JCL member submitted with symbols
-substituted and a user exit, per partner or virtual file (rvsMVS had
+substituted and a user exit, per partner or virtual file (The Other had
 both). The spool record keeps the state needed so that adding it does not
 change the record layout: a post-processing state and return code.
 
@@ -421,7 +509,7 @@ connection idle 300 s, both configurable.
 
 *Decided* 2026-10-18 (#18). RFC 5024 limits neither the sessions to one
 partner nor says what happens when two stations call each other at the
-same moment. rvsMVS has a limit per station (`TCPSESS`, 1 to 99, default
+same moment. The Other has a limit per station (`TCPSESS`, 1 to 99, default
 1) under a global one (`TCPMAX`), and a call beyond the station's limit
 ends with ESID 08 (DF9429E). OFTPD follows that:
 
@@ -463,12 +551,12 @@ ends with ESID 08 (DF9429E). OFTPD follows that:
   ESID 03 keeps `RETRY`: it can be a real configuration error, and a
   partner on an older level answering 03 for busy is resolved by jitter,
   as before.
-- **`MODE=S|R|B`** is the RFC's SSIDSR and rvs `DIRECTN`; EERPs and
-  NERPs go both ways whatever the mode, as in rvs. rvs `DIRECTN=P` ("pay
+- **`MODE=S|R|B`** is the RFC's SSIDSR and the other's `DIRECTN`; EERPs and
+  NERPs go both ways whatever the mode, as in The Other. The Other's `DIRECTN=P` ("pay
   only for send data": send only when calling, both when called) exists
   because the caller paid for the line, which TCP/IP does not do: not
   adopted. Neither are a `RETRY` per partner, call windows (`DIALOPTS`)
-  or a switch against calling for an EERP alone (`EERPAD`; rvs itself
+  or a switch against calling for an EERP alone (`EERPAD`; The Other itself
   recommends calling).
 
 Measured for the first step (ESID 08 and the pause, `SESSIONS=1` only)
@@ -564,8 +652,9 @@ with it.
 Proposed protocol: line-based text, one request per line, numbered
 responses in the FTP manner (`2xx` done, `4xx` try later, `5xx` refused),
 multi-line output for lists. Verbs mirror the utility: `SEND`, `LIST`,
-`SHOW`, `HOLD`, `RELEASE`, `DELETE`, `RETRY`, `CALL`, `PARTNER
-ADD|CHANGE|DELETE|LIST`, `STATUS`.
+`SHOW`, `HOLD`, `RELEASE`, `DELETE`, `RETRY`, `CALL`, `PARTNERS`,
+`PARTNER ADD|CHANGE|DELETE|SHOW PARTNER=name KEYWORD=VALUE ...` (the
+keywords of `OFTPPTN`; `ENABLED=N` disables), `STATUS`.
 
 ### 7.1 Who is asking
 
@@ -599,7 +688,7 @@ OFTP LIST [PARTNER(MVS2)] [STATUS(QUEUED)]
 OFTP SHOW 0000042
 OFTP HOLD|RELEASE|DELETE|RETRY 0000042
 OFTP CALL MVS2
-OFTP PARTNER LIST|ADD|CHANGE|DELETE ...
+OFTP PARTNER LIST|SHOW|ADD|CHANGE|ENABLE|DISABLE|DELETE name ...
 ```
 
 Batch: several commands from `SYSIN`. Output through `*PUTLINE` in TSO,
@@ -613,13 +702,14 @@ F OFTPD,D SESSIONS | PARTNERS | QUEUE [partner]
 F OFTPD,CALL partner
 F OFTPD,STOP partner          (end that partner's sessions gracefully)
 F OFTPD,HOLD|RELEASE partner
-F OFTPD,REFRESH               (configuration, partner table if parmlib)
+F OFTPD,REFRESH               (configuration and the OFTPPTN partners;
+                               partners kept by command are left alone)
 F OFTPD,TRACE ON|OFF [partner]
 P OFTPD                       (stop accepting, end sessions at the next
                                file boundary, close the spool)
 ```
 
-`HOLD`/`RELEASE` of a partner (2026-10-18, after rvsMVS `H-ALL`, `S-ALL`,
+`HOLD`/`RELEASE` of a partner (2026-10-18, after The Other `H-ALL`, `S-ALL`,
 `S-sid[,name]`): every send to it -- `ALL`, or `PARTNER=*` from the
 utility, for every partner -- goes from `QUEUED` or `WAITING` to `HELD`,
 or from `HELD` back to `QUEUED` with its attempts reset; a name or a
@@ -704,7 +794,8 @@ How it is built (#47, `src/oftp#log.c`, `src/mvs/oftp#mon.c`):
 
 - **Q1** (*later*) Receiver restart: NOTE/POINT and rewrite, or work data
   set and copy?
-- ~~Q2~~ Partner table: parmlib member for the MVP; commands/ISPF later.
+- ~~Q2~~ Partner table: a parmlib seed plus a spool layer kept by command
+  and ISPF; the spool wins by name (section 4, #46).
 - **Q3** (*later*) Which partner attributes may a single send override?
 - ~~Q4~~ Received `U` → RECFM U, `T` → VB 255, long line fails (5.2).
 - ~~Q5~~ Received data sets under the virtual file name (5.2); patterns
@@ -718,7 +809,7 @@ How it is built (#47, `src/oftp#log.c`, `src/mvs/oftp#mon.c`):
 ## 11. Lessons from a mature product
 
 The design was checked against the documentation and libraries of
-rvsMVS 6.2 (the maintainer's former product), studied for concepts only.
+The Other 6.2, studied for concepts only.
 Adopted above: separate system and operator holds, `SENT` apart from
 `DELIVERED`, raw partner reason codes, receive under a temporary name,
 duplicate detection by file identity, receive rules with the MVP's naming

@@ -7,11 +7,13 @@
 #include "oftpcfg.h"
 
 static int msgs;
+static char lastmsg[256];
 
 static void
-count(void *ctx, const char *line)
+count(const void *ctx, const char *line)
 {
     (void)ctx;
+    snprintf(lastmsg, sizeof(lastmsg), "%s", line);
     printf("    (%s)\n", line);
     msgs++;
 }
@@ -134,6 +136,16 @@ main(void)
           "ACME via MVS2, never called itself");
     CHECK(oftp_cfg_byid(&c, "O0013000000ACME") == NULL,
           "a partner behind another is not accepted as a caller");
+    {
+        char where[32];
+
+        oftp_cfg_where(p, where, sizeof(where));
+        CHECK(strcmp(where, "VIA MVS2") == 0, "D P names the partner ACME goes through");
+        oftp_cfg_where(oftp_cfg_find(&c, "MVS2"), where, sizeof(where));
+        CHECK(strcmp(where, "mvs2.Example.org:13305") == 0, "a direct partner shows host:port");
+        oftp_cfg_where(oftp_cfg_byid(&c, "O0013000000PC"), where, sizeof(where));
+        CHECK(strcmp(where, "-:3305") == 0, "a partner without HOST shows -:port");
+    }
     CHECK(oftp_cfg_find(&c, "LOOP") == NULL, "VIA to a routed partner disabled");
     CHECK(oftp_cfg_find(&c, "GHOST") == NULL, "VIA to an unknown partner disabled");
     CHECK(msgs == 5, "five messages for the partner member");
@@ -175,6 +187,89 @@ main(void)
                  "KEEPDAYS above 9999 refused");
         CHECK_EQ(oftp_cfg_line(&k, 0, "KEEPDAYS=X", 1, count, NULL), 1,
                  "KEEPDAYS not a number refused");
+    }
+    /* a word of more than 99 characters turns its entry off: cut short,
+    ** PORT=0...0799 would have been PORT=0...07 (#113)
+    */
+    {
+        OFTP_CONFIG k;
+        char l[260];
+
+        oftp_cfg_defaults(&k);
+        strcpy(l, "PARTNER=LONG ODETTEID=O0013000000LONG ");
+        memset(l + strlen(l), '0', 98);
+        memcpy(l + strlen(l) - 98, "PORT=", 5);
+        strcpy(l + strlen(l), "799");
+        CHECK_EQ(oftp_cfg_line(&k, 1, l, 1, count, NULL), 1,
+                 "a word of 101 characters is one error");
+        oftp_cfg_finish(&k, count, NULL);
+        CHECK(oftp_cfg_find(&k, "LONG") == NULL,
+              "and its partner is off, not running on a cut value");
+    }
+    /* a word that is not KEYWORD=VALUE is named by its place, not shown:
+    ** after PASSWORD=ab the word cd is the rest of a password (#121)
+    */
+    {
+        OFTP_CONFIG k;
+
+        oftp_cfg_defaults(&k);
+        lastmsg[0] = '\0';
+        CHECK_EQ(oftp_cfg_line(&k, 1, "PARTNER=PW ODETTEID=O1 PASSWORD=ab cd",
+                               7, count, NULL), 1, "a word without '=' is one error");
+        CHECK(strstr(lastmsg, "cd") == NULL && strstr(lastmsg, "ab") == NULL,
+              "the message shows none of the words");
+        CHECK(strcmp(lastmsg, "line 7: word 4 is not KEYWORD=VALUE") == 0,
+              "but where it is");
+    }
+    /* a relayed file: the route was found without the lock, and the check
+    ** under it must refuse a partner disabled since, and read the final
+    ** partner's name only then (#121)
+    */
+    {
+        OFTP_CONFIG k;
+        OFTP_PARTNER *next, *fin;
+        char nextname[9], tname[9];
+
+        oftp_cfg_defaults(&k);
+        oftp_cfg_line(&k, 1, "PARTNER=GW ODETTEID=O0013000000GW", 1, count, NULL);
+        oftp_cfg_line(&k, 1, "PARTNER=FAR ODETTEID=O0013000000FAR VIA=GW", 2,
+                      count, NULL);
+        oftp_cfg_finish(&k, count, NULL);
+        next = oftp_cfg_route(&k, "O0013000000FAR", &fin);
+        CHECK(next != NULL && fin != NULL && next != fin, "FAR is reached through GW");
+        if (next != NULL && fin != NULL && next != fin) {
+            snprintf(nextname, sizeof(nextname), "%s", next->peer.name);
+            tname[0] = 'x';
+            CHECK_EQ(oftp_cfg_relay_live(next, nextname, fin, "O0013000000FAR",
+                                         tname, sizeof(tname)), 1,
+                     "both partners enabled: the route stands");
+            CHECK(strcmp(tname, "FAR") == 0, "and the final name is copied");
+            fin->enabled = 0;
+            tname[0] = 'x';
+            CHECK_EQ(oftp_cfg_relay_live(next, nextname, fin, "O0013000000FAR",
+                                         tname, sizeof(tname)), 0,
+                     "the final partner disabled since: no route");
+            CHECK(tname[0] == '\0', "and no name is handed out");
+            fin->enabled = 1;
+            CHECK_EQ(oftp_cfg_relay_live(next, nextname, fin, "O0013000000OTHER",
+                                         tname, sizeof(tname)), 0,
+                     "the slot no longer holds the partner of that ID: no route");
+            next->enabled = 0;
+            CHECK_EQ(oftp_cfg_relay_live(next, nextname, fin, "O0013000000FAR",
+                                         tname, sizeof(tname)), 0,
+                     "the gateway disabled since: no route");
+            next->enabled = 1;
+            CHECK_EQ(oftp_cfg_relay_live(next, "OTHER", fin, "O0013000000FAR",
+                                         tname, sizeof(tname)), 0,
+                     "the gateway's slot holds another partner now: no route");
+            CHECK_EQ(oftp_cfg_relay_live(fin, fin->peer.name, fin,
+                                         "O0013000000FAR", tname, sizeof(tname)),
+                     1, "a direct partner is its own route");
+            CHECK(tname[0] == '\0', "with no separate final name");
+            CHECK_EQ(oftp_cfg_relay_live(fin, fin->peer.name, fin,
+                                         "O0013000000OTHER", tname, sizeof(tname)),
+                     0, "a direct partner whose ID changed since the lookup: no route");
+        }
     }
     return mbt_test_summary("TSTCFG");
 }

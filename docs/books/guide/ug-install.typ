@@ -47,8 +47,8 @@ After the installation you do five things.
 + Define the spool with the sample job.
 + Copy the sample members to your parameter library and edit them, as shown in
   @ug-partners. #cmd("OFTPRCV0") holds the receive rules and consists of
-  comments only\; the procedure needs it even if you want no rules (see
-  @xfer-rules).
+  comments only. The sample procedure points a DD at it\; OFTPD itself does not
+  need the DD, and without it there are no rules (see @xfer-rules).
 + Copy the sample procedure to your procedure library. It starts the monitor, as
   shown in @ug-monitor.
 + For the dialog, add its two libraries to the ISPF allocations.
@@ -60,7 +60,13 @@ STEPLIB of the job, or in the link list, or in the logon procedure. See
 == Upgrading <inst-upgrade>
 
 #idx("upgrading")
-The sample procedure of release 1.0.0 has a DD #cmd("OFTPRCV") for the receive
+*From 0.1.0.* The TCP control port is gone. Remove the keyword
+#cmd("CONTROLPORT") from #cmd("OFTPPRM0")\; OFTPD reports it as an unknown
+keyword with #cmd("OFTP010W") and skips it. Add #cmd("SVC=237"), or another
+free number of the range 200 to 255. Without it the utility and the dialog
+cannot reach the monitor (see the keyword #cmd("SVC") in the Reference).
+
+*The procedure.* The sample procedure of release 1.0.0 has a DD #cmd("OFTPRCV") for the receive
 rules (@xfer-rules). If you take the new procedure over your old one, copy
 #cmd("OFTPRCV0") to your parameter library first, or delete the DD from your
 copy\; otherwise the monitor starts without rules and says nothing about the

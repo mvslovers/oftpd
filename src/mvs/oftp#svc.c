@@ -30,9 +30,10 @@
 ** read rather than assumed: RETREL (a served caller), FREEDEC (every
 ** error exit) and STOPDEC (woken with ACTIVE off) all set FREE and
 ** decrement in the routine, so OFTPD must do neither for those. SWEPT
-** -- the routine losing its CS from DONE -- stores nothing and
-** decrements nothing, which is exactly the case where OFTPD's sweep
-** took the slot and therefore owes the decrement. A second decrement
+** -- the routine losing its CS from DONE, or finding that the slot's
+** claim number is not the one it stored at claim time (#124) -- stores
+** nothing and decrements nothing, which is exactly the case where
+** OFTPD's sweep took the slot and therefore owes the decrement. A second decrement
 ** would take the count below zero (the BCTR loops do not guard) and
 ** leave every later P OFTPD draining forever.
 */
@@ -169,6 +170,16 @@ state_cas(OFTP_SLOT *s, unsigned from, unsigned to)
     return __cas((unsigned *)&s->state, &have, to) == 0;
 }
 
+/* Request and reply out of a slot. Key 0, and only for a slot whose state
+** this side holds: once it is FREE a new caller may be writing into it.
+*/
+static void
+wipe_slot(OFTP_SLOT *s)
+{
+    memset(s->req, 0, sizeof(s->req));
+    memset(s->reply, 0, sizeof(s->reply));
+}
+
 /* One caller less inside the routine. Only ever called after this side
 ** has WON a state_cas() that freed a slot -- see the file header. The
 ** floor is not defensive tidiness: the routine's own BCTR loops have
@@ -183,6 +194,25 @@ dec_inflight(OFTP_ANCHOR *a)
     while (have != 0)
         if (__cas((unsigned *)&a->inflight, &have, have - 1) == 0)
             return;
+}
+
+/* A DONE slot nobody will collect, to FREE. It goes through COPYOUT
+** first: the routine takes a slot out of DONE with the same CS, so a
+** caller that wakes now finds it taken (SWEPT) and touches nothing,
+** and the wipe cannot meet a copy-out. 1 when this side freed it: the
+** decrement belongs to whoever wins the last CS, so a slot found not in
+** COPYOUT any more is not counted down here.
+*/
+static int
+free_done(OFTP_ANCHOR *a, OFTP_SLOT *s)
+{
+    if (!state_cas(s, OFTP_SL_DONE, OFTP_SL_COPYOUT))
+        return 0;
+    wipe_slot(s);
+    if (!state_cas(s, OFTP_SL_COPYOUT, OFTP_SL_FREE))
+        return 0;
+    dec_inflight(a);
+    return 1;
 }
 
 /* Whether the caller that claimed slot s is gone (#36). Key 0, with the
@@ -629,6 +659,9 @@ oftp_svc_take(OFTP_MON *m, unsigned i, OFTP_SVCJOB *j)
     ** and whoever frees a slot owns its in-flight decrement.
     */
     if (s->state == OFTP_SL_PENDING && caller_gone(m->anchor, s)) {
+        /* wiped before the slot is free: once it is, a new caller may
+        ** be writing its request into it */
+        memset(s->req, 0, sizeof(s->req));
         if (state_cas(s, OFTP_SL_PENDING, OFTP_SL_FREE)) {
             dec_inflight(m->anchor);
             gone = 1;
@@ -645,6 +678,9 @@ oftp_svc_take(OFTP_MON *m, unsigned i, OFTP_SVCJOB *j)
         memcpy(j->req, s->req, n);
         j->user[8] = '\0';
         j->req[n]  = '\0';
+        /* a PARTNER request can carry a password, and the slot is
+        ** readable from key 8: what was copied does not stay */
+        memset(s->req, 0, sizeof(s->req));
         got = 1;
     }
     __prob(savekey, NULL);
@@ -777,13 +813,11 @@ oftp_svc_sweep(OFTP_MON *m)
             ** cannot see.
             */
             if (caller_gone(m->anchor, s)
-                && state_cas(s, OFTP_SL_DONE, OFTP_SL_FREE)) {
-                dec_inflight(m->anchor);
+                && free_done(m->anchor, s)) {
                 left |= 1u << i;
             } else if (s->stamp != 0 && now > s->stamp
                 && now - s->stamp > OFTP_SW_DONE_SEC
-                && state_cas(s, OFTP_SL_DONE, OFTP_SL_FREE)) {
-                dec_inflight(m->anchor);
+                && free_done(m->anchor, s)) {
                 aged |= 1u << i;
             }
         } else {
@@ -868,6 +902,26 @@ ssct_drop(OFTP_MON *m)
     ssct_remove(m->ssct);
     __prob(savekey, NULL);
     m->ssct = NULL;
+}
+
+/* Every slot's request and reply out of CSA, for the stop: what a caller
+** never collected, or a request that parked and was never taken, would
+** stay in storage that is free to anyone afterwards. Only when nobody is
+** inside the routine any more.
+*/
+void
+oftp_svc_scrub(OFTP_MON *m)
+{
+    unsigned char savekey;
+    unsigned      i;
+
+    if (m == NULL || m->anchor == NULL)
+        return;
+    if (__super(PSWKEY0, &savekey) != 0)
+        return;
+    for (i = 0; i < OFTP_SVC_NSLOT; i++)
+        wipe_slot(&m->anchor->slot[i]);
+    __prob(savekey, NULL);
 }
 
 /* Stop: clear ACTIVE, drain, give the slot back, read it back, and only
@@ -982,6 +1036,7 @@ oftp_svc_stop(OFTP_MON *m)
         return;
     }
 
+    oftp_svc_scrub(m);
     if (__super(PSWKEY0, &savekey) == 0) {
         if (m->svc_lpa != NULL)
             freemain(m->svc_lpa);

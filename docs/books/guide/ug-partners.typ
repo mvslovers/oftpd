@@ -178,18 +178,21 @@ F OFTPD,REFRESH
 ```)
 
 at the console, or, as an administrator, choose the option to configure in the ISPF dialog,
-which reads the member again when the edit ends. OFTPD adds new partners, replaces the
-entries that have changed, and disables the partners that are no longer in the
-member. It answers with message #cmd("OFTP016I"), which gives the number of
-partners enabled, new and disabled. The command reads the receive rules again
-too (see @xfer-rules).
+which reads the member again when the edit ends. OFTPD adds new partners and
+replaces every partner that is still in the member by its entry. A partner that
+you took out of the member leaves the table and frees its place\; if a transfer
+in the spool still names it or a session of it is running, OFTPD disables it
+instead, and a later refresh takes it out. OFTPD answers with message
+#cmd("OFTP016I"), which gives the number of partners enabled, new, disabled
+and removed. The command reads the receive rules again too (see
+@xfer-rules).
 
-Two limits apply to this. A partner that you removed keeps its place in the
-table, disabled, until the monitor is started again. The table has 32 places, so
-after many changes it can be full, and OFTPD then writes #cmd("OFTP015W") and
-does not add the partner. Restart the monitor when that happens. Keep the member
-to at most 32 partners in any case\; a further #cmd("PARTNER=") is refused, but
-the keywords after it still go to the last partner.
+The table has 32 places. If it is full, OFTPD writes #cmd("OFTP015W") and does
+not add the partner\; remove a partner from the member and refresh again. A
+partner that stays in the table because a transfer names it needs that
+transfer deleted first. Keep the member to at most 32 partners in any
+case\; a further #cmd("PARTNER=") is refused, but the keywords after it still go
+to the last partner.
 
 A change to #cmd("OFTPPRM") needs a restart.
 

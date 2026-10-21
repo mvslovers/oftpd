@@ -296,8 +296,7 @@ still there under its own name, because nothing touches it before the file is
 complete. In addition:
 
 - *Only a plain sequential data set can be replaced.* If the name is that of a
-  partitioned data set, of a VSAM cluster, or of a member, OFTPD does not
-  touch it. It refuses the file at its start with the reason code 12 and
+  partitioned data set or of a VSAM cluster, OFTPD does not touch it. It refuses the file at its start with the reason code 12 and
   #cmd("OFTP234W"), and tells the sender not to try again. If the data set
   changes into such a name while the file is arriving, the file is refused at
   its end with #cmd("OFTP226E").

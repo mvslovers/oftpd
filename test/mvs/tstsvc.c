@@ -356,5 +356,46 @@ main(int argc, char **argv)
               "and no call is left in flight");
     }
 
+    /* 8. **What the routine leaves in the slots** (#121). A request can
+    ** carry a password and a reply holds whatever the handler said; the
+    ** slots are CSA, readable from key 8. Every exit of the routine --
+    ** the normal one and the refusals after the claim -- wipes request
+    ** and reply before it frees the slot, so after calls that used the
+    ** pool more than once over, no slot holds a byte of either. The
+    ** anchor's count of answers must have moved, so the check cannot
+    ** pass on slots that were never used.
+    */
+    {
+        SSCT        *ssct = ssct_find(OFTP_SVC_SSNAME);
+        OFTP_ANCHOR *anc  = (OFTP_ANCHOR *)ssct->ssctsuse;
+        unsigned     i, k, dirty = 0, served = anc->served;
+
+        for (k = 0; k < 2 * OFTP_SVC_NSLOT; k++) {
+            memset(buf, 0, sizeof(buf));
+            len = 0;
+            rc = oftp_svc_call("NOSUCHREQUEST PASSWORD=SECRET8", buf,
+                               sizeof(buf), 0, &len, NULL);
+            if (rc != OFTP_SVC_OK)
+                break;
+        }
+        memset(buf, 0, sizeof(buf));
+        len = 0;
+        rc = oftp_svc_call("STATUS", buf, sizeof(buf), 0, &len, NULL);
+        CHECK_EQ(rc, OFTP_SVC_OK, "STATUS answers once more");
+        CHECK(anc->served > served, "and the pool was used");
+        CHECK(pool_idle(anc), "every slot is FREE again");
+        for (i = 0; i < OFTP_SVC_NSLOT; i++) {
+            unsigned j;
+
+            for (j = 0; j < sizeof(anc->slot[i].req); j++)
+                if (anc->slot[i].req[j] != 0)
+                    dirty++;
+            for (j = 0; j < sizeof(anc->slot[i].reply); j++)
+                if (anc->slot[i].reply[j] != 0)
+                    dirty++;
+        }
+        CHECK_EQ((int)dirty, 0, "and none holds a byte of a request or a reply");
+    }
+
     return mbt_test_summary("TSTSVC");
 }
