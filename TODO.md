@@ -306,12 +306,41 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   `docs/messages.md`. Not done: a log viewer, log switching, size limits.
 - ~~`docs/`: a configuration guide beside `docs/installation.md`~~ -- in the
   books (#63).
+- ~~Partner maintenance by command and ISPF~~ (#46): `PARTNER
+  ADD|CHANGE|DELETE|SHOW` over the SVC, `OFTP PARTNER ...`, the dialog's
+  partner list and entry panels; the partners kept by command are P
+  records in the spool and win over `OFTPPTN` by name, `REFRESH` reads
+  `OFTPPTN` only (design 4). A partner with transfers in the spool is
+  never deleted. Measured (container, 2026-10-20, after the review
+  fixes; after the security review A is 60/60 and `TSTSPL` 64/64, the
+  rest unchanged): `TSTPTM` A 29/29, P1 10/10, P2 4/4, B 13/13, C 8/8 (two
+  OFTPDs: add, change, send, refused delete, OFTPPTN partners, REFRESH,
+  restart, delete, non-admin refusals), `TSTPTN`, `TSTSPL`; the trace of
+  a deleted partner is gone from the slot a new one takes (by hand,
+  console). **Not measured**: the ISPF panels and `OFTPI` (built,
+  nothing drives them; `test/tso/` has no script for them yet).
+  Review follow-up (#113, container, 2026-10-20): `DELETE` and `REFRESH`
+  walk the spool outside the monitor lock (they held it 4 to 9 s at 3000
+  records, about 1.4 to 2.4 ms a record); a session set-up during a
+  `DELETE` walk waited 6.1 s before, 80 ms (the idle figure) after.
+  `TSTPTM` A 61/61, P1/P2/B/C unchanged, `TSTTAKE` 9/9.
+  ~~`PASSWORD` empty means an open partner~~ (#129): still allowed;
+  `PARTNER ADD`/`CHANGE` of an enabled partner that ends up without a
+  `PASSWORD` answers `210` plus a `100 WARNING` row (batch RC 4). A
+  partner from `OFTPPTN` without `PASSWORD` is open the same way and
+  gets no warning (the member is not a command).
+  ~~`PARTNER SHOW` shows ADDRESS and OURID to every user~~ (#129): for
+  a caller without `ADMIN=` both print `-`, the line keeps its shape.
+  Measured (container, 2026-10-21): `TSTPTM` A 69/69, P1 11/11, P2 4/4,
+  B 13/13, C 10/10; before the change A 66/69 and C 8/10 (the new
+  checks). The ISPF partner editor takes any `2xx` as done (it read RC 0 only,
+  so a `210` left it in the entry panel); changed by reading, **not
+  driven**: nothing in `test/` runs the dialog.
 - Books ML09-0001 (User's Guide) and ML09-0002 (Reference): ~~skeleton
   and CI~~ -- #64 (`docs/books`, `books.yml`); ~~chapters, the message
   reference with its check~~ -- #63, for the state of `main`. To add when
-  they are merged: partner maintenance, receive rules and the job after
-  receipt. To settle with the maintainer:
-  whether `docs/messages.md` goes (the books replace it).
+  they are merged: partner maintenance and receive rules. To settle with
+  the maintainer: whether `docs/messages.md` goes (the books replace it).
 - ~~GitHub repository, CI~~ — `mvslovers/oftpd` (2026-10-13).
 
 - ~~#13: about 520 bytes per session abend~~ -- libc370's `try()`
