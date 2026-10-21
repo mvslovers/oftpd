@@ -114,7 +114,7 @@ transfers, however recent.
 
 Housekeeping deletes records of the spool, nothing else. The data sets of the
 files that were received, and the data sets that were sent, are never deleted by
-OFTPD. It is your job to clean up the data sets under #cmd("INPREFIX"), and the
+housekeeping. It is your job to clean up the data sets under #cmd("INPREFIX"), and the
 data sets that you sent if you did not use #cmd("DISP(DELETE)"). A transfer that
 is not finished (queued, waiting, held, sent, received) is not deleted by
 housekeeping, however old. A file that is #cmd("SENT") without the receipt ever

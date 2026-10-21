@@ -161,7 +161,7 @@ deletes the finished transfers from the spool whose last change is older than
 #cmd("DELIVERED"), #cmd("CONFIRMED"), #cmd("REJECTED") or #cmd("FAILED"). The
 operator command #cmd("F OFTPD,PURGE") and the utility command #cmd("PURGE")
 do the same on request. Only the spool records are deleted. The data sets of
-received files and the files that were sent are never deleted by OFTPD.
+received files and the files that were sent are never deleted by housekeeping.
 
 OFTPD writes message #cmd("OFTP235I") when the daily housekeeping has deleted
 something, and for every request. It writes #cmd("OFTP236E") if the spool
