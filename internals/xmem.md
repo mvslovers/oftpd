@@ -1575,7 +1575,7 @@ on the stand: `HERC01.OFTPD.V0R1M0D.TESTLIB` from `mbt test --mvs`.
 - **Two RAKF userids on a stand**: m38b ran HERC01 only. The container
   covered HERC02.
 - ~~**A caller without an ACEE**, which owns nothing by this rule.~~ Run
-  in section 18.
+  in section 19.
 - ~~**`SEND` reads the data set with OFTPD's authority, not the
   caller's.**~~ Checked at queue time since section 14: over the SVC,
   OFTPD asks RACHECK whether the caller may read the data set.
@@ -1621,7 +1621,7 @@ The check writes nothing to the console: RACINIT and the RACHECK
 IEBGENER control.
 
 A caller without an ACEE, and a system without a security product, are
-run in section 18.
+run in section 19.
 
 
 ## 15. The failure cases, measured (2026-10-19, #34)
@@ -2102,7 +2102,7 @@ bounds how long finished transfers stay in it.
   time here. The sweep of section 11 is not involved.
 - TK5: not run.
 
-## 18. A caller without an ACEE, a system without a security product (2026-10-20, #54)
+## 19. A caller without an ACEE, a system without a security product (2026-10-20, #54)
 
 Sections 13 and 14 left two cases read off the code: a caller whose
 address space has no ACEE, and a system with no security product. Both
