@@ -432,13 +432,15 @@ operand at most. A second one, as in `F OFTPD,HOLD P1,P2`, is refused with
 task: a first step defines the spool if it does not exist yet, the second
 runs OFTPD until `P OFTPD`. Edit the names, the volume, the Odette ID and the
 partner in it, as its comments say; it takes the settings in-stream, not
-from the parmlib.
+from the parmlib. **Its `STEPLIB` names `OFTPD.DEV.LINKLIB`, the library of
+development builds.** An SMP installation has only `OFTPD.LINKLIB`
+(section 3): change the `STEPLIB` to it, and authorize it as section 4
+says. A development library has no place on a production system.
 
 **Keep `TIME=1440` on the `EXEC` of OFTPD.** The step time limit of a batch
-job is a limit on CPU time, and OFTPD collects CPU time for as long as it
-runs. With the JES2 default (100 seconds of CPU on the system this was
-measured on) the step ends with `S322` once that is used up, while OFTPD is
-working. OFTPD then reports `OFTP098E OFTPD ABEND, n SOCKETS CLOSED, SVC
+job is a limit on CPU time, and OFTPD uses CPU when it works. With the JES2
+default (100 seconds of CPU on the system this was measured on) the step
+ends with `S322` once that is used up. OFTPD then reports `OFTP098E OFTPD ABEND, n SOCKETS CLOSED, SVC
 RESTORED`. The sample procedure `OFTPD` (section 7) has `TIME=1440` on its
 `EXEC` too; keep it in a procedure of your own.
 
@@ -502,8 +504,8 @@ finished transfer, however recent.
 > the whole spool again, so the time grows with the square of the number of
 > transfers in the spool. On a short spool the delay is small. On a
 > long one a `LIST` can take seconds, and longer while the system is busy.
-> `SHOW`, `DELETE` and `STATUS` stay fast on a long spool. Until this is
-> fixed, keep the spool short:
+> `SHOW`, `DELETE` and `STATUS` do not grow with the spool the way `LIST`
+> does. Until this is fixed, keep the spool short:
 > `KEEPDAYS` (section 5) bounds how long finished transfers stay, and
 > `PURGE` (an administrator's command) deletes them at once.
 
