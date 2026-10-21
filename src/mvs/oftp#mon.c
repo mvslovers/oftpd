@@ -2247,6 +2247,7 @@ typedef struct {
     int         slot;
     int         ovr;                    /* DELETE: OFTPPTN has the name  */
     int         nopw;                   /* enabled, and no PASSWORD      */
+    int         addr;                   /* and an ADDRESS is checked    */
     char        out[160];
 } PTNREQ;
 
@@ -2447,6 +2448,7 @@ ptn_save(OFTP_MON *m, PTNREQ *q, int adding)
     }
     ptn_put(m, i, &n);
     q->nopw = n.enabled && n.peer.pswd_in[0] == '\0';
+    q->addr = n.address[0] != '\0';
     if (adding)
         ptn_slot_reset(m, i);
     else
@@ -2480,7 +2482,11 @@ ptn_report(OFTP_MON *m, CTLOUT *o, PTNREQ *q, const char *sub)
              q->nopw ? "210" : "200", q->name,
              sub[0] == 'A' ? "added" : "changed",
              q->nopw ? ", but it has no PASSWORD" : "");
-    if (q->nopw)
+    if (q->nopw && q->addr)
+        ctl_put(o, "100 WARNING: without a PASSWORD every peer calling from "
+                "the ADDRESS of the partner that knows the Odette ID can "
+                "log on");
+    else if (q->nopw)
         ctl_put(o, "100 WARNING: without a PASSWORD every peer that knows "
                 "the Odette ID of the partner can log on");
 }
