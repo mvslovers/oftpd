@@ -460,11 +460,22 @@ no translation. For a partner that is there, the panel shows its values. It show
 the passwords as *(set)* or *(none)*, never as text. A blank password keeps the
 password as it is\; type a new one to replace it. Another field that you leave
 as it is stays as it is, and a blank Host, Address or Via is cleared. Enter
-saves, and END leaves the panel without saving. If OFTPD refuses the change, the
-reason is on the panel, and you can correct the entry. If OFTPD takes the entry
-but the partner is enabled and has no password, the panel ends as for any
-other entry that is taken, and the message ends with #cmd("but it has no PASSWORD").
-The dialog does not show the longer warning that the utility writes. On an 80-column screen
+saves, and END leaves the panel without saving.
+
+When OFTPD takes the entry, the entry panel ends and the answer stands in the
+message line of the partner list. Any answer with a code from 200 to 299 counts
+as taken, #cmd("210") too\: for an enabled partner without a password the
+message is #cmd("partner MAC2 added, but it has no PASSWORD"). The dialog shows
+only the last line of the answer, not the line with the warning that the
+utility writes before it. The line commands *E* and *X* show their answer in
+the same place.
+
+Any answer that is not a code from 200 to 299 keeps the entry panel open, with
+the answer as its message, and you can correct the entry. That is a refusal
+by OFTPD, or OFTPD busy, or OFTPD not reached, or an answer that ends before its
+last line (#cmd("incomplete answer from OFTPD")) and so carries no code.
+
+On an 80-column screen
 the message line has 80 columns, and a longer answer is cut\; the answer of a refused
 #cmd("DELETE") is one of these. The command #cmd("OFTP PARTNER DELETE") gives
 the whole answer.

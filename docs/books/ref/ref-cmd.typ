@@ -333,7 +333,16 @@ with #cmd(", but it has no PASSWORD") (the code 210), and a line before it
 warns that every peer that knows the Odette ID of the partner can log on. If the
 partner has an #cmd("ADDRESS"), the line says instead that every peer that
 calls from that address and knows the Odette ID can log on. Set a password with
-#cmd("CHANGE").
+#cmd("CHANGE"). @cfg-nopw explains what a partner without a password allows.
+
+The warning is given when the command stores an entry that is enabled and has
+no #cmd("PASSWORD"). #cmd("ENABLE") is a #cmd("CHANGE") of #cmd("ENABLED"), so
+it warns when it enables such a partner. There is no warning when the partner
+has a #cmd("PASSWORD") after the command, when it is disabled, and when the
+command changes nothing (#cmd("unchanged")). For a partner with a #cmd("VIA")
+the warning is only a hint, because that partner is never matched at log-on
+(see @cfg-via). A partner of the member #cmd("OFTPPTN") without
+#cmd("PASSWORD") gets no warning, because reading the member is not a command.
 
 === SHOW <cmd-partner-show>
 
@@ -347,8 +356,12 @@ with #cmd("ODETTEID") and #cmd("OURID")\; #cmd("HOST"), #cmd("PORT"),
 #cmd("OURPASSWORD"). The passwords are never shown\: each one reads
 #cmd("SET") or #cmd("NONE"). For a user who is not an administrator,
 #cmd("OURID") and #cmd("ADDRESS") read #cmd("-"), and the lines keep their
-shape. The sixth line starts with #cmd("source:") and
-tells where the partner comes from\: #cmd("OFTPPTN"), #cmd("kept by command"),
+shape. This hides only an #cmd("OURID") that differs from the default, the
+Odette ID of OFTPD itself, because that one is shown to every user in the
+status of the monitor. The other fields stay visible to every user\; only #cmd("PARTNER SHOW")
+hides these two. The #cmd("SHOW") of a transfer (@cmd-show) gives the
+Odette IDs the transfer carries to every user who may see that transfer. The
+sixth line starts with #cmd("source:") and tells where the partner comes from\: #cmd("OFTPPTN"), #cmd("kept by command"),
 or #cmd("kept by command, overrides OFTPPTN"), followed by the number of
 sessions the partner has now. The answer ends with #cmd("partner").
 
@@ -527,10 +540,13 @@ commands come from #cmd("SYSIN"), it ends with the highest.
   #table(columns: (0.8in, 1fr),
     [Code], [Meaning],
     [0], [The command was carried out.],
-    [4], [A warning, or refused for now: the data set is empty\; there is no
+    [4], [Two meanings. The command was not carried out and may be tried
+      again\: there is no
       such transfer\; the transfer is in a session\; the transfer changed
       meanwhile\; OFTPD is busy\; the spool
-      or storage is not available.],
+      or storage is not available. Or it was carried out with a warning
+      (the code 210)\: the data set is empty, or the partner has no
+      #cmd("PASSWORD"). The text of the last line of the answer says which.],
     [8], [An error in the command or in its data set: an operand is wrong or
       too long, the data set is not found, not allowed or cannot be opened,
       the state does not allow the change, it is not your transfer, the user

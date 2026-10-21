@@ -221,11 +221,13 @@ partner, and reports it with message #cmd("OFTP010W").
     up to 25 characters. It must be unique in the table. A caller is
     recognized by it.],
   [#cmd("PASSWORD")], [The password the partner presents to OFTPD, up to 8
-    characters. Default: none.],
+    characters. Default: none, which means that OFTPD expects an empty
+    password, in both directions of a call (see @cfg-nopw).],
   [#cmd("OURPASSWORD")], [The password OFTPD presents to the partner, up to 8
-    characters. Default: none.],
+    characters. Default: none, an empty password.],
   [#cmd("OURID")], [The Odette identification that OFTPD uses towards this
-    partner. Default: the #cmd("ODETTEID") from #cmd("OFTPPRM"). A file for
+    partner. Default: the #cmd("ODETTEID") from #cmd("OFTPPRM"), so an entry
+    without #cmd("OURID") has that value. A file for
     this identification is accepted from this partner, as well as one for
     the #cmd("ODETTEID") of #cmd("OFTPPRM").],
   [#cmd("HOST")], [The host name or the dotted address under which OFTPD
@@ -280,12 +282,41 @@ partner, and reports it with message #cmd("OFTP010W").
     the partner, up to the limit and up to #cmd("MAXSESS").],
 )
 
+=== A Partner Without a Password <cfg-nopw>
+
+#idx("PASSWORD", "none")#idx("password", "empty")
+A partner without #cmd("PASSWORD") is allowed. OFTPD then expects an empty
+password from it, and the check holds in both directions\:
+
+- When the partner calls OFTPD, a peer that sends the Odette ID of the partner
+  and an empty password logs on. A peer that sends a password is refused
+  (#cmd("OFTP290W wrong password from name"), reason code 04). So every peer
+  that knows the Odette ID of the partner can log on. With an #cmd("ADDRESS")
+  in the entry, the call must also come from that address
+  (#cmd("OFTP201W") otherwise)\; without one it may come from anywhere.
+- When OFTPD calls the partner, the answer of the partner must carry an empty
+  password too. A partner that insists on a password while its entry has none
+  fails the call (#cmd("OFTP290W partner password does not match"), reason
+  code 04).
+
+#cmd("PASSWORD") is what OFTPD expects, and #cmd("OURPASSWORD") is what it
+sends.
+
+The command #cmd("PARTNER") warns when it leaves an enabled partner without
+a password (see @cmd-partner-ops). Reading the member #cmd("OFTPPTN"), at the
+start or at #cmd("REFRESH"), is not a command: a partner of the member without
+#cmd("PASSWORD") is just as open and gets no warning. Check the member for
+entries without #cmd("PASSWORD").
+
 === Partners Reached Through Another Partner: VIA <cfg-via>
 
 #idx("VIA")
 A partner with #cmd("VIA=name") is never called, and a caller is never
 identified as this partner. Its #cmd("HOST"), #cmd("PORT") and passwords are
-therefore not used\; OFTPD does not refuse them if the entry has them. OFTPD sends the files for it
+therefore not used\; OFTPD does not refuse them if the entry has them. The
+Odette ID of the partner is never matched at log-on, so the partner cannot log
+on with it. For such a partner, the warning of the #cmd("PARTNER") command
+about a missing password (@cfg-nopw) is only a hint. OFTPD sends the files for it
 in a session with the partner #cmd("name"), addressed to the Odette ID of the
 final partner. #cmd("name") must be a direct partner that is enabled. Only
 one level is allowed: if #cmd("name") is not an enabled direct partner,

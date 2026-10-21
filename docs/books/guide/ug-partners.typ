@@ -243,13 +243,22 @@ Five points matter in daily use.
   from (the member, or kept by command), and whether the passwords are set. It
   never shows a password. To change a password, give the new one. A user who
   is not an administrator sees a dash in place of #cmd("OURID") and
-  #cmd("ADDRESS").
+  #cmd("ADDRESS"). #cmd("OURID") is the Odette ID of OFTPD itself unless you
+  gave another, so the dash hides something only for a partner with an
+  #cmd("OURID") of its own.
 - *A partner without a password.* If you add or change a partner so that it is
   enabled and has no #cmd("PASSWORD"), OFTPD does it, but warns you: the answer
-  ends with #cmd("but it has no PASSWORD"), and the return code is 4. Without
-  a password every peer that knows the Odette ID of the partner can log on (if
-  the partner has an #cmd("ADDRESS"), every peer that calls from that address),
-  so set one.
+  ends with #cmd("but it has no PASSWORD"), and the return code is 4. OFTPD
+  then expects an empty password from the partner, so every peer that knows
+  the Odette ID of the partner and sends an empty password can log on (if the
+  partner has an #cmd("ADDRESS"), every peer that calls from that address). A
+  peer that sends a password is refused. When OFTPD calls the partner, the
+  answer of the partner must carry an empty password too\; a partner that
+  insists on a password fails the call. So set a password. The warning is only
+  a hint for a partner with #cmd("VIA"), which is never matched by its own
+  Odette ID at log-on. A partner of the member #cmd("OFTPPTN") without
+  #cmd("PASSWORD") is just as open and gets no warning, because reading the
+  member is not a command\; check the member for such entries.
 - *A partner in use.* While a partner has a session, or OFTPD is calling it,
   you can enable and disable it, but not change anything else. The command is
   refused with the answer #cmd("the partner has a session now, try again").
@@ -324,11 +333,13 @@ work, and what it means.
       #cmd("ADDRESS") of its entry. Compare the Odette ID with the partner.],
     [#cmd("OFTP290W wrong password from name")], [A caller's password is not
       the #cmd("PASSWORD") of its entry. Remember that passwords are read as
-      upper case.],
+      upper case. An entry without #cmd("PASSWORD") expects an empty
+      password, so a caller that sends one is refused.],
     [#cmd("OFTP290W answered by id, not id"), or #cmd("OFTP290W partner
       password does not match")], [You called, and the answer of the partner
       carries another Odette ID or password than your entry has. Compare
-      #cmd("ODETTEID") and #cmd("PASSWORD") with the partner.],
+      #cmd("ODETTEID") and #cmd("PASSWORD") with the partner. If the entry has
+      no #cmd("PASSWORD"), the partner must answer with an empty password.],
     [#cmd("OFTP203P") with an ESID other than 00], [The session ended with the
       reason code, and the word after it says which side ended it. 03 is a
       user code not known and 04 an invalid password\; if the partner sent
