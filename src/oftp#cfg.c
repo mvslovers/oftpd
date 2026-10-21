@@ -503,11 +503,10 @@ oftp_cfg_relay_live(const OFTP_PARTNER *next, const char *nextname,
     tname[0] = '\0';
     if (!next->enabled || strcmp(next->peer.name, nextname) != 0)
         return 0;
-    if (final == next)
-        return 1;
     if (!final->enabled || strcmp(final->peer.code, dest) != 0)
         return 0;
-    snprintf(tname, tcap, "%s", final->peer.name);
+    if (final != next)
+        snprintf(tname, tcap, "%s", final->peer.name);
     return 1;
 }
 

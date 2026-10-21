@@ -1,7 +1,44 @@
 # Open Work, Ranked
 
-Holds order and rationale only; once the repo is on GitHub, its issues are
-the source of truth. The MVP scope is `internals/design.md` section 0.
+The repo is on GitHub: **the issues are the source of truth** for everything
+open (milestones `1.0.0` and `1.1`, label `later`). This file keeps the
+history of what was done and measured, and the decisions below. A mention of
+an open point in the history further down is history; the issue holds its
+state. The MVP scope is `internals/design.md` section 0.
+
+## Open work (state of 2026-10-21)
+
+Checked against the issues on this date; the issues win if they disagree.
+
+**1.0.0** (milestone `1.0.0`), open: levels 1.4 and 1.3 against a real
+peer #50, `docs/` #63, book area #64,
+release preparation #65, colon after the partner name in three messages
+#93, `LIST` over 150 transfers #101, books: partner password, VIA and
+OURID #163. Closed in this
+milestone: `MAXRETRY` cut off mid-file #51 (pending merge of PR #168), receive rules #44, job after receipt #45, partner maintenance
+#46, log to SYSOUT #47, `TRACE` #48, `TRACE` follow-ups #86,
+spool-thread recovery #49, SVC on TK5 #52, dialog on TK5 #53, no ACEE /
+no security product #54, SVC length check #55, session abort while
+queued #56, EERP claim #57, file over 750 KB from mendelson #58, daily
+`KEEPDAYS` run #59, dialog response time #60, `D P` VIA partner #61,
+TN3270 test for Show and Configure #62, libc370 2.24.1 #66.
+
+**Open without a milestone**: samplib `oftpdjob` and `oftprcv0` examples
+#150, unfiltered partner and wire bytes in the log #156.
+
+**1.1** (milestone `1.1`): user exit after receipt #67, restart #68,
+NERPs beyond the relay case #69, buffer compression #70, per-send
+overrides #71, `STOP partner` and the three stop strengths #72.
+
+**Later** (label `later`): CMS compression #73, allowed virtual file
+names per partner #74, `DISP=COPY` #75, virtual local Odette IDs #76,
+routing over several hops #77, RECFM/BLKSIZE through SFIDUSER #78,
+exit for the authorization check #79, HTTP API #80, TBCREATE RC 20
+from a CLIST #81.
+
+**Never** (decided 2026-10-20, no issue): call windows per partner;
+spanned V records over 32752 bytes; a drop file to queue a send while OFTPD
+is not running.
 
 ## MVP
 
@@ -152,12 +189,18 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   two RAKF userids (HERC01 in `ADMIN=`, HERC02 not), paging, `TSTSVC`
   34/34; then on the stand m38b as a test instance beside its OFTPD
   (`TSTSVC` 20/20, SVC 237 back to `00017068` at the end). Open from it:
-  - The dialog has not run on TK5 at all.
+  - ~~The dialog has not run on TK5 at all~~ (#53): it runs there with the
+    panels unchanged, see `docs/installation.md` section 9. Measured in a
+    TK5 container (2026-10-20): menu, send, the transfer list with S, H,
+    R, T and D, the partner list with C and the pick for send, configure
+    (Revedit, then the partner member is read again), monitor, and
+    `test/tso/ispf.lua`. Not measured: a wide screen other than 132x43,
+    and any ISPF but TK5's.
   - ~~**`SEND` reads the data set with OFTPD's authority**~~: over the
     SVC the caller's READ is checked at queue time (RACINIT PASSCHK=NO,
     RACHECK), measured in a TK5 container with a deny profile
-    (`internals/xmem.md` section 14). Not shown: a caller without an
-    ACEE, a system without a security product.
+    (`internals/xmem.md` section 14). A caller without an ACEE and a
+    system without a security product: `TSTSEC`, section 19 (#54).
   - ~~A request over 255 bytes is refused by the client before the SVC
     (`TSTSVC` step 2b); the routine's own length check is exercised by
     no test~~ (#55): `TSTSVC` step 2c issues the SVC directly with
@@ -246,12 +289,13 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 - ~~dev1 on the new names~~ — 2026-10-13 (STC00661, `OFTP004I
   AUTHORIZED BY SVC`, ISPF test green, `OFTP370.DEV.LINKLIB` scratched;
   `internals/dev1-changes.md`).
-- Retry limit (`MAXRETRY`, design 3.3): measured on dev1 2026-10-13
-  (`internals/interop.md`). Still untried there: a transfer cut off
-  mid-file, the wait after a call that failed before any file, a NERP
-  for a level 1.3 sender.
-- Dialog: `S` (show) and Configure not yet driven by the TN3270 test.
-  Panels for 80x43, measured on dev1 2026-10-13 at 80x43 and 160x62
+- ~~Retry limit (`MAXRETRY`, design 3.3)~~ — measured on dev1 2026-10-13
+  and, for a transfer cut off mid-file and the wait after a call that
+  failed before any file, in a container 2026-10-21 (#51,
+  `internals/interop.md`). Still untried: a NERP for a level 1.3 sender
+  (#50) and a cut of the second file in a session whose first file went (#171).
+- Dialog: `S` (show) and Configure are driven by the TN3270 test (#62,
+  TK5 container 2026-10-20), as is the partner maintenance. Panels for 80x43, measured on dev1 2026-10-13 at 80x43 and 160x62
   (s3270 `-model 3279-4-E`, `-model 3279-5-E -oversize 160x62`): on
   Wally's ISPF `EXPAND(//)` works on TBDISPL panels, inside the ZCMD
   field and in `)MODEL` lines (`@Z / /+` lets the last field grow); a
@@ -260,7 +304,7 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   it with an attribute; `&VAR` in text is substituted before expanding
   and swallows the blank after it. Menu and Send need more than 24 rows;
   `test/tso/ispf.lua` runs at 80x43 (`[tso.ispf] size`, mbt 3.0.0-dev).
-- TBCREATE from a CLIST answers RC 20 on dev1 (also with the variables
+- TBCREATE from a CLIST (#81) answers RC 20 on dev1 (also with the variables
   set first, as Wally's CMEMFIND does); not understood.
 - ~~Dialog lag over the control port~~ (1.1-1.2 s per request, suspects
   connect() and closesocket() through DYN75) -- moot, the port is gone
@@ -278,7 +322,7 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   change) and `F OFTPD,HOLD|RELEASE name|ALL`; the changes and the
   single-key HOLD/RELEASE/RETRY are conditional puts now
   (`oftp_spl_putif()`). Measured in an MVS/CE container, `TSTSPL` 33/33.
-  Still open from design 8: `STOP partner`, the three stop
+  Still open from design 8 (#72): `STOP partner`, the three stop
   strengths, and the other's `C-sid` (cancel the running transfer into HELD).
   The session's own claim (`claim_out`) is still a plain get and put.
 - ~~Delete after EERP~~ (the other's `DISP=DELETE`): `SEND ... DISP(DELETE)`,
@@ -305,9 +349,9 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   in the SFID.
 - ~~Log to a SYSOUT data set instead of every line by WTO; a log-only
   message class (design 8)~~ -- #47: `DD OFTPLOG`, class `P`,
-  `docs/messages.md`. Not done: a log viewer, log switching, size limits.
-- `docs/`: a configuration guide beside `docs/installation.md`
-  (`docs/partners.md` is the first part of it).
+  the message appendix of the Reference. Not done: a log viewer, log switching, size limits.
+- ~~`docs/`: a configuration guide beside `docs/installation.md`~~ -- in the
+  books (#63).
 - ~~Partner maintenance by command and ISPF~~ (#46): `PARTNER
   ADD|CHANGE|DELETE|SHOW` over the SVC, `OFTP PARTNER ...`, the dialog's
   partner list and entry panels; the partners kept by command are P
@@ -319,8 +363,11 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   OFTPDs: add, change, send, refused delete, OFTPPTN partners, REFRESH,
   restart, delete, non-admin refusals), `TSTPTN`, `TSTSPL`; the trace of
   a deleted partner is gone from the slot a new one takes (by hand,
-  console). **Not measured**: the ISPF panels and `OFTPI` (built,
-  nothing drives them; `test/tso/` has no script for them yet).
+  console). The ISPF panels and `OFTPI`:
+  `test/tso/ispf.lua` drives new (blank and taken Odette ID, a name that
+  exists), M, X, E, an unknown line command, D (refused 513 and 512,
+  then done) over TN3270 (TK5 container, 2026-10-20). Not measured: the
+  dialog as a user without ADMIN=.
   Review follow-up (#113, container, 2026-10-20): `DELETE` and `REFRESH`
   walk the spool outside the monitor lock (they held it 4 to 9 s at 3000
   records, about 1.4 to 2.4 ms a record); a session set-up during a
@@ -331,13 +378,24 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   `PASSWORD` answers `210` plus a `100 WARNING` row (batch RC 4). A
   partner from `OFTPPTN` without `PASSWORD` is open the same way and
   gets no warning (the member is not a command).
+  Review follow-up (#136): the warning says so when the partner has an
+  `ADDRESS` (the peer must still call from it); an answer the client
+  reads as incomplete no longer leaves the code of its last line in
+  `*code`. Still open: an `OFTPPTN` partner without `PASSWORD` gets
+  neither message nor refusal at load (needs a decision).
   ~~`PARTNER SHOW` shows ADDRESS and OURID to every user~~ (#129): for
   a caller without `ADMIN=` both print `-`, the line keeps its shape.
   Measured (container, 2026-10-21): `TSTPTM` A 69/69, P1 11/11, P2 4/4,
   B 13/13, C 10/10; before the change A 66/69 and C 8/10 (the new
   checks). The ISPF partner editor takes any `2xx` as done (it read RC 0 only,
-  so a `210` left it in the entry panel); changed by reading, **not
-  driven**: nothing in `test/` runs the dialog.
+  so a `210` left it in the entry panel); changed by reading; the
+  script above has no check for the `210` case.
+- Books ML09-0001 (User's Guide) and ML09-0002 (Reference): ~~skeleton
+  and CI~~ -- #64 (`docs/books`, `books.yml`); ~~chapters, the message
+  reference with its check~~ -- #63, for the state of `main`, partner
+  maintenance and receive rules included. ~~Whether `docs/messages.md`
+  goes~~ -- it went; the books replace it, and `tools/check-messages.py`
+  checks `docs/books/ref/msg-*.typ`.
 - ~~GitHub repository, CI~~ — `mvslovers/oftpd` (2026-10-13).
 
 - ~~#13: about 520 bytes per session abend~~ -- libc370's `try()`
@@ -353,16 +411,22 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   the same output as on 2.23.0. `TSTSCH` fails 8 of 32 assertions on
   MVS/CE with 2.23.0 and with 2.24.1 alike, so the bump did not cause it
   (the test reads the zone through `localtime_r()`); not yet understood.
+- ~~#60: how long a request takes over the SVC~~ -- measured in a
+  container 2026-10-20 (`internals/xmem.md` section 18): `STATUS`,
+  `SHOW`, `DELETE` 1-5 ms idle and under 100 ms loaded, `SEND` 27-143 ms
+  by spool size, `LIST` over a second from about 150 transfers idle and
+  from 50 loaded. Cause (every piece scans the whole spool again) and
+  the fix are #101; a batch OFTPD needs `TIME=1440` (sample updated).
+- #101: `LIST` is quadratic in the number of transfers.
 
 ## After the MVP
 
-- Restart, buffer compression, NERP generation beyond a relay that gives
-  up, post-processing (JCL and exit), virtual local Odette IDs,
-  routing beyond one hop, cross-memory transport.
+Everything that was listed here is an issue now; see "Open work" above.
 
 ## Maintainer decisions
 
 - ~~Product name~~ — OFTPD, repo `oftpd` (2026-10-13).
-- FMID prefix `TOFT` (check `LIST CDS/ACDS SYSMOD(TOFT010)` on MVS/CE
-  and TK5, with job numbers); book area (ML09 is the next free one);
-  rows in the root `CLAUDE.md`.
+- ~~FMID prefix `TOFT`~~ -- in use (`TOFT010` spent). The first final
+  release is `TOFT100`, not `TOFT020`; `TOFT020` and `TOFT050` were never
+  spent (#65). ~~Book area~~ (ML09, approved); the rows in the root
+  `CLAUDE.md` are the maintainer's.
