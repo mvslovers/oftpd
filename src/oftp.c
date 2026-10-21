@@ -10,6 +10,16 @@
 **                           every send to that partner (* all) that you
 **                           may change: QUEUED/WAITING held, HELD queued
 **   OFTP CALL partner       OFTP PARTNERS
+**   OFTP PARTNER LIST|SHOW name|ENABLE name|DISABLE name|DELETE name
+**   OFTP PARTNER ADD|CHANGE name [ODETTEID(id)] [PASSWORD(pw)]
+**             [OURPASSWORD(pw)] [OURID(id)] [HOST(name)] [PORT(n)]
+**             [LEVEL(n)] [MODE(S|R|B)] [COMPRESS(Y|N)] [CALL(Y|N)]
+**             [SESSIONS(n)] [ADDRESS(ip)] [VIA(partner)] [XLATE(Y|N)]
+**             [SDEB(n)] [CREDIT(n)] [ENABLED(Y|N)]
+**                           the partner table, kept by OFTPD and surviving
+**                           its restart; administrators only, except LIST
+**                           and SHOW. DELETE is refused while a transfer
+**                           in the spool names the partner.
 **   OFTP PURGE [DAYS(n)]    finished transfers older than n days (default
 **                           KEEPDAYS in OFTPPRM); administrators only
 **
@@ -89,16 +99,140 @@ static const char *const verbs[][2] = {
     { "SEND", "" },     { "LIST", "" },       { "SHOW", "KEY" },
     { "DELETE", "KEY" }, { "HOLD", "KEY" },   { "RELEASE", "KEY" },
     { "RETRY", "KEY" },  { "CALL", "PARTNER" }, { "PARTNERS", "" },
-    { "PURGE", "DAYS" },
+    { "PURGE", "DAYS" }, { "PARTNER", "PARTNER" },
 };
+
+/* The end of the word that starts at from, cut where words() cuts it: at
+** a blank outside '...'. q says whether from is inside quotes.
+*/
+static const char *
+word_end(const char *from, int q)
+{
+    const char *p;
+
+    for (p = from; *p && (q || *p != ' '); p++)
+        if (*p == '\'')
+            q = !q;
+    return p;
+}
+
+/* A password does not belong in a listing: the value of PASSWORD(x),
+** PASSWORD=x, PASSWORD x, PASSWORD = x, OURPASSWORD=x or PASSWORD('x y')
+** in an echoed line becomes eight stars, whatever its own length. The
+** value is the whole word, as operand() takes it, less the closing
+** parenthesis of a PASSWORD(...). cap is the size of line.
+*/
+static void
+mask(char *line, size_t cap)
+{
+    char *p;
+    char *s;
+    const char *e;
+
+    for (p = line; strlen(p) > 8; p++) {
+        char k[9];
+        char open;
+        size_t head;
+        size_t stars;
+        size_t tail;
+        int q = 0;
+
+        memcpy(k, p, 8);
+        k[8] = '\0';
+        upcase(k);
+        if (strcmp(k, "PASSWORD") != 0)
+            continue;
+        s = p + 8;
+        while (*s == ' ')
+            s++;
+        open = *s == '(' || *s == '=' ? *s : '\0';
+        if (open != '\0') {
+            s++;
+            while (*s == ' ')
+                s++;
+        } else if (s == p + 8) {
+            continue;
+        }
+        for (e = line; e < s; e++)
+            if (*e == '\'')
+                q = !q;
+        e = word_end(s, q);
+        if (open == '(' && e > s && e[-1] == ')')
+            e--;
+        if (e == s)
+            continue;
+        head = (size_t)(s - line);
+        stars = 8;
+        if (head + stars >= cap)
+            stars = cap - 1 - head;
+        tail = strlen(e);
+        if (head + stars + tail >= cap)
+            tail = cap - 1 - head - stars;
+        memmove(s + stars, e, tail);
+        memset(s, '*', stars);
+        s[stars + tail] = '\0';
+        p = s + stars - 1;
+    }
+}
+
+/* The echo of a command in lines of at most 72 columns, a long one
+** continued with " -" as SYSIN continues it: the SYSPRINT of a job cuts
+** what is longer than its record. It breaks at a blank; a word of more
+** than 65 characters is broken inside.
+*/
+static void
+put_echo(FILE *out, const char *text)
+{
+    const char *p = text;
+    const char *lead = "OFTP ";
+
+    for (;;) {
+        size_t room = 72 - 5;
+        size_t cut;
+
+        if (strlen(p) <= room) {
+            fprintf(out, "%s%s\n", lead, p);
+            return;
+        }
+        for (cut = room - 2; cut > 0 && p[cut] != ' '; cut--)
+            ;
+        if (cut == 0)
+            cut = room - 2;
+        fprintf(out, "%s%.*s -\n", lead, (int)cut, p);
+        p += cut;
+        while (*p == ' ')
+            p++;
+        lead = "     ";
+    }
+}
+
+/* What OFTP003E says of an operand that does not fit: its keyword and
+** nothing of its value, which can be a password
+*/
+static void
+too_long(FILE *out, const char *arg)
+{
+    const char *p = strpbrk(arg, "(=");
+
+    if (p != NULL && p - arg < 16)
+        fprintf(out, "OFTP003E OPERAND TOO LONG: %.*s\n", (int)(p - arg), arg);
+    else
+        fprintf(out, "OFTP003E OPERAND TOO LONG\n");
+}
 
 /* One command: argv[0] the verb. Returns its RC. */
 static int
 command(int argc, char **argv, FILE *out)
 {
-    char req[300], final[256], verb[12];
-    const char *pos = NULL;
-    int i, rc, mine = 0;
+    char req[256];
+    char final[256];
+    char verb[12];
+    char psub[10];
+    const char *pos = NULL, *setting = NULL;
+    int i;
+    int rc;
+    int mine = 0;
+    int named = 0;
     size_t n;
 
     snprintf(verb, sizeof(verb), "%s", argv[0]);
@@ -111,13 +245,49 @@ command(int argc, char **argv, FILE *out)
         return 8;
     }
 
+    /* PARTNER sub name ...: ENABLE and DISABLE are a CHANGE, LIST is
+    ** PARTNERS */
+    if (strcmp(verb, "PARTNER") == 0) {
+        if (argc < 2) {
+            fprintf(out, "OFTP002E PARTNER LIST, SHOW, ADD, CHANGE, ENABLE, "
+                    "DISABLE OR DELETE\n");
+            return 8;
+        }
+        snprintf(psub, sizeof(psub), "%s", argv[1]);
+        upcase(psub);
+        if (strcmp(psub, "LIST") == 0) {
+            strcpy(verb, "PARTNERS");
+            pos = "";
+            argc = 1;
+        } else if (strcmp(psub, "ENABLE") == 0
+                   || strcmp(psub, "DISABLE") == 0) {
+            setting = psub[0] == 'E' ? " ENABLED=Y" : " ENABLED=N";
+            strcpy(psub, "CHANGE");
+        } else if (strcmp(psub, "ADD") != 0 && strcmp(psub, "CHANGE") != 0
+                   && strcmp(psub, "DELETE") != 0
+                   && strcmp(psub, "SHOW") != 0) {
+            fprintf(out, "OFTP002E UNKNOWN PARTNER COMMAND %s\n", argv[1]);
+            return 8;
+        }
+        if (argc > 1 && argc < 3) {
+            fprintf(out, "OFTP004E PARTNER %s NEEDS A PARTNER NAME\n", psub);
+            return 8;
+        }
+    }
+
     n = (size_t)snprintf(req, sizeof(req), "%s", verb);
+    if (argc > 1 && strcmp(verb, "PARTNER") == 0) {
+        n += (size_t)snprintf(req + n, sizeof(req) - n, " %s", psub);
+        argv++;
+        argc--;
+    }
     for (i = 1; i < argc; i++) {
-        char key[16], val[80];
+        char key[16];
+        char val[80];
         const char *a = argv[i];
 
         if (operand(a, key, sizeof(key), val, sizeof(val)) != 0) {
-            fprintf(out, "OFTP003E OPERAND TOO LONG: %s\n", a);
+            too_long(out, a);
             return 8;
         }
         upcase(key);
@@ -125,12 +295,22 @@ command(int argc, char **argv, FILE *out)
             mine = 1;
             continue;
         }
-        /* a lone word after SHOW, CALL, ...: the key or the partner */
+        /* a lone word after SHOW, CALL, ...: the key or the partner, once;
+        ** a second one is a keyword that lost its value */
         if (val[0] == '\0' && pos[0] && strchr(argv[i], '(') == NULL
             && strchr(argv[i], '=') == NULL) {
-            snprintf(val, sizeof(val), "%s", key);
-            snprintf(key, sizeof(key), "%s", pos);
+            if (!named) {
+                snprintf(val, sizeof(val), "%s", key);
+                snprintf(key, sizeof(key), "%s", pos);
+            } else if (strcmp(key, "XLATE") != 0 && strcmp(key, "HOLD") != 0) {
+                /* the word itself may be a password: its place only */
+                fprintf(out, "OFTP007E OPERAND %d HAS NO VALUE: WRITE "
+                        "KEYWORD(VALUE)\n", i);
+                return 8;
+            }
         }
+        if (pos[0] && strcmp(key, pos) == 0)
+            named = 1;
         if (strcmp(key, "FORMAT") == 0)
             strcpy(key, "FMT");
         upcase(val);
@@ -143,6 +323,8 @@ command(int argc, char **argv, FILE *out)
             return 8;
         }
     }
+    if (setting != NULL)
+        n += (size_t)snprintf(req + n, sizeof(req) - n, "%s", setting);
     /* OFTPD knows who asks; MINE=Y says to show only that one's own */
     if (mine && n < sizeof(req))
         n += (size_t)snprintf(req + n, sizeof(req) - n, " MINE=Y");
@@ -150,7 +332,7 @@ command(int argc, char **argv, FILE *out)
         fprintf(out, "OFTP003E COMMAND TOO LONG\n");
         return 8;
     }
-    rc = oftp_cli_request(req, show, out, final, sizeof(final));
+    rc = oftp_cli_request(req, show, out, final, sizeof(final), NULL);
     if (rc == 12)
         fprintf(out, "OFTP010E %s\n", final);
     else
@@ -230,7 +412,8 @@ main(int argc, char **argv)
                 line[0] = '\0';
                 continue;
             }
-            fprintf(out, "OFTP %s\n", echo);
+            mask(echo, sizeof(echo));
+            put_echo(out, echo);
             r = command(n, w, out);
             if (r > rc)
                 rc = r;
@@ -239,7 +422,7 @@ main(int argc, char **argv)
         }
         if (cmds == 0) {
             fprintf(out, "OFTP001E NO COMMAND IN PARM OR SYSIN. "
-                    "OFTP SEND|LIST|SHOW|DELETE|HOLD|RELEASE|RETRY|CALL|PARTNERS|PURGE\n");
+                    "OFTP SEND|LIST|SHOW|DELETE|HOLD|RELEASE|RETRY|CALL|PARTNERS|PARTNER|PURGE\n");
             rc = 8;
         }
     }

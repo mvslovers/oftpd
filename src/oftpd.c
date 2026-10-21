@@ -1,6 +1,7 @@
 /* OFTPD - the OFTP monitor (started task)
 **
 ** DD OFTPPRM  the monitor's settings      DD OFTPPTN  the partners
+** DD OFTPRCV  the receive rules (optional)
 ** DD OFTPSPL  the spool, a KSDS KEYS(8 0) RECORDSIZE(512 512)
 **
 ** Operator: F OFTPD,D P | D Q | D S | D M | CALL partner | REFRESH     P OFTPD
@@ -23,7 +24,7 @@
 #include "oftpmon.h"
 
 static void
-cfgmsg(void *ctx, const char *line)
+cfgmsg(const void *ctx, const char *line)
 {
     oftp_mon_msg("OFTP010W %s: %s", (const char *)ctx, line);
 }
@@ -122,7 +123,7 @@ main(int argc, char **argv)
     }
     if (oftp_mon_load(&m->cfg, "OFTPPTN", 1) != 0)
         oftp_mon_msg("OFTP013W DD OFTPPTN CANNOT BE OPENED, NO PARTNERS");
-    on = oftp_cfg_finish(&m->cfg, cfgmsg, (void *)"OFTPPTN");
+    on = oftp_cfg_finish(&m->cfg, cfgmsg, "OFTPPTN");
     oftp_mon_msg("OFTP014P ODETTE ID %s, %d OF %d PARTNERS ENABLED",
                  m->cfg.odetteid, on, m->cfg.nptn);
 
@@ -133,6 +134,16 @@ main(int argc, char **argv)
     if (oftp_spl_verified(m->spool))
         oftp_mon_msg("OFTP021W SPOOL WAS NOT CLOSED (OPEN RC %d), VERIFIED",
                      oftp_spl_verified(m->spool));
+    /* Not started on: a partner that was disabled or changed by command
+    ** would come back from OFTPPTN as it is written there */
+    if (oftp_mon_maint(m) < 0) {
+        oftp_mon_msg("OFTP019E PARTNER RECORDS OF THE SPOOL UNREADABLE, "
+                     "OFTPD NOT STARTED");
+        oftp_spl_close(m->spool);
+        goto out;
+    }
+    /* After the partners kept by command: a rule may name one of them */
+    oftp_mon_rules(m, 0);
     oftp_mon_recover(m);
     if (oftp_mon_start(m) != 0) {
         oftp_mon_stop(m);

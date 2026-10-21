@@ -10,7 +10,9 @@
 +
 !OFTMSG
 +
-+  C call now   S select for Send
++  New partner ===>_OFTNPTN +  adds a partner: its entry panel follows
++
++  C call now   M modify   E enable   X disable   D delete   S select for Send
 +
 %  Name     Odette ID                 State    Busy Lvl Reached at
 )MODEL

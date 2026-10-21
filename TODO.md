@@ -129,8 +129,15 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   a resubmitted job of the same name included; ~~a caller woken by the stop is told "not reached"~~ -- it is
   told `OFTPD stopped before carrying out the request` now, and an
   answer given after the stop cleared ACTIVE is delivered instead of
-  being discarded (section 15); TK5, a cancelled TSO user and the
-  `TPROT`/`MVCK` race are not measured.
+  being discarded (section 15); ~~TK5, a cancelled TSO user and the
+  `TPROT`/`MVCK` race are not measured~~ -- measured in a TK5 container
+  (#52, section 17): a cancelled TSO user's slot is freed when the slot
+  thread reaches it (`OFTP064W`/`OFTP066W`), not at the cancel, and the
+  pool is whole; a reply buffer freed during the park takes the answer
+  without a program check (`TSTSVCR`). Open: a new TSO logon reusing the
+  same ASID and ASCB address before the slot thread reaches the slot,
+  the program-check outcome of the copy-out, and the request-side window
+  between `TPROT` and `MVCK` (analysed, not shown).
   **The utilities use it** (#22, `internals/xmem.md` section 13): no
   host means the SVC, no fallback to TCP; the caller's userid travels
   beside the request line, and `ADMIN=` in `OFTPPRM` decides who sees
@@ -221,10 +228,14 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   the SFID now carries the tracks used at the volume's track length, and
   a size of 0 gets `TRK(15,15)` instead of `TRK(5,3)`. Measured in two
   MVS/CE containers: 64 000 records (5 MB) delivered with the EERP and
-  identical; `TSTDSF` 40/40. A file from mendelson is not checked.
+  identical; `TSTDSF` 40/40. A file from mendelson over 750 KB: U and T
+  arrived identical, F failed with EFNA 05 because mendelson sets the
+  end-of-record flags wrongly at buffer ends -- fixed in #58 (F records
+  are cut at the LRECL), 5 MB identical with the EERP back both ways
+  (`internals/interop.md`). V from mendelson is not measured.
 - ~~The control port answers one of several requests that arrive at
   once~~ -- moot, the port is gone (#32).
-- `F OFTPD,D P`: name the `VIA` partner instead of `-:3305`.
+- ~~`F OFTPD,D P`: name the `VIA` partner instead of `-:3305`~~ -- `VIA name` (#61).
 - ~~mendelson: the M38 nodes as partners there~~ — 2026-10-14, with
   the rename DEV1 -> `O0000000000DEV1`, MENDEL -> MAC1
   (`O0000000000MAC1`): M38R -> MAC1 and MAC1 -> M38R (DEV1 as
@@ -253,31 +264,43 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   connect() and closesocket() through DYN75) -- moot, the port is gone
   (#32). How long a dialog request takes over the SVC is not measured.
 
-- ~~Spool housekeeping~~ (from rvsMVS's cleanup job): `KEEPDAYS=n`
+- ~~Spool housekeeping~~ (from The Other's cleanup job): `KEEPDAYS=n`
   (default 7) deletes finished transfers once a day, `PURGE [DAYS(n)]`
   and `F OFTPD,PURGE [n]` on request (design 3.3.1). Measured in two
   MVS/CE containers and `TSTSPL` 27/27; the daily run itself deleting
   transfers really older than `KEEPDAYS` is observed too (#59,
   2026-10-20, `TSTKEEP`, design 3.3.1). Later: purge by partner or name,
   a spool backup job.
-- ~~HOLD/RELEASE per partner~~ (rvsMVS `H-ALL`/`S-sid`): `HOLD|RELEASE
+- ~~HOLD/RELEASE per partner~~ (The Other `H-ALL`/`S-sid`): `HOLD|RELEASE
   PARTNER(name|*) [VFN(prefix*)]` from the utility (what the caller may
   change) and `F OFTPD,HOLD|RELEASE name|ALL`; the changes and the
   single-key HOLD/RELEASE/RETRY are conditional puts now
   (`oftp_spl_putif()`). Measured in an MVS/CE container, `TSTSPL` 33/33.
   Still open from design 8: `STOP partner`, the three stop
-  strengths, and rvs `C-sid` (cancel the running transfer into HELD).
+  strengths, and the other's `C-sid` (cancel the running transfer into HELD).
   The session's own claim (`claim_out`) is still a plain get and put.
-- ~~Delete after EERP~~ (rvs `DISP=DELETE`): `SEND ... DISP(DELETE)`,
+- ~~Delete after EERP~~ (the other's `DISP=DELETE`): `SEND ... DISP(DELETE)`,
   over the SVC, ALTER checked at queue time, the data set deleted when the
   EERP arrives (design 3.2). Measured between two MVS/CE containers; the
   NERP case (source kept) and an ALTER refusal are read, not run. Later:
-  `DISP=COPY`, and rvs's rename of the source at queue time.
-- ~~Earliest start and a sending window~~ (rvs `STRTDATE`/`STRTTIME`/
+  `DISP=COPY`, and the other's rename of the source at queue time.
+- ~~Earliest start and a sending window~~ (the other's `STRTDATE`/`STRTTIME`/
   `SENDWIN`): measured between two MVS/CE containers (a send due at 17:03
   was called at 17:03:02, not before); `TSTSCH` 32/32. libc370#392
-  (`mktime()` ignores the zone) is worked around. Later from rvs: a
+  (`mktime()` ignores the zone) is worked around. Later from The Other: a
   deadline (`ENDDATE`/`ENDTIME`) and `ERRJOB`.
+- ~~Receive rules, names and REPLACE~~ (#44, `internals/receive-rules.md`
+  sections 6 and 7): member `OFTPRCV0`, first match wins, `DSN=` symbols,
+  `REPLACE=Y` by renaming the old data set aside, unit/volume/space/XLATE;
+  measured between two OFTPDs in a container (`TSTRCVM`). Open from it:
+  ~~the job after receipt~~ (#45, `JOB=`, section 8 of the same file; not
+  built: `?QDATE ?QTIME` and the rest of The Other's date symbols, a job after a
+  send, `ERRJOB=`; open: libc370's `rread()` cannot tell a read error from
+  the end of the member, so the record count of the second pass catches
+  only a read that fails differently from the first), `TO=` forwarding, GDG, SYSOUT, tape; security review fixes (first qualifier fixed, `%CTR`,
+  PS-only `REPLACE=Y`, restore of the backup at start); not measured on MVS:
+  a receive failing midway with `REPLACE=Y`, `XLATE=`, `SPACE=` with no size
+  in the SFID.
 - ~~Log to a SYSOUT data set instead of every line by WTO; a log-only
   message class (design 8)~~ -- #47: `DD OFTPLOG`, class `P`,
   `docs/messages.md`. Not done: a log viewer, log switching, size limits.
@@ -308,8 +331,7 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 ## After the MVP
 
 - Restart, buffer compression, NERP generation beyond a relay that gives
-  up, post-processing (JCL and exit), naming patterns for received data
-  sets, partner maintenance by command/ISPF, virtual local Odette IDs,
+  up, post-processing (JCL and exit), virtual local Odette IDs,
   routing beyond one hop, cross-memory transport.
 
 ## Maintainer decisions

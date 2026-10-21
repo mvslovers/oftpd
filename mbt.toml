@@ -47,6 +47,7 @@ reus = false
 
 [build.host]
 sources = ["src/oftp#*.c"]   # host tests link the shared code as well
+cflags = ["-Itest/hostdbl"]  # <mvs/rfile.h> and <mvs/jes2.h> for TSTJOB
 
 # The ISPF dialog: a command under ISPF, from the ISPLLIB concatenation
 # (it loads ISPLINK from there), its panels in ispplib/.
@@ -62,8 +63,19 @@ reus = false
 [test.TSTVER]
 sources = ["test/tstver.c"]
 
+[test.TSTPTN]            # maintaining the partner table in memory
+sources = ["test/tstptn.c"]
+
+[test.TSTJOB]            # src/mvs/oftp#job.c against test doubles of rfile and the internal reader
+sources = ["test/tstjob.c", "src/mvs/oftp#job.c"]
+mvs = false
+
 [test.TSTSESS]           # two engines joined by a socket pair; POSIX
 sources = ["test/tstsess.c"]
+mvs = false
+
+[test.TSTUTL]            # the OFTP utility's operands and SYSIN echo; POSIX
+sources = ["test/tstutl.c"]
 mvs = false
 
 [test.TSTKSDS]           # VSAM on MVS; runs for real only from test/mvs/tstksds.jcl
@@ -72,6 +84,10 @@ host = false
 
 [test.TSTDSF]            # data sets through the file layer
 sources = ["test/mvs/tstdsf.c"]
+host = false
+
+[test.TSTRCVR]           # REPLACE=Y recovery and oftp_dsf_kind; runs for real only from test/mvs/tstrcvr.jcl
+sources = ["test/mvs/tstrcvr.c"]
 host = false
 
 [test.TSTSPL]            # the spool; runs for real only from test/mvs/tstspl.jcl
@@ -91,11 +107,25 @@ host = false
 # job still answered __isauth() == 0 until this line existed.
 ac = 1
 
+# What oftp_svc_take() leaves in a CSA request slot (#113). It switches
+# to key 0, so AC(1) and an authorized library, like TSTPROT; no OFTPD
+# needed. Runs for real only from test/mvs/tsttake.jcl (PARM='RUN').
+[test.TSTTAKE]
+sources = ["test/mvs/tsttake.c"]
+host = false
+ac = 1
+
 # The daily KEEPDAYS run on MVS (#59): seeds old and young finished
 # transfers into the spool of a stopped OFTPD, and reads it back after
 # OFTPD's first tick. Runs for real only from test/mvs/tstkeep.jcl.
 [test.TSTKEEP]
 sources = ["test/mvs/tstkeep.c"]
+host = false
+
+# Maintaining the partner table at run time against two RUNNING OFTPDs;
+# runs for real only from test/mvs/tstptm.jcl (PARM='RUN ...').
+[test.TSTPTM]
+sources = ["test/mvs/tstptm.c"]
 host = false
 
 # The cross-memory transport end to end: an unauthorized, problem-state
@@ -104,6 +134,19 @@ host = false
 # real only from test/mvs/tstsvc.jcl (PARM='RUN').
 [test.TSTSVC]
 sources = ["test/mvs/tstsvc.c"]
+host = false
+
+# Receive rules (#44) against two RUNNING OFTPDs; runs for real only from
+# test/mvs/tstrcvm.jcl (PARM='RUN n').
+[test.TSTRCVM]
+sources = ["test/mvs/tstrcvm.c"]
+host = false
+
+# oftpd#52: the reply buffer freed by a subtask while the request is
+# parked. Needs an OFTPD built with -DOFTP_DEBUG_SLOW; runs for real only
+# from test/mvs/tstsvcr.jcl (PARM='SLOW').
+[test.TSTSVCR]
+sources = ["test/mvs/tstsvcr.c"]
 host = false
 
 # The SMP installation package (mbt package): the load modules go to
