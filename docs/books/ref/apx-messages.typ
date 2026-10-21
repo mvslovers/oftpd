@@ -1,4 +1,5 @@
 #import "../bookmaster/bookmaster.typ": *
+#import "msg-lib.typ": msg
 
 = Messages <apx-messages>
 
@@ -61,3 +62,13 @@ three ranges:
 == Messages OFTP200 to OFTP299 <msg-2xx>
 
 #include "msg-2xx.typ"
+
+== Message of the dialog <msg-dlg>
+
+The ISPF dialog (#cmd("OFTPI")) has one message of its own. Like the
+messages of the utility, it does not go to the console or the log.
+
+#msg("OFTPI001E", "OFTPI RUNS UNDER ISPF: SELECT CMD(OFTPI)",
+  [The dialog could not set up its ISPF services. The usual cause is that it was started outside ISPF, for example from a plain TSO READY prompt or from a batch job. The dialog ends with return code 8.],
+  [Start ISPF and start the dialog from there, with #cmd("SELECT CMD(OFTPI) NEWAPPL(OFTP)") or from an option of a menu panel, as the installation guide describes.],
+  dest: "terminal")
