@@ -60,8 +60,8 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   start and end, and the start-up detail. The console receives only what an
   operator must act on. Every session message starts with the partner name.
   Without the DD, or if a write fails, everything goes to the console and
-  OFTPD says so once (`OFTP022W`, `OFTP023E`). `docs/messages.md` lists every
-  message with its destination.
+  OFTPD says so once (`OFTP022W`, `OFTP023E`). `docs/messages.md` lists the
+  messages with their destination.
 - **`F OFTPD,TRACE ON|OFF [partner]`** logs the protocol commands of the
   sessions, running ones included, one `OFTP290P` line each; never a
   password and never file data.
@@ -85,8 +85,8 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
 - **`SEND ... STRTTIME(hh:mm) STRTDATE(*|*+n|ddd) SENDWIN(hh:mm-hh:mm)`**
   set the earliest start and a daily window in which a send may start,
   also across midnight.
-- **Documentation:** `docs/installation.md`, `docs/messages.md` (every
-  message, its class and where it goes) and `docs/partners.md`.
+- **Documentation:** `docs/installation.md`, `docs/messages.md` (the
+  messages, their class and where they go) and `docs/partners.md`.
 
 ### Changed
 
@@ -96,12 +96,12 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   another message.
 - A file sent by OFTPD now states its size, taken from the volume's table of
   contents. A sender that states no size gets 15 tracks of primary and 15 of
-  secondary space on the receiving side.
+  secondary space on the receiving side, unless a receive rule gives `SPACE`.
 - Passwords are kept out of more places: the echo of `SYSIN` masks every way
   `PASSWORD` can be written, an error text names the position of a bad word
   instead of the word, and the request and reply slots in common storage are
   erased as soon as they have been read.
-- Building OFTPD needs libc370 2.24.1 and cc370 1.6.1.
+- The build toolchain is libc370 2.24.1 and cc370 1.6.1.
 
 ### Removed
 
@@ -117,7 +117,7 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   again. OFTPD now runs `VERIFY` itself and says so (`OFTP021W`).
 - A session that abended stayed counted as running: its partner was refused,
   its spool entry stayed active and `P OFTPD` never ended. The session is
-  now cleaned up like one that ended (`OFTP209E`, `OFTP203I`), and its record
+  now cleaned up like one that ended (`OFTP209E`, `OFTP203P`), and its record
   buffer is freed.
 - Every session subtask kept about 69 KB until the next restart; each is
   freed once it has ended.
