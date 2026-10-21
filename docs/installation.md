@@ -109,7 +109,8 @@ space owned by your catalog, and submit it once. A finished transfer --
 delivered, confirmed, rejected or failed -- stays in the spool for
 `KEEPDAYS` days after its last change (7 by default); OFTPD deletes the
 older ones once a day. Size the spool for what arrives and leaves in that
-time. Only spool entries are deleted, never data sets.
+time. Only spool entries are deleted, never data sets. A short spool also
+keeps `LIST` fast (section 8).
 
 The spool belongs to OFTPD alone: the utilities and the dialog never open
 it, they ask OFTPD.
@@ -425,6 +426,24 @@ The operator commands `PURGE`, `HOLD`, `RELEASE` and `CALL` take one
 operand at most. A second one, as in `F OFTPD,HOLD P1,P2`, is refused with
 `OFTP122E`; nothing is done for the first.
 
+### As a batch job
+
+`OFTPD.SAMPLIB(OFTPDJOB)` runs OFTPD as a batch job instead of a started
+task: a first step defines the spool if it does not exist yet, the second
+runs OFTPD until `P OFTPD`. Edit the names, the volume, the Odette ID and the
+partner in it, as its comments say; it takes the settings in-stream, not
+from the parmlib. **Its `STEPLIB` names `OFTPD.DEV.LINKLIB`, the library of
+development builds.** An SMP installation has only `OFTPD.LINKLIB`
+(section 3): change the `STEPLIB` to it, and authorize it as section 4
+says. A development library has no place on a production system.
+
+**Keep `TIME=1440` on the `EXEC` of OFTPD.** The step time limit of a batch
+job is a limit on CPU time, and OFTPD uses CPU when it works. With the JES2
+default (100 seconds of CPU on the system this was measured on) the step
+ends with `S322` once that is used up. OFTPD then reports `OFTP098E OFTPD ABEND, n SOCKETS CLOSED, SVC
+RESTORED`. The sample procedure `OFTPD` (section 7) has `TIME=1440` on its
+`EXEC` too; keep it in a procedure of your own.
+
 ## 8. The OFTP utility
 
 `OFTP` sends files and looks at the spool from batch and TSO;
@@ -478,6 +497,17 @@ Anyone else gets `not your transfer` (RC 8). `LIST` shows an
 administrator everything, and `LIST MINE` only their own. `CALL` and
 `PURGE` are for an administrator only; `PURGE DAYS(0)` deletes every
 finished transfer, however recent.
+
+> **A defect** (oftpd#101): `LIST` and `LIST MINE`, in `OFTP` and in the
+> dialog's transfer list, get slower than the number of transfers
+> suggests. A long answer comes in pieces, and for every piece OFTPD reads
+> the whole spool again, so the time grows with the square of the number of
+> transfers in the spool. On a short spool the delay is small. On a
+> long one a `LIST` can take seconds, and longer while the system is busy.
+> `SHOW`, `DELETE` and `STATUS` do not grow with the spool the way `LIST`
+> does. Until this is fixed, keep the spool short:
+> `KEEPDAYS` (section 5) bounds how long finished transfers stay, and
+> `PURGE` (an administrator's command) deletes them at once.
 
 ## 9. The ISPF dialog
 
