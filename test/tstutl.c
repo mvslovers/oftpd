@@ -18,10 +18,11 @@ static int  nreq;
 
 int
 oftp_cli_request(const char *req, OFTP_CLILINE line, void *ctx, char *final,
-                 int cap)
+                 int cap, int *code)
 {
     (void)line;
     (void)ctx;
+    (void)code;
     snprintf(lastreq, sizeof(lastreq), "%s", req);
     nreq++;
     snprintf(final, (size_t)cap, "done");

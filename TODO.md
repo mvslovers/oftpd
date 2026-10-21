@@ -319,7 +319,9 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   a caller without `ADMIN=` both print `-`, the line keeps its shape.
   Measured (container, 2026-10-21): `TSTPTM` A 69/69, P1 11/11, P2 4/4,
   B 13/13, C 10/10; before the change A 66/69 and C 8/10 (the new
-  checks). **Not measured**: the ISPF dialog with the `210` reply.
+  checks). The ISPF partner editor takes any `2xx` as done (it read RC 0 only,
+  so a `210` left it in the entry panel); changed by reading, **not
+  driven**: nothing in `test/` runs the dialog.
 - ~~GitHub repository, CI~~ — `mvslovers/oftpd` (2026-10-13).
 
 - ~~#13: about 520 bytes per session abend~~ -- libc370's `try()`
