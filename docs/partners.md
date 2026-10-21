@@ -76,16 +76,18 @@ host name included) are upper case. `SHOW` never prints a password: it says
 `VIA`, give an empty value (`HOST()`).
 
 **A password is as secret as the place you type it.** In batch `OFTP`
-echoes each command of `SYSIN` to `SYSPRINT` and prints the value of
-`PASSWORD` and of `OURPASSWORD` as eight stars (`PASSWORD(********)`),
-whatever its length, when you write it `PASSWORD(x)`, `PASSWORD=x` or
-`PASSWORD('x y')`. **A value separated from its keyword by a blank is not
-masked** (`PASSWORD secret`, `PASSWORD (secret)`, `PASSWORD = secret`): the
-echo shows it, and only then is the command refused. Write every value
-directly after `=` or in parentheses. The echo is cut into lines of at most 72 columns; a
-line that goes on ends in ` -`, as it does in `SYSIN`. But the password is
-in your JCL, and under TSO it is on your terminal and in your session's
-history. Keep the JCL in a data set only you can read.
+echoes each command of `SYSIN` to `SYSPRINT` and prints the value after
+`PASSWORD` and after `OURPASSWORD` as eight stars (`PASSWORD(********)`),
+whatever its length. It does so in every way the command can be written:
+`PASSWORD(x)`, `PASSWORD=x`, `PASSWORD('x y')`, and with blanks between the
+keyword and the value (`PASSWORD x`, `PASSWORD (x)`, `PASSWORD = x`). The
+echo looks for the text `PASSWORD` in any case and anywhere in the line,
+so a keyword that ends in it is masked as well. A `PASSWORD` that stands
+alone masks the word after it, whatever that word is. The echo is cut into
+lines of at most 72 columns; a line that goes on ends in ` -`, as it does in
+`SYSIN`. But the password is in your JCL, and under TSO it is on your
+terminal and in your session's history. Keep the JCL in a data set only you
+can read.
 
 A password in a `PARTNER` command also travels through common storage
 (CSA): `OFTP` hands the request to OFTPD in a slot there, and OFTPD
@@ -95,6 +97,10 @@ it (measured on MVS/CE; not on TK5). Until OFTPD has copied the request,
 any program on the system could therefore read the password. That window
 is short, but it is there; it is a limit of the way the utilities reach
 OFTPD, not something a setting closes.
+A request that nobody takes, or an answer that nobody collects, stays in
+the slot until its caller leaves or the slot is freed. Whenever a slot is
+freed, its request and its answer are erased first, and when OFTPD stops
+it erases every slot.
 
 ### What is refused
 
