@@ -596,11 +596,13 @@ you use, for example `SYS1.PARMLIB(OFTPPTN0)`. The editor is TK5's
 `mbt test --tso --only ispf --target NAME` (`test/tso/ispf.lua`) goes
 through the dialog over TN3270 on an 80x43 screen: the monitor, the
 partner list, a held send, show, hold and delete in the transfer list,
-the partner pick for the send panel, and an edit of a copy of the
-partner member. It needs OFTPD running, the entry `O` in the
-"Additional applications" panel, and the data set `userid.OFTPD.SAMPLE`
-(any sequential data set, empty is enough; the transfer is held and
-deleted again). It passes on TK5.
+the partner pick for the send panel, the maintenance of a partner (new,
+modify, disable, enable, delete, and the two refusals of a delete), and
+an edit of a copy of the partner member, which it opens again to see the
+change kept. It needs OFTPD running with the test user in `ADMIN=`, the
+entry `O` in the "Additional applications" panel, and the data set
+`userid.OFTPD.SAMPLE` (any sequential data set, empty is enough; the
+transfers are held and deleted again). It passes on TK5.
 
 ## Removing it
 
