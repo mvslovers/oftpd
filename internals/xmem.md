@@ -296,9 +296,11 @@ check. Three things about it are worth keeping in mind:
   reply buffer it is the whole time the request is parked**, because
   the `TPROT` is made before the park and the copy-out after the
   `WAIT`. Section 17 measures it: the store lands in the freed block,
-  in the caller's own address space and key, and harms nobody else.
-  The sweep is for the other outcome, a program check inside the
-  routine.
+  in the caller's own address space and key. That is a statement about
+  the copy-out only; it does not make the routine harmless as a whole:
+  it also writes key-0 CSA and POSTs ECBs in two address spaces (end
+  of section 17). The sweep is for the other
+  outcome, a program check inside the routine.
 
 **The sweep, in `oftp#svc.c` -- written 2026-10-18, see section 11 --
 and it is not purely OFTPD-side, which is how this was first
@@ -1856,9 +1858,17 @@ reached the slot. For a TSO caller `caller_gone` has no CSCB to compare
 (`ASCBJBNI` is 0), so only the claim sequence could tell, and that needs
 a claim from the new logon. The request would then be carried out for
 the dead user, as section 16's "left open" says for batch. The post of
-the answer goes to the reply ECB in the slot, in CSA, which nobody
-waits on, so that reading gives no harm beyond the request being
-carried out. A reading of the code, not a measurement.
+the answer goes to the reply ECB in the slot, in CSA, and that ECB is
+not safe to post. The wait bit of the caller's first WAIT and the
+address of its SVRB stay in it after the caller is cancelled, and a
+POST of it readies whatever wait now sits at that address: measured
+for batch, where a resubmitted job's own wait ended early
+(`asm/oftpsvc.asm:427-435`, #36). The routine guards only its own wait
+against that (`WAKECHK`). For a TSO logon that gets the same ASID and
+ASCB back, `caller_gone` says "not gone" and the POST is issued; what
+the stale SVRB address points to in the new address space is **not
+known**, so any harm beyond the request being carried out is neither
+shown nor excluded. A reading of the code, not a measurement.
 
 ### The reply buffer freed while parked
 
@@ -1885,16 +1895,27 @@ seconds later. All that was measured is that the store succeeds after the
 **unchecked**: it may be that the page stayed valid in the region, or
 that the storage was not yet reused, and nothing here tells the two
 apart. What follows from the code is limited to this: the copy-out is
-`SPKA` to the caller's key and `MVC`, so the routine stores nothing the
-caller could not store itself, and nothing outside the caller's address
-space. If the block has been reused in the meantime the answer would
-overwrite its new contents (at most 2048 bytes of OFTPD's reply to the
-caller's own request); if it were reused under another key the store
-would be a protection exception, which is the next case.
+`SPKA` to the caller's key (`TCBPKF` of the current TCB) and `MVC`, so
+the copy-out stores nothing the caller could not store itself, and
+nothing outside the caller's address space. That holds for the
+copy-out only. The routine as a whole also stores into key-0 CSA (the
+slot and the anchor counters) and POSTs OFTPD's wake ECB in OFTPD's
+address space, and OFTPD POSTs into the caller's (see above). If the
+block has been reused in the meantime the answer would overwrite its
+new contents (at most 2048 bytes of OFTPD's reply to the caller's own
+request); in a private subpool that is the caller's own storage, but a
+reply buffer in key-8 CSA is shared with other jobs, and there the
+answer lands in another job's key-8 data. The caller could write it
+too, so this is no escalation, but it is not harmless. If the block
+were reused under another key the store would be a protection
+exception, which is the next case.
 
 The other outcome, a program check in the copy-out, was **not
-provoked**: from problem state there is no way found to make storage
-the `TPROT` saw available unavailable later. It would abend the
+provoked**: the test frees a 2048-byte block from subpool 0, and that
+is all that was tried. A block of whole, page-aligned pages, freed or
+owned by a task that has ended, was **not tested** and is the case most
+likely to give the program check; no other way of making storage the
+`TPROT` saw available unavailable later was tried either. It would abend the
 caller's own task in the routine with the slot left COPYOUT, and the
 sweep frees that after two passes (`OFTP060W`, section 15 case 5, where
 the state was written by hand). The test accepts it (`try()` S0C4) and
