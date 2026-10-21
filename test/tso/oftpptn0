@@ -1,0 +1,4 @@
+* A partner member for the dialog test to edit; OFTPD does not read it.
+PARTNER=EDITME ODETTEID=O0000000000EDIT
+  PASSWORD=SECRET1 OURPASSWORD=SECRET2
+  HOST=127.0.0.1 PORT=3306 LEVEL=5

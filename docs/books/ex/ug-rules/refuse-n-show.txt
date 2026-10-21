@@ -1,0 +1,7 @@
+OFTP SHOW T0000005
+T0000005 SEND WAITING, partner MVS1, owner IBMUSER
+virtual file DAILY 20261021 0002170001, format F, LRECL 80
+data set IBMUSER.OFTP.SEND.DAILY1
+from O0000000000MAC1 to O0000000000MVS1, 0 records, 1 attempts
+reason 13 (partner): refused by the partner, reason 13
+end

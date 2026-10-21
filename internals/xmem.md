@@ -291,8 +291,16 @@ check. Three things about it are worth keeping in mind:
   +2048 across a known boundary settles it, and that probe belongs
   with #15.
 - It does not close a TOCTOU window: a second task in the caller's
-  address space can free the storage between the `TPROT` and the
-  `MVCK`. That window is what the sweep is for.
+  address space can free the storage after the `TPROT`. For the
+  request that is the few instructions up to the `MVCK`. **For the
+  reply buffer it is the whole time the request is parked**, because
+  the `TPROT` is made before the park and the copy-out after the
+  `WAIT`. Section 17 measures it: the store lands in the freed block,
+  in the caller's own address space and key. That is a statement about
+  the copy-out only; it does not make the routine harmless as a whole:
+  it also writes key-0 CSA and POSTs ECBs in two address spaces (end
+  of section 17). The sweep is for the other
+  outcome, a program check inside the routine.
 
 **The sweep, in `oftp#svc.c` -- written 2026-10-18, see section 11 --
 and it is not purely OFTPD-side, which is how this was first
@@ -340,6 +348,33 @@ decrement** -- that is the invariant the sweep has to keep, because a
 second decrement here would take `inflight` below zero (the `BCTR`
 loops do not guard against it) and leave every later `P OFTPD`
 draining forever.
+
+**The state alone does not say whose slot it is (#124).** The `CS` from
+DONE only helps while the slot is still DONE. A caller that wakes after
+the sweep has freed its slot and another caller has claimed it finds
+FREE, CLAIMED, PENDING or someone else's DONE -- and a routine that went
+by the state alone freed and wiped the other caller's request, took the
+count down a second time, or collected the other caller's reply. So the
+claim number is checked as well. At claim time the routine copies
+`SLCLAIM` into word 5 of its SVRB extended save area (`RBEXSAVE`+20, 48
+bytes, IHARB), which nobody else writes. On wake-up (`WAKEOWN`):
+
+- FREE or CLAIMED: `SWEPT` whatever the number says. A new claimant sits
+  in CLAIMED until it stores its own number, so the slot still shows
+  ours.
+- Any other state with a different `SLCLAIM`: `SWEPT`.
+- DONE with our number: `CS` to COPYOUT, then the number is read once
+  more; if it changed in between, the `CS` is undone (COPYOUT to DONE)
+  and the exit is `SWEPT`.
+
+`SWEPT` touches nothing and decrements nothing, as before. The window the
+last step closes is the sweep and a new claimant running between the
+first compare and the `CS`. What remains is a very short one: a foreign
+DONE is in COPYOUT for the length of those two instructions, and its own
+caller, waking then, loses its `CS` and takes `SWEPT`, leaving that slot
+to the sweep's timeouts. `free_done()` counts down only when its second
+`CS` (COPYOUT to FREE) wins, for the same reason: the decrement belongs to
+whoever frees the slot.
 
 **One case remains, and it is why a long timeout still has a job.** A
 client whose task is purged while parked -- a cancelled TSO command,
@@ -1001,7 +1036,7 @@ than assumed:
 | `FREEDEC` (`BADHDR`/`BADREPLY`/`BADSTATE`/`POSTBAD`) | routine sets FREE | routine decrements | nothing |
 | `STOPDEC` (woken in STOP: `RCSTOP`, since #34) | routine sets FREE | routine decrements | **not free, not decrement** |
 | `WAKEDOWN` (woken in another state with ACTIVE off) | routine sets FREE | routine decrements | **not free, not decrement** |
-| `SWEPT` (its `CS` from DONE lost) | untouched | untouched | **free and decrement** -- the sweep took it |
+| `SWEPT` (its `CS` from DONE lost, or the slot's claim number is not the one it stored, #124) | untouched | untouched | **free and decrement** -- the sweep took it |
 
 So OFTPD decrements in exactly one place: after it has **won** a
 `CS` that freed a slot. A second decrement takes the count below zero
@@ -1010,6 +1045,21 @@ So OFTPD decrements in exactly one place: after it has **won** a
 
 That is also why the stop posts parked slots and frees nothing: every
 wake-up of a parked slot takes `STOPDEC` and cleans up after itself.
+
+**Who wipes.** A request can carry a password (`PARTNER ... PASSWORD=`)
+and a reply can echo a line, so a slot that goes back to FREE is wiped,
+`req` and `reply` both, by whoever frees it: the routine at `RETREL` and
+`FREEDEC` (subroutine `WIPE`), and the sweep for a DONE slot it frees
+(`free_done()`: DONE to COPYOUT, wipe, FREE, then the decrement; the
+COPYOUT step keeps a new claimant out while the wipe runs). The
+`SWEPT` exit wipes nothing, since the slot is not ours. The sweep does
+not wipe a CLAIMED or COPYOUT slot it frees: a wipe before the `CS`
+could hit a new claimant. `oftp_svc_stop()` calls `oftp_svc_scrub()` as
+its last step before the FREEMAIN of the anchor, which wipes all four
+slots whatever their state. Measured by `TSTSVC` (step 8) and
+`TSTTAKE`; a caller waking on a slot that is no longer its own, by
+`TSTWAKE` (it installs the routine under a free SVC number itself, so no
+OFTPD runs, and plays the sweep and the other caller from a subtask).
 Until #34 the routine tested `ANCFLAG` before the state, and that
 discarded an answer: the stop clears ACTIVE before it joins the slot
 thread, so a request being served at that moment was carried out,
@@ -1524,7 +1574,8 @@ on the stand: `HERC01.OFTPD.V0R1M0D.TESTLIB` from `mbt test --mvs`.
 - **The dialog on TK5**, in the container or on a stand.
 - **Two RAKF userids on a stand**: m38b ran HERC01 only. The container
   covered HERC02.
-- **A caller without an ACEE**, which owns nothing by this rule.
+- ~~**A caller without an ACEE**, which owns nothing by this rule.~~ Run
+  in section 19.
 - ~~**`SEND` reads the data set with OFTPD's authority, not the
   caller's.**~~ Checked at queue time since section 14: over the SVC,
   OFTPD asks RACHECK whether the caller may read the data set.
@@ -1569,8 +1620,8 @@ The check writes nothing to the console: RACINIT and the RACHECK
 (`LOG=NONE`) left no RAKF message for OFTPD's checks, only for the
 IEBGENER control.
 
-Not shown: a caller without an ACEE, and a system without a security
-product -- both are read off the code.
+A caller without an ACEE, and a system without a security product, are
+run in section 19.
 
 
 ## 15. The failure cases, measured (2026-10-19, #34)
@@ -1649,8 +1700,8 @@ address, took the entry, served a `LIST` and gave the entry back at its
 stop; the old anchor and module stay in CSA until the IPL, as section 6
 says.
 
-Not covered: TK5, a cancelled TSO user, and the race between `TPROT`
-and `MVCK`.
+Not covered here: TK5, a cancelled TSO user, and the race between
+`TPROT` and `MVCK`. Section 17 has them.
 
 ### The stop's answers, corrected (same day)
 
@@ -1776,5 +1827,386 @@ a claim being made. Slot 2400 bytes, anchor version 3, `OFTPSVC` 1280.
 
 **Left open:** the request of a caller cancelled before any later claim
 from its address space, while a job of the same name holds the same
-CSCB, is still carried out -- the next claim is what reveals it. TK5
-and a cancelled TSO user are not measured.
+CSCB, is still carried out -- the next claim is what reveals it. A
+cancelled TSO user is section 17.
+
+
+## 17. TK5, a cancelled TSO user, and the freed reply buffer (2026-10-20, #52)
+
+Section 15 left three things open: the cancelled TSO user, the race
+between `TPROT` and `MVCK`, and TK5 for all of it. A throwaway container
+of the `tk5` image on mvsdev (TK5 Update 5), `main` at `6307d52` built
+with `-DOFTP_DEBUG_SLOW`, OFTPD authorized by the RAKF SVC (`OFTP004I
+AUTHORIZED BY SVC`), SVC 237 on `00017068` before, and `OFTP032I SVC 237 RESTORED, ENTRY
+READS 00017068` at the stop.
+Instruments as in section 15: the anchor and slots read with Hercules'
+`v`, the syslog from its web console. A slot is X'960' bytes
+(`sizeof(OFTP_SLOT)` 2400), the stride used here; section 15 wrote
+X'940'.
+
+### A cancelled TSO user
+
+`CALL 'OFTPD.DEV.LINKLIB(OFTP)' 'LIST SLOW(40)'` from a TN3270 logon
+(`mbt test --tso`), `C U=HERC01` from the console while it was parked.
+There is no checked-in script for it: to repeat, log on over TN3270,
+run the `CALL`, and from the Hercules console read the slot with `v`
+and cancel the user (`C U=<userid>`) while slot 0 is PENDING.
+
+| | What was read |
+|---|---|
+| parked | slot 0 PENDING, ASID 13, `ASCBJBNI` 0 (a TSO user has no CSCB job), `inflight` 1 |
+| `C U=HERC01` at 17.49.34 | `IEE301I CANCEL COMMAND ACCEPTED`, `IEF450I ... ABEND S222` the same second |
+| 6, 14 and 20 s after | slot 0 **still PENDING**, `inflight` 1 |
+| 17.49.53, when the 40 s hold ended | `OFTP064W CROSS MEMORY: THE OWNER OF SLOT 0 IS GONE, ANSWER DISCARDED`; slot FREE, `inflight` 0 |
+
+A second run put the TSO user behind a batch `LIST SLOW(60)` (JOB00051),
+so that its request was not being served but waiting. Cancelled at
+17.55.35; thirteen seconds later both slots still PENDING, `inflight`
+2. At 17.55.51, when the batch request ended: `OFTP066W CROSS MEMORY:
+THE OWNER OF SLOT 1 IS GONE, REQUEST NOT CARRIED OUT`, both slots FREE,
+`inflight` 0, the batch job CC 0 with its own answer.
+
+**So a cancelled TSO user does not take a slot for the sweep's five
+minutes (the batch caller of section 15 case 3, before section 16 told
+a gone job apart), and the pool is whole afterwards; but its slot is not freed at the moment of the cancel.** It
+is freed when the slot thread next reaches it: `oftp_svc_take` when the
+request was waiting, `oftp_svc_answer` when it was being served. The
+sweep never touches PENDING. The time is whatever the slot thread is
+busy with. Today's handlers are short (spool and partner table, no
+network wait) so it is milliseconds; a handler that blocked would hold
+the cancelled caller's slot, and four of them the pool. Freeing it at
+the cancel itself needs a hook in the caller's task (an ESTAE or
+end-of-task resource manager in the routine), which is a change to the
+transport and was not made here.
+
+The two TSO logons got different ASCBs for the same ASID 13
+(`00FE05F8`, then `00FE06A8`), and different job ids (`TSU 3`, `TSU 4`).
+That is why `caller_gone` said gone: the ASCB in the slot no longer was
+the one in the ASVT. **Not measured:** a new logon that comes back with
+the same ASID *and* the same ASCB address before the slot thread has
+reached the slot. For a TSO caller `caller_gone` has no CSCB to compare
+(`ASCBJBNI` is 0), so only the claim sequence could tell, and that needs
+a claim from the new logon. The request would then be carried out for
+the dead user, as section 16's "left open" says for batch. The post of
+the answer goes to the reply ECB in the slot, in CSA, and that ECB is
+not safe to post. The wait bit of the caller's first WAIT and the
+address of its SVRB stay in it after the caller is cancelled, and a
+POST of it readies whatever wait now sits at that address: measured
+for batch, where a resubmitted job's own wait ended early
+(`asm/oftpsvc.asm:427-435`, #36). The routine guards only its own wait
+against that (`WAKECHK`). For a TSO logon that gets the same ASID and
+ASCB back, `caller_gone` says "not gone" and the POST is issued; what
+the stale SVRB address points to in the new address space is **not
+known**, so any harm beyond the request being carried out is neither
+shown nor excluded. A reading of the code, not a measurement.
+
+### The reply buffer freed while parked
+
+`TPROT` of the reply buffer is made before the request is parked and
+the copy-out after the `WAIT`, so a second task of the caller can take
+the buffer away for the whole time OFTPD holds the request, not only
+for the instructions between `TPROT` and a `MVCK`. `test/mvs/tstsvcr.c`
+(`TSTSVCR`, PARM='SLOW', needs the `-DOFTP_DEBUG_SLOW` build) does it:
+a subtask `GETMAIN`s 2048 bytes, the main task issues `LIST SLOW=3`
+into that block under `try()`, and the subtask `FREEMAIN`s the block as
+soon as it sees a slot PENDING in the anchor. Eight rounds, twice the
+pool.
+
+Result, JOB00047 and again JOB00050 after the checks were added, 62 of
+62: in every round the SVC returned `OFTP_SVC_OK`, 16 bytes, `try()` 0,
+`FREEMAIN` 0, and the first byte of the freed block was the answer's.
+**No program check.** Afterwards `inflight` 0, every slot FREE, `STATUS`
+answers.
+
+What is measured, and what is not: the subtask frees the block and then
+**ends**, which releases its subpool; the copy-out follows about three
+seconds later. All that was measured is that the store succeeds after the
+`FREEMAIN` and after the end of the owning TCB. The mechanism is
+**unchecked**: it may be that the page stayed valid in the region, or
+that the storage was not yet reused, and nothing here tells the two
+apart. What follows from the code is limited to this: the copy-out is
+`SPKA` to the caller's key (`TCBPKF` of the current TCB) and `MVC`, so
+the copy-out stores nothing the caller could not store itself, and
+nothing outside the caller's address space. That holds for the
+copy-out only. The routine as a whole also stores into key-0 CSA (the
+slot and the anchor counters) and POSTs OFTPD's wake ECB in OFTPD's
+address space, and OFTPD POSTs into the caller's (see above). If the
+block has been reused in the meantime the answer would overwrite its
+new contents (at most 2048 bytes of OFTPD's reply to the caller's own
+request); in a private subpool that is the caller's own storage, but a
+reply buffer in key-8 CSA is shared with other jobs, and there the
+answer lands in another job's key-8 data. The caller could write it
+too, so this is no escalation, but it is not harmless. If the block
+were reused under another key the store would be a protection
+exception, which is the next case.
+
+The other outcome, a program check in the copy-out, was **not
+provoked**: the test frees a 2048-byte block from subpool 0, and that
+is all that was tried. A block of whole, page-aligned pages, freed or
+owned by a task that has ended, was **not tested** and is the case most
+likely to give the program check; no other way of making storage the
+`TPROT` saw available unavailable later was tried either. It would abend the
+caller's own task in the routine with the slot left COPYOUT, and the
+sweep frees that after two passes (`OFTP060W`, section 15 case 5, where
+the state was written by hand). The test accepts it (`try()` S0C4) and
+checks the pool after either.
+
+The request's own window, between `TPROT` and `MVCK`, is a few
+instructions and cannot be aimed at: whether a second task can even be
+dispatched inside the routine there was not checked, so this is
+**analysed and not shown**. Its outcome would be the same two: the
+`MVCK` runs under the caller's key, so a block freed and reused gives
+the caller's own bytes or a protection exception in the caller's own
+task, before the slot is PENDING, and the slot stays CLAIMED until the
+sweep frees it (section 15 case 5, by hand-written state).
+
+## 18. How long a request takes over the SVC (2026-10-20, #60)
+
+The old TCP control port took 1.1-1.2 s per request. This is the same
+measurement over the SVC, for the requests the dialog and `OFTP` make:
+`test/mvs/tstlat.c` (`TSTLAT`) calls `oftp_cli_request()`, the function
+the dialog calls (`src/oftpi.c`), and reads the TOD clock around it:
+wall clock, what a user waits for, not CPU. Load: `test/mvs/tstlod.c`.
+
+**These are container figures, not stand figures.** One throwaway MVS/CE
+container (Hercules, one CP) on a Docker host that was running other
+containers; OFTPD from `SYS2.LINKLIB`, `SVC=237`, `PARTNER1` with
+`CALL=N`, so a held `SEND` is only queued. Container and host are shared,
+so the same run again gives other numbers; the three idle runs below show
+how much.
+
+### The clock was checked first
+
+Before anything is measured `TSTLAT` reads `usleep(200000)` on the TOD
+clock five times: 200.4-200.7 ms in every run. At the end it compares the
+elapsed time by the TOD clock with `time()`: 113 s / 114 s, 118 s / 119 s,
+127 s / 127 s, 443 s / 443 s. The program fails on a clock that disagrees,
+never on a slow request; the slow ones are counted and printed.
+
+### What was timed
+
+`STATUS` (30 times), `LIST` and `LIST MINE` (10 times each, with 0, 10,
+50, 100 and 200 held transfers in the spool), `SHOW` of the first and of
+the last transfer (10 times each), every `SEND ... HOLD=Y` (the spool is
+grown in steps, so each size has its own sends), `DELETE` of every
+transfer at the end (200). Min, median and maximum are printed together
+with every sample of the `LIST`. Every request answered 0.
+
+### Idle: three runs (`IDLE1`-`IDLE3`, jobs 34-36)
+
+Only `TSTLAT` ran in the container. The host's CPU pressure ("some",
+`avg10`) was 10.0 before and 16.9 after the runs, the load average 2.4
+and 3.3. Medians of the three runs (the range of the three), maxima over
+the three:
+
+| Request | median, ms | max, ms |
+|---|---|---|
+| `STATUS` | 2.1 - 4.8 | 8.3 |
+| `SHOW` (first or last) | 1.1 - 4.8 | 22 |
+| `DELETE` | 3.1 - 3.5 | 42.4 |
+| `SEND`, spool 0-9 | 27 - 33 | 43 |
+| `SEND`, spool 10-49 | 36 - 46 | 67 |
+| `SEND`, spool 50-99 | 68 - 78 | 156 |
+| `SEND`, spool 100-199 | 130 - 143 | 380 |
+| `LIST`, 0 rows (1 piece) | 2.4 - 6.6 | 11 |
+| `LIST`, 10 rows (1 piece) | 9.2 - 19 | 34 |
+| `LIST`, 50 rows (3 pieces) | 141 - 228 | 352 |
+| `LIST`, 100 rows (5 pieces) | 474 - 569 | **1068** |
+| `LIST`, 200 rows (9 pieces) | **1781 - 2474** | **6604** |
+
+`LIST MINE` is the same within the noise. 40-41 requests per run took
+more than a second: all of them `LIST` of 100 and 200 rows. Nothing else
+did, `SEND` included.
+
+### Loaded: one run (`LOAD1`, job 40)
+
+Five address spaces on the one CP: OFTPD, `TSTLAT`, two jobs spinning the
+processor (`TSTLOD CPU`, classes D and E) and one writing and reading a
+data set over and over (`TSTLOD IO`, class F), the last three started on
+extra initiators 20 s before `TSTLAT`. Each load job got about 90-115 s
+of CPU in the 503 s they lived.
+
+| Request | median, ms | max, ms |
+|---|---|---|
+| `STATUS` | 81 | 338 |
+| `SHOW` | 2.2 - 13.5 | 49 |
+| `DELETE` | 6.5 | 52 |
+| `SEND`, spool 0-9 / 10-49 / 50-99 / 100-199 | 149 / 164 / 308 / 398 | 256 / 540 / 505 / **7099** |
+| `LIST`, 0 rows | 55 | 231 |
+| `LIST`, 10 rows | 125 | 268 |
+| `LIST`, 50 rows | **800** | **1119** |
+| `LIST`, 100 rows | **2126** | **2909** |
+| `LIST`, 200 rows | **6144 - 6600** | **13078** |
+
+68 requests took more than a second. One run only, so no range: the
+host was also busier (load average up to 5.2, CPU pressure "some" `avg10`
+up to 32 % during it; 2.3 and 11 % before, 2.2 and 15 % after).
+
+### Reading it
+
+**A request that is one row (`STATUS`, `SHOW`, `DELETE`) costs 1-5 ms idle
+and stays under 100 ms loaded**, a fraction of the 1.1-1.2 s of the
+control port. `SEND` costs 27 ms on an empty spool and grows with what
+the spool holds (130-143 ms at 100-200 transfers): not a problem at these
+sizes, but not flat either; not investigated, since nothing is optimized
+here. The one 7.1 s `SEND` of the loaded run is a single sample among the 100 sends of that step.
+
+**`LIST` is the request over a second, and it is the number of rows that
+decides.** Idle it passes a second between 100 and 200 transfers; with
+the system loaded already at 50. The cause is in the code and the numbers
+fit it (opened as #101):
+
+- an answer comes in pieces of about 22 rows (the reply area is 2048
+  bytes) and OFTPD keeps nothing between them: the client sends the request
+  again with a resume index and the handler scans the whole spool again;
+- `put_slot()` (`src/mvs/oftp#mon.c`) throws away the rows the caller has
+  and the rows after a full area, but cannot stop the handler, so every
+  piece reads and formats **all** n rows;
+- the work is pieces x rows, about n^2 / 22. Time divided by
+  (pieces x rows) is 0.9-1.1 ms at 10, 50, 100 and 200 rows alike
+  (9.2 ms / 10, 141 / 150, 474 / 500, 1781 / 1800), and the slowest
+  single piece of the 200-row `LIST`, 195-372 ms, is one full scan of 200
+  rows at that rate. OFTPD used 7 min 39 s of CPU in the 17 min 43 s
+  it ran: the time is CPU in the monitor, not waiting on I/O or the SVC.
+
+Fewer than about 150 transfers visible to the caller is under a second on
+an idle system, and a freshly installed OFTPD has none; a dialog on a
+busy monitor with a long spool is where the user waits. `KEEPDAYS`
+bounds how long finished transfers stay in it.
+
+### Traps met on the way
+
+- **A batch OFTPD needs `TIME=1440` on its `EXEC`.** The first attempt
+  ended `S322` after exactly 100 s of CPU, the JES2 default, in the middle
+  of the second `LIST` of 200 rows: `OFTP098E OFTPD ABEND, 1 SOCKETS
+  CLOSED, SVC RESTORED`, so the recovery exit did its work, and the rest
+  of that run (and two more) saw `OFTPD not reached` (rc 12). Those runs
+  are discarded. The started task is not affected.
+- `TSTLAT` prints at most three failed `DELETE`s now; the first attempt
+  printed 200 lines.
+- `TSTLAT` printed a `SEND` line for a size that queued nothing (a second
+  step clamped to `max`); fixed.
+
+### What this does not show
+
+- The ISPF side: building the table and painting the screen come on top
+  of `oftp_cli_request()`. A user at a 3270 over a network adds what the
+  network adds.
+- A real stand, or any machine but this container's Hercules. The ratios
+  between requests and the n^2 are the finding; the milliseconds are not
+  portable.
+- `LIST` with a filter (`PARTNER=`, a state) or with transfers of several
+  owners: all `LIST` here are the caller's own, 512-byte records, one
+  partner.
+- A second client at the same time (slots, `inflight`): one caller at a
+  time here. The sweep of section 11 is not involved.
+- TK5: not run.
+
+## 19. A caller without an ACEE, a system without a security product (2026-10-20, #54)
+
+Sections 13 and 14 left two cases read off the code: a caller whose
+address space has no ACEE, and a system with no security product. Both
+were run with `TSTSEC` (`test/mvs/tstsec.c`, `tstsec.jcl`) in a
+throwaway TK5 container (`tk5` image, RAKF; OFTPD from `OFTPD.DEV.LINKLIB`
+authorized by SVC 244, `ADMIN=HERC01`, one partner).
+
+**How the cases are made.** `OFTPSVC` reads the userid by walking
+`PSAAOLD` -> ASCB -> `ASCBASXB` -> `ASXBSENV` -> ACEE. `TSTSEC` is
+authorized (`SYS2.LINKLIB` did not authorize it, so it asks for SVC 244
+as OFTPD does, and RAKF permits it), and for the length of one SVC
+it stores 0 in its own `ASXBSENV`, in key 0, and puts the value back
+afterwards. The routine and the monitor run unchanged; the routine finds
+no ACEE and leaves `slot.user` blank, as it does for any address space
+that has none.
+
+The second case is **simulated**: neither TK5 nor MVS/CE boots without
+RAKF, and `CVTRAC` is 00FF9620 in the container. With `PARM=...,NOSEC`
+the test clears `CVTRAC` as well as `ASXBSENV` for the one SVC, so
+`oftp_sec_may_read()` sees what it sees on a system without a product
+(`cvtrac == NULL`), and puts both back. It is the branch that was
+unrun, on MVS and through the real routine, but it is not a boot
+without RAKF. The `RACINIT` answering 32 branch (a product that is
+installed and not active) is still read off the code and not run.
+
+| Caller | Request | Answer |
+|---|---|---|
+| HERC01, own ACEE (the control) | `SEND ... HOLD=Y` | `200 T0000002 queued and held` |
+| no ACEE, RAKF present | `SEND ... HOLD=Y` | `509 not authorized: the caller has no userid`; console `OFTP238W` (JOB00070) |
+| no ACEE, RAKF present | `SEND ... DISP=DELETE` | the same `509` |
+| no ACEE, RAKF present | `LIST` | `200 0 transfers` (the control transfer exists and is held) |
+| no ACEE, RAKF present | `SHOW`, `DELETE` of the control transfer | `506 not your transfer` |
+| no ACEE, `CVTRAC` cleared | `SEND ... HOLD=Y` | `200 T0000003 queued and held` (JOB00048) |
+| no ACEE, `CVTRAC` cleared | `SEND ... DISP=DELETE` | `200 T0000004 queued and held` |
+| no ACEE, `CVTRAC` cleared | `LIST` | `100 T0000002 ...` first: the control transfer, which another userid owns, is listed too |
+| no ACEE, `CVTRAC` cleared | `SHOW` of its transfer | `100 T0000003 SEND HELD, partner PARTNER1, owner -` |
+| no ACEE, `CVTRAC` cleared | `HOLD` of its (already held) transfer | `505 only a queued or waiting send can be held`: past the owner test |
+| no ACEE, `CVTRAC` cleared | `DELETE` of its transfer | `200 T0000003 deleted` |
+| HERC01 (`ADMIN=`), own ACEE | `DELETE` of those transfers | `200 ... deleted` |
+
+**Decided, and what the test shows.**
+- A caller without an ACEE **on a system with a security product is
+  refused**, for `SEND` and for `SEND DISP=DELETE`: there is no identity to
+  check, and OFTPD reads the file later with its own authority, so
+  letting it through would be a way round the profile. `509`, `OFTP238W`,
+  before the existence check as for any refusal. This is the behaviour
+  sections 13 and 14 described; it is now measured.
+- On a system **without** a security product nothing is checked and a
+  send is queued, with the owner blank.
+
+**Decided: without a security product everyone manages everything.**
+On a system without a security product every caller has a blank userid,
+and before this change a blank userid owned nothing: a send was queued,
+and the sender could then not `LIST`, `SHOW`, `HOLD`, `RELEASE` or
+`DELETE` it (`506`; only the operator's `F OFTPD,...` reached it). A
+sender who cannot manage what it sent is not using OFTPD, so:
+
+- `svc_line()` reads `CVTRAC` once per request into `CTLOUT.nosec`
+  (`src/mvs/oftp#mon.c`); the handlers do not look at the CVT.
+- `ctl_may()` allows any caller when `nosec` is set, and `ctl_list()`
+  lists every transfer to every caller (it does not filter to "one's
+  own"). The commands that need `ADMIN=` (`CALL`, `PURGE`, `REFRESH`)
+  still do: `nosec` is not an administrator.
+- With a security product nothing changes: the owner or `ADMIN=`; a
+  blank userid owns nothing and sees nothing.
+
+`TSTSEC` shows both halves: with RAKF (JOB00047, 9/9) the caller without
+an ACEE gets `200 0 transfers` for `LIST` and `506` for `SHOW` and
+`DELETE` of the control transfer; with `CVTRAC` cleared (JOB00048,
+10/10) it lists, shows, and deletes its own transfer, and `HOLD` on the
+held transfer answers `505` rather than `506`. The test clears `CVTRAC`
+of the whole system for one SVC: throwaway containers only, never a
+stand.
+
+### The window is closed by an ESTAE
+
+The `NOSEC` call waits in the SVC with `CVTRAC` of the whole system at
+zero, and the call has no timeout. Without more, a CANCEL, an abend in
+the call or a monitor that never answers would leave it at zero until the
+next IPL, and every later test in the container would run without
+security and say nothing. `call_as()` therefore creates an ESTAE
+(`estae()`, TERM=YES, so a CANCEL enters it) before it opens the window.
+The exit puts `ASXBSENV` and `CVTRAC` back in key 0 from a record in the
+test's own storage (it does not depend on the SDWA, which a system may
+not give) and percolates; the normal return does the same and deletes
+the ESTAE. If the ESTAE cannot be created the call is not made.
+
+Measured in a throwaway TK5 container, OFTPD built with
+`-DOFTP_DEBUG_SLOW`, the test library not in LNKLST, authorization by
+SVC 244 (RAKF):
+
+| What | Result |
+|---|---|
+| step 5, an S0C4 (a store into the PSA) inside the window, under `try()`, `NOSEC` | `try()` 000C4000, `CVTRAC` 00FF9620 and `ASXBSENV` as before, the job's own ACEE found again; 14/14 (JOB00063); without `NOSEC` 13/13 (JOB00062) |
+| the same with the exit's restore switched off (a local edit, not committed) | `CVTRAC` 0 and `ASXBSENV` 0 after the abend, 11/14, RC 1 (JOB00050): the checks do fail when the exit does nothing; the test put the values back by hand afterwards |
+| `PARM='RUN,...,HANG'`: `LIST SLOW=60` with `CVTRAC` cleared, OFTPD holding it; `PARM='CHECK'` run while it was parked | `CVTRAC 00000000`, FAIL, RC 1 (JOB00060): the window is open and visible to other jobs |
+| `C TSTHANG` at 06.37.07 | `IEF450I ... ABEND S222` the same second (JOB00059); `PARM='CHECK'` afterwards: `CVTRAC 00FF9620`, 1/1 (JOB00061) |
+
+Nothing but the ESTAE writes `CVTRAC` back after the cancel, so the last
+two rows together show that the exit ran on a CANCEL.
+
+**Not covered:** a hang that nobody cancels and that never abends keeps
+`CVTRAC` at zero; the operator's way out is to cancel the job. A
+`FORCE` of the job, which bypasses recovery, was not tried. `PARM=...,NOSEC` can switch the security of a
+system off for as long as the call waits: the program belongs in a library
+of its own in a throwaway container, never in LNKLST or `SYS2.LINKLIB`,
+and `tstsec.jcl` says so.

@@ -6,6 +6,7 @@
 ** means is decided here, once, for both.
 */
 #include <stdio.h>
+#include <ctype.h>
 #include <string.h>
 
 #include "oftpcli.h"
@@ -27,9 +28,19 @@ oftp_cli_rc(const char *line)
     return 8;
 }
 
+/* The three digits that open a line; 0 when it does not start with them */
+static int
+reply_code(const char *line)
+{
+    if (!isdigit((unsigned char)line[0]) || !isdigit((unsigned char)line[1])
+        || !isdigit((unsigned char)line[2]))
+        return 0;
+    return (line[0] - '0') * 100 + (line[1] - '0') * 10 + (line[2] - '0');
+}
+
 int
 oftp_cli_piece(const char *buf, unsigned len, OFTP_CLILINE line, void *ctx,
-               char *final, int cap)
+               char *final, int cap, int *code)
 {
     char one[256];
     unsigned i = 0;
@@ -54,7 +65,18 @@ oftp_cli_piece(const char *buf, unsigned len, OFTP_CLILINE line, void *ctx,
         }
         /* the final line ends the answer; nothing may follow it */
         snprintf(final, (size_t)cap, "%s", n > 4 ? one + 4 : one);
+        if (code != NULL)
+            *code = reply_code(one);
         return i == len ? oftp_cli_rc(one) : -2;
     }
     return -1;
+}
+
+int
+oftp_cli_broken(char *final, int cap, int *code)
+{
+    snprintf(final, (size_t)cap, "incomplete answer from OFTPD");
+    if (code != NULL)
+        *code = 0;
+    return 12;
 }

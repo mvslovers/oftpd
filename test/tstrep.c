@@ -21,7 +21,7 @@ static int
 piece(const char *buf, char *final)
 {
     final[0] = '\0';
-    return oftp_cli_piece(buf, (unsigned)strlen(buf), row, NULL, final, 80);
+    return oftp_cli_piece(buf, (unsigned)strlen(buf), row, NULL, final, 80, NULL);
 }
 
 int
@@ -76,8 +76,38 @@ main(void)
     rows = 0;
     CHECK_EQ(piece("100\n200 ok\n", final), 0, "a row with no text");
     CHECK(strcmp(last, "") == 0, "comes as an empty string");
-    CHECK_EQ(oftp_cli_piece("100 x\n200 y\n", 12, NULL, NULL, final, 80), 0,
+    CHECK_EQ(oftp_cli_piece("100 x\n200 y\n", 12, NULL, NULL, final, 80, NULL), 0,
              "no callback: rows are skipped");
+
+    /* the code of the final line, for a caller that must tell 210 from 4xx */
+    {
+        int code = -1;
+
+        CHECK_EQ(oftp_cli_piece("100 w\n210 done\n", 15, NULL, NULL, final,
+                                80, &code), 4, "210 is RC 4");
+        CHECK_EQ(code, 210, "and its code is handed out");
+        CHECK_EQ(oftp_cli_piece("450 busy\n", 9, NULL, NULL, final, 80,
+                                &code), 4, "450 is RC 4 too");
+        CHECK_EQ(code, 450, "but with another code");
+        CHECK_EQ(oftp_cli_piece("200 ok\n", 7, NULL, NULL, final, 80, &code),
+                 0, "200 is RC 0");
+        CHECK_EQ(code, 200, "with its code");
+    }
+
+    /* an answer that does not end as one carries no code: a caller that
+    ** decides on code / 100 == 2 must not take it for success (#136)
+    */
+    {
+        int code = -1;
+
+        CHECK_EQ(oftp_cli_piece("200 ok\n100 late\n", 17, NULL, NULL, final,
+                                80, &code), -2, "a final line with a tail");
+        CHECK_EQ(oftp_cli_broken(final, 80, &code), 12, "is RC 12");
+        CHECK_EQ(code, 0, "with no code");
+        CHECK(strcmp(final, "incomplete answer from OFTPD") == 0,
+              "and its text");
+        CHECK_EQ(oftp_cli_broken(final, 80, NULL), 12, "no code wanted: RC 12");
+    }
 
     return mbt_test_summary("TSTREP");
 }

@@ -25,7 +25,8 @@
 **   PARM='RUN C'                 against an OFTPD started with this job's
 **                                userid NOT in ADMIN=: ADD, CHANGE,
 **                                DELETE and REFRESH are refused (507),
-**                                SHOW and PARTNERS are not
+**                                SHOW and PARTNERS are not, but SHOW
+**                                keeps OURID and ADDRESS to itself
 **
 ** The partner TSTPTM is in no parmlib member: it exists only because of
 ** the commands, so its being there after the restart is the proof that
@@ -110,6 +111,21 @@ answers(const char *req, const char *code)
     return ok;
 }
 
+/* The final line of the reply, without its code, fits the ISPF message
+** line (cut at column 79) for an 8-character partner name (this one has
+** 6) and a count of 5 digits (this one has 1)
+*/
+static int
+fits_dialog(void)
+{
+    const char *l = find("5", NULL);
+
+    if (l == NULL || strlen(l) < 4)
+        return 0;
+    printf("    %s\n", l);
+    return strlen(l + 4) + (8 - (sizeof(NAME) - 1)) + 4 <= 78;
+}
+
 static int
 show_of(const char *name, const char *text)
 {
@@ -183,6 +199,8 @@ phase_a(const char *host, const char *port, const char *dsn)
              "PARTNER ADD PARTNER=" NAME " ODETTEID=O0000000000TSTB "
              "PASSWORD=TSTB OURPASSWORD=TSTA HOST=%s PORT=1 ENABLED=N", host);
     CHECK(answers(req, "200"), "ADD takes the partner");
+    CHECK(find("210", NULL) == NULL && strstr(reply, "WARNING") == NULL,
+          "a partner with a PASSWORD gets no warning");
     CHECK(answers("PARTNERS", "200"), "PARTNERS answers");
     CHECK(find("100 " NAME, NULL) != NULL, "and lists it");
     CHECK(show_has("PORT=1 "), "SHOW reads the port back");
@@ -212,6 +230,42 @@ phase_a(const char *host, const char *port, const char *dsn)
     CHECK(answers("PARTNER CHANGE PARTNER=" NAME " LEVEL=3", "508"),
           "a level that is none is refused");
     CHECK(show_has("PORT=1 "), "and the partner is as it was");
+
+    /* 2a. a partner without a PASSWORD is open to any peer that knows its
+    ** Odette ID: it is added all the same, with a warning (#129)
+    */
+    snprintf(req, sizeof(req),
+             "PARTNER ADD PARTNER=" NAME "W ODETTEID=O0000000000TSTW "
+             "HOST=%s PORT=1 CALL=N", host);
+    CHECK(answers(req, "210") && find("100 ", "without a PASSWORD") != NULL
+          && find("100 ", "ADDRESS") == NULL,
+          "ADD of an enabled partner without PASSWORD says so, with no word "
+          "of an address it has not");
+    CHECK(show_of(NAME "W", "PASSWORD=NONE") && show_of(NAME "W", "ENABLED=Y"),
+          "and it is added: the warning is no refusal");
+    CHECK(answers("PARTNER CHANGE PARTNER=" NAME "W PORT=2", "210"),
+          "a CHANGE that leaves it without PASSWORD says so again");
+    /* with an ADDRESS the peer must still call from it (#136) */
+    CHECK(answers("PARTNER CHANGE PARTNER=" NAME "W ADDRESS=192.0.2.9", "210")
+          && find("100 ", "calling from the ADDRESS") != NULL
+          && find("100 ", "every peer that knows") == NULL,
+          "with an ADDRESS the warning says the peer must call from it");
+    CHECK(answers("PARTNER CHANGE PARTNER=" NAME "W ADDRESS=", "210")
+          && find("100 ", "every peer that knows") != NULL,
+          "and without it again, the plain warning");
+    CHECK(answers("PARTNER CHANGE PARTNER=" NAME "W PASSWORD=SECRETW", "200")
+          && strstr(reply, "WARNING") == NULL && strstr(reply, "SECRETW") == NULL,
+          "with a PASSWORD set there is no warning");
+    snprintf(req, sizeof(req),
+             "PARTNER ADD PARTNER=" NAME "X ODETTEID=O0000000000TSTX "
+             "HOST=%s PORT=1 CALL=N ENABLED=N", host);
+    CHECK(answers(req, "200") && strstr(reply, "WARNING") == NULL,
+          "a disabled partner is open to nobody: no warning");
+    CHECK(answers("PARTNER CHANGE PARTNER=" NAME "X ENABLED=Y", "210"),
+          "until it is enabled");
+    CHECK(answers("PARTNER DELETE PARTNER=" NAME "W", "200")
+          && answers("PARTNER DELETE PARTNER=" NAME "X", "200"),
+          "both are deleted again");
 
     /* 3. a disabled partner takes no transfer */
     snprintf(req, sizeof(req), "SEND PARTNER=" NAME " DSN=%s", dsn);
@@ -252,6 +306,7 @@ phase_a(const char *host, const char *port, const char *dsn)
     /* 7. the transfer is in the spool: the partner is not deleted */
     CHECK(answers("PARTNER DELETE PARTNER=" NAME, "512"),
           "DELETE is refused while the spool holds a transfer");
+    CHECK(fits_dialog(), "and its text fits the ISPF message line");
     CHECK(show_has("PARTNER=" NAME), "the partner is still there");
     CHECK(show_has("ENABLED=N"), "disabled, so that nothing new comes");
     return 0;
@@ -263,6 +318,9 @@ phase_p1(void)
 {
     CHECK(show_of("PARMPTN", "PORT=1 ") && show_of("PARMPTN", "source: OFTPPTN"),
           "PARMPTN comes from the member");
+    CHECK(show_of("PARMPTN", "OURID=O0000000000TSTA")
+          && show_of("PARMPTN", "ADDRESS=127.0.0.1 "),
+          "an administrator sees OURID and ADDRESS");
     CHECK(answers("PARTNER SHOW PARTNER=GONEPTN", "200"),
           "so does GONEPTN");
     CHECK(answers("PARTNER DELETE PARTNER=PARMPTN", "513"),
@@ -310,6 +368,13 @@ phase_c(void)
           && show_of("PARMPTN", "PORT=1 "),
           "nor changed: SHOW is open to everyone");
     CHECK(answers("PARTNERS", "200"), "and so is PARTNERS");
+    /* ... but OURID and ADDRESS are for an administrator (#129) */
+    CHECK(show_of("PARMPTN", "ODETTEID=O0000000000PARM")
+          && show_of("PARMPTN", "OURID=-") && show_of("PARMPTN", "ADDRESS=- "),
+          "SHOW gives a caller who is no administrator '-' for OURID/ADDRESS");
+    CHECK(strstr(reply, "OURID=O") == NULL && strstr(reply, "127.0.0.1") == NULL
+          && strstr(reply, "PORT=1 ") != NULL,
+          "and the values are not anywhere in the answer");
     return 0;
 }
 

@@ -1,6 +1,7 @@
 /* OFTPD - the OFTP monitor (started task)
 **
 ** DD OFTPPRM  the monitor's settings      DD OFTPPTN  the partners
+** DD OFTPRCV  the receive rules (optional)
 ** DD OFTPSPL  the spool, a KSDS KEYS(8 0) RECORDSIZE(512 512)
 **
 ** Operator: F OFTPD,D P | D Q | D S | D M | CALL partner | REFRESH     P OFTPD
@@ -141,6 +142,8 @@ main(int argc, char **argv)
         oftp_spl_close(m->spool);
         goto out;
     }
+    /* After the partners kept by command: a rule may name one of them */
+    oftp_mon_rules(m, 0);
     oftp_mon_recover(m);
     if (oftp_mon_start(m) != 0) {
         oftp_mon_stop(m);

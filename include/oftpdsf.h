@@ -28,6 +28,8 @@ typedef struct oftp_dsopt {
     unsigned    ublksize;               /* U files: BLKSIZE, e.g. 6144   */
     char        unit[9];                /* "" lets the system choose     */
     char        volser[7];
+    unsigned    space;                  /* tracks when the SFID has no
+                                        ** size, 0: the default          */
 } OFTP_DSOPT;
 
 /* Opens dsn ("A.B.C" or "A.B(MEM)") for sending. fmt 0 takes the format
@@ -62,6 +64,13 @@ extern int  oftp_dsf_write(OFTP_DSF *f, const unsigned char *b, unsigned n,
 ** and nowhere else); the data set is then deleted as well.
 */
 extern int  oftp_dsf_close(OFTP_DSF *f, int keep)       asm("OFTPDSCL");
+
+/* What dsn is, by its catalog entry and format-1 DSCB */
+#define OFTP_DSK_NONE   0               /* not catalogued                */
+#define OFTP_DSK_PS     1               /* DSORG=PS and nothing else     */
+#define OFTP_DSK_OTHER  2               /* a PDS, VSAM, anything else, or
+                                        ** a DSCB that cannot be read   */
+extern int  oftp_dsf_kind(const char *dsn)              asm("OFTPDSKD");
 
 /* Counts, for the log and the spool */
 extern unsigned long oftp_dsf_records(const OFTP_DSF *f) asm("OFTPDSRC");

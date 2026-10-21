@@ -162,7 +162,7 @@ Grouped by purpose; field widths are fixed in the header file, not here.
   over the SVC only, never for a member, the caller checked for ALTER
   when it is queued; a NERP keeps the source), and *later* `COPY` (a
   snapshot taken when the send is queued, so the source may change
-  afterwards). rvs also renamed the source when queueing a DELETE; OFTPD
+  afterwards). The Other also renamed the source when queueing a DELETE; OFTPD
   does not, so a source changed before the EERP is deleted as it is.
 - **Restart**: last confirmed position (records for F/V, 1K blocks for
   U/T) and whatever is needed to resume the local data set at that point
@@ -201,25 +201,25 @@ QUEUED --> ACTIVE --> SENT ------> DELIVERED     (EERP received)
   that grows with the attempt count (`RETRY` times the attempts, at most
   a day). It clears itself. `HELD` is the **operator's or user's** hold and
   only a person releases it.
-- **Retry limit** (2026-10-13, after rvsMVS `MAXRETRY`/`TRANSHLD=YES`):
+- **Retry limit** (2026-10-13, after The Other `MAXRETRY`/`TRANSHLD=YES`):
   after `MAXRETRY` attempts (OFTPPRM, default 10, 0 = no limit) our own
   file goes to `HELD` -- not `FAILED`, so a person decides, and `RELEASE`
   or `RETRY` start the count again. A relayed file is given up instead:
   `REJECTED`, a NERP to the partner it came from, the copy deleted; a node
   has no one to release it, and the originator has to learn it (a level
   1.3 originator cannot: the engine drops the NERP). An attempt is a file
-  opened in a session (as rvs counts) **and** a call that did not reach
-  the partner -- unlike rvs, whose dial retries are counted apart, so that
+  opened in a session (as The Other counts) **and** a call that did not reach
+  the partner -- unlike The Other, whose dial retries are counted apart, so that
   a dead next hop ends in a NERP too. A partner not reached, or a call that
   ended in an error before any file (a wrong password, say: not counted),
   is not called again for `RETRY` seconds (CALL overrides); a partner
   that answered ESID 08 after a short pause instead (section 6.1). A file for a partner we do
   not call (no `HOST`) waits for the partner's call and is never counted.
   A stop of the monitor during a transfer does not count. Later, from
-  rvs: per-send `MAXRETRY`, a deadline (`ENDDATE`/`ENDTIME`) and a job
+  The Other: per-send `MAXRETRY`, a deadline (`ENDDATE`/`ENDTIME`) and a job
   when either fires (`ERRJOB`, with post-processing). An abend during a transfer leaves it `HELD`,
   not `WAITING`, so a failure that repeats does not loop.
-- **When a send may start** (2026-10-18, after rvs `STRTDATE`, `STRTTIME`,
+- **When a send may start** (2026-10-18, after the other's `STRTDATE`, `STRTTIME`,
   `SENDWIN`): `tstart` (not before) and `winfrom`/`winto` (a daily
   window) in the record; `send_due()` honours both, for the first attempt
   and every retry. The rules are portable (`src/oftp#sch.c`, `TSTSCH`).
@@ -245,7 +245,7 @@ INTERRUPTED
 
 ### 3.3.1 Housekeeping
 
-From rvsMVS's cleanup job, which deletes finished entries after a number
+From The Other's cleanup job, which deletes finished entries after a number
 of days and leaves pending ones alone (2026-10-18). A transfer is
 **finished** when nothing more happens to it by itself: `DELIVERED`,
 `CONFIRMED`, `REJECTED`, `FAILED`. `HELD`, `WAITING`, `SENT` and
@@ -281,7 +281,7 @@ nothing: the daily run is silent when it deletes none. Not observed: the
 second run 24 hours later, whose only part not shared with the first is
 `now - tpurge >= 86400`.
 
-Later, from rvs: a purge by partner, name or time range, and a backup of
+Later, from The Other: a purge by partner, name or time range, and a backup of
 the spool (a REPRO job in samplib).
 
 ### 3.4 Concurrency
@@ -478,7 +478,7 @@ matches everything.
 
 V files with an LRECL above 32752 are refused with SFNA 05 (no spanned
 records in the MVP). *Later*: a naming pattern per partner with symbols such
-as `&PARTNER`, `&DATE`, `&TIME`, `&SEQ` (rvsMVS could be configured so).
+as `&PARTNER`, `&DATE`, `&TIME`, `&SEQ` (The Other could be configured so).
 
 Before EFPA: every write and the CLOSE must have succeeded (a full volume
 is only reported at CLOSE). Otherwise EFNA.
@@ -486,7 +486,7 @@ is only reported at CLOSE). Otherwise EFNA.
 ### 5.3 After receiving
 
 *Later*, but planned for: both a JCL member submitted with symbols
-substituted and a user exit, per partner or virtual file (rvsMVS had
+substituted and a user exit, per partner or virtual file (The Other had
 both). The spool record keeps the state needed so that adding it does not
 change the record layout: a post-processing state and return code.
 
@@ -509,7 +509,7 @@ connection idle 300 s, both configurable.
 
 *Decided* 2026-10-18 (#18). RFC 5024 limits neither the sessions to one
 partner nor says what happens when two stations call each other at the
-same moment. rvsMVS has a limit per station (`TCPSESS`, 1 to 99, default
+same moment. The Other has a limit per station (`TCPSESS`, 1 to 99, default
 1) under a global one (`TCPMAX`), and a call beyond the station's limit
 ends with ESID 08 (DF9429E). OFTPD follows that:
 
@@ -551,12 +551,12 @@ ends with ESID 08 (DF9429E). OFTPD follows that:
   ESID 03 keeps `RETRY`: it can be a real configuration error, and a
   partner on an older level answering 03 for busy is resolved by jitter,
   as before.
-- **`MODE=S|R|B`** is the RFC's SSIDSR and rvs `DIRECTN`; EERPs and
-  NERPs go both ways whatever the mode, as in rvs. rvs `DIRECTN=P` ("pay
+- **`MODE=S|R|B`** is the RFC's SSIDSR and the other's `DIRECTN`; EERPs and
+  NERPs go both ways whatever the mode, as in The Other. The Other's `DIRECTN=P` ("pay
   only for send data": send only when calling, both when called) exists
   because the caller paid for the line, which TCP/IP does not do: not
   adopted. Neither are a `RETRY` per partner, call windows (`DIALOPTS`)
-  or a switch against calling for an EERP alone (`EERPAD`; rvs itself
+  or a switch against calling for an EERP alone (`EERPAD`; The Other itself
   recommends calling).
 
 Measured for the first step (ESID 08 and the pause, `SESSIONS=1` only)
@@ -731,7 +731,7 @@ P OFTPD                       (stop accepting, end sessions at the next
                                file boundary, close the spool)
 ```
 
-`HOLD`/`RELEASE` of a partner (2026-10-18, after rvsMVS `H-ALL`, `S-ALL`,
+`HOLD`/`RELEASE` of a partner (2026-10-18, after The Other `H-ALL`, `S-ALL`,
 `S-sid[,name]`): every send to it -- `ALL`, or `PARTNER=*` from the
 utility, for every partner -- goes from `QUEUED` or `WAITING` to `HELD`,
 or from `HELD` back to `QUEUED` with its attempts reset; a name or a
@@ -799,7 +799,7 @@ How it is built (#47, `src/oftp#log.c`, `src/mvs/oftp#mon.c`):
   now `OFTP211P`); a number is never reused for something else.
   `OFTP215`, `OFTP216` and `OFTP233` exist with two letters because the
   two messages of one number differ in who needs to see them. The list is
-  `docs/messages.md`.
+  Appendix A of the OFTPD Reference (`docs/books/ref/msg-*.typ`).
 
 ## 9. Phases
 
@@ -831,7 +831,7 @@ How it is built (#47, `src/oftp#log.c`, `src/mvs/oftp#mon.c`):
 ## 11. Lessons from a mature product
 
 The design was checked against the documentation and libraries of
-rvsMVS 6.2 (the maintainer's former product), studied for concepts only.
+The Other 6.2, studied for concepts only.
 Adopted above: separate system and operator holds, `SENT` apart from
 `DELIVERED`, raw partner reason codes, receive under a temporary name,
 duplicate detection by file identity, receive rules with the MVP's naming

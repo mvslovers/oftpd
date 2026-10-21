@@ -6,6 +6,10 @@ result can be checked rather than believed.
 
 | Date | Partner | Who called | Level | What ran | Result |
 |---|---|---|---|---|---|
+| 2026-10-20 | mendelson opensource OFTP2 1.1 build 53 (headless under Xvfb, in a container; plain port) | mendelson called OFTPD (MVS/CE container, buffer 4096, credit 99, level 5) | 5 | F, RECORDFORMAT F 80, 64 000 records = 5 120 000 octets, after the fix of #58 | delivered, EERP back, mendelson deleted its copy; data set `FB 80`, read back through mvsMF: md5 identical to the source. Before the fix: EFNA 05 (see Notes) |
+| 2026-10-20 | same | mendelson called OFTPD | 5 | T file of 64 000 lines (5 248 000 octets with CR-LF) | delivered, EERP back; 64 000 records, each line identical to the source |
+| 2026-10-20 | same | mendelson called OFTPD | 5 | U file, 5 MiB (5 242 880 octets); also 1000 octets | delivered, EERP back, md5 of the data set read back identical to the source; 342 tracks allocated |
+| 2026-10-20 | same | OFTPD called mendelson (batch `SEND`) | 5 | T, F 80 and U files of 64 000 records each (5 248 000 octets as mendelson stores T, 5 120 000 for F and U) | all three delivered with the EERP; md5 of what mendelson stored identical to the source |
 | 2026-10-13 | `host/oftph` as MACA; MACB not running | MACA called OFTPD; OFTPD called MACB | 5 | retry limit, OFTPD (STC00639) with `RETRY=10 MAXRETRY=2`: (a) our own T file for MACB; (b) a T file from MACA for MACB, relayed | (a) WAITING, then HELD after 2 attempts ("partner not reached, given up after 2 attempts"); after RELEASE the count started again from 1. (b) REJECTED after 2 attempts, copy `OFTPTMP.T0000014` deleted, a NERP (reason 99, created by OFTPD) queued for MACA; MACA called again and got it, ESID 00 |
 | 2026-10-12 | two `host/oftph` (MACA, MACB) through OFTPD on dev1 as a node (`RELAY=Y`) | MACA called OFTPD; OFTPD called MACB | 5 | T file from MACA addressed to MACB (`-D`); OFTPD stored it (T0000011), passed it on, got MACB's EERP, queued it for MACA (T0000012); MACA called again | MACB got the 47 octets unchanged (cmp); MACA got the EERP "from O0000000000MACB"; OFTPD's copy deleted; all ESID 00 |
 | 2026-10-12 | mendelson 1.1 b53 as a node | OFTPD on dev1 | 5 | T file for partner BEHIND (`VIA=MENDEL`): session with MENDEL, SFIDDEST = BEHIND's Odette ID | refused with SFNA 02; mendelson's log: "receiver not configured in this system ... Invalid destination; SFID.SFIDDEST" -- the route reached the wire as designed |
@@ -25,3 +29,23 @@ result can be checked rather than believed.
   directory watch is given a virtual file name, and sends them as U.
 - mendelson answered our level-5 SSID with level 5, buffer 4096, credit
   99, no compression, no restart (`X5...04096BNNN099N`).
+- **mendelson sets the end-of-record flag wrongly in a long F file.** It
+  packs a record as a 63-octet subrecord and a 17-octet one with the flag
+  (LRECL 80), starting that pattern afresh at the head of every DATA
+  buffer. A record cut by the end of a buffer loses its flag, and the
+  flags after it fall 63 octets into the next record. In 5 120 000
+  octets (64 000 records) it set 62 989 flags, and its EFID counts the
+  flags, not the records; the octets (5 120 000) were right and the
+  payload, reassembled from a capture, identical to the file. OFTPD took
+  each flag as a record end and rejected the file with EFNA 05 (a record
+  longer than the LRECL). A file within one buffer (10 records) passed;
+  the capture shows the flags going wrong at the first buffer end. OFTPD
+  now cuts F records at the LRECL of the SFID, counts the flags only, and
+  accepts an EFID record count that equals either its own record count or
+  the flags it saw (#58). V is not given this treatment: it has no fixed
+  length to cut at. Not measured against mendelson (its poll did not
+  pick up a V file in the time available); a V file from mendelson that
+  spans buffers may meet the same flag problem.
+- A U or T file from mendelson of 5 MB needed no change; the size problem
+  of #21 (the space estimate from the SFID) does not bite there, the SFID
+  size being right.
