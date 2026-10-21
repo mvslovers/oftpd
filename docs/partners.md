@@ -155,7 +155,7 @@ OFTPD not reached. An answer with return code 12 is printed after
 | `DISABLE` of a partner that an enabled partner is reached through (`VIA`) | `partner X is reached through it: disable that first` | 8 |
 | `DELETE` of a partner that another partner is reached through | `partner X is reached through it` | 8 |
 | `DELETE` of a partner that is only in `OFTPPTN` | `the partner is in OFTPPTN: remove it there, then REFRESH` | 8 |
-| `DELETE` while the spool holds a transfer for, to or from it | `n transfers in the spool name partner NAME: PURGE or DELETE them first`, with `(it is disabled now)` after the name when this `DELETE` disabled it | 8 |
+| `DELETE` while the spool holds a transfer for, to or from it | `n transfers name partner NAME: PURGE or DELETE them first`, with ` (disabled)` directly after the name when this `DELETE` disabled it | 8 |
 | any request that gets past the userid and the name check, when OFTPD cannot use its spool | `spool not available` | 4 |
 | `SEND` to a disabled partner | `OFTP010E unknown or disabled partner` | 12 |
 | `ADD`, `CHANGE` or `ENABLE` that changes an entry and leaves the enabled partner without `PASSWORD` | **taken**: `partner NAME added, but it has no PASSWORD` (or `changed, ...`), after the warning line | 4 |
