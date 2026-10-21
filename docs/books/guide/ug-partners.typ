@@ -243,9 +243,10 @@ Five points matter in daily use.
   from (the member, or kept by command), and whether the passwords are set. It
   never shows a password. To change a password, give the new one. A user who
   is not an administrator sees a dash in place of #cmd("OURID") and
-  #cmd("ADDRESS"). #cmd("OURID") is the Odette ID of OFTPD itself unless you
-  gave another, so the dash hides something only for a partner with an
-  #cmd("OURID") of its own.
+  #cmd("ADDRESS"). The dash for #cmd("ADDRESS") replaces the address of every
+  partner that has one. #cmd("OURID") is the Odette ID of OFTPD itself unless
+  you gave another, so the dash for #cmd("OURID") hides something only for a
+  partner with an #cmd("OURID") of its own.
 - *A partner without a password.* If you add or change a partner so that it is
   enabled and has no #cmd("PASSWORD"), OFTPD does it, but warns you: the answer
   ends with #cmd("but it has no PASSWORD"), and the return code is 4. OFTPD
