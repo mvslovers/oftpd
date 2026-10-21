@@ -32,6 +32,7 @@
 #include "oftpsch.h"
 #include "oftpsec.h"
 #include "oftpnet.h"
+#include "oftpopr.h"
 #include "oftpsess.h"
 
 /* ---- messages ---------------------------------------------------- */
@@ -221,6 +222,7 @@ queue_erp(OFTP_MON *m, const OFTP_SPREC *sent, char code, int reas,
           const char *crea)
 {
     OFTP_SPREC e;
+    char sd[OFTP_DSNLEN + 1];
 
     memset(&e, 0, sizeof(e));
     e.dir = SPL_RECV;
@@ -241,7 +243,8 @@ queue_erp(OFTP_MON *m, const OFTP_SPREC *sent, char code, int reas,
              code == OFTP_EERP ? "EERP" : "NERP", sent->from);
     if (oftp_spl_add(m->spool, &e) == 0)
         oftp_mon_msg("OFTP240P %s: %.8s RELAY: %s FOR %s QUEUED", e.partner,
-                     e.key, code == OFTP_EERP ? "EERP" : "NERP", e.dsn);
+                     e.key, code == OFTP_EERP ? "EERP" : "NERP",
+                     oftp_printable(sd, sizeof(sd), e.dsn));
     ecb_post(&m->wake, 0);
 }
 
@@ -254,6 +257,7 @@ static void
 failed(OFTP_MON *m, OFTP_SPREC *r)
 {
     char t[80];
+    char sd[OFTP_DSNLEN + 1], sx[OFTP_IDLEN + 1];
 
     if (oftp_cfg_retry(&m->cfg, r->attempts, (long)time(NULL), &r->tnext) == 0) {
         r->state = SPL_WAITING;
@@ -265,15 +269,17 @@ failed(OFTP_MON *m, OFTP_SPREC *r)
     if (r->relay == 'Y') {
         r->state = SPL_REJECTED;
         oftp_mon_msg("OFTP242W %s: %.8s RELAY: %s FOR %s GIVEN UP AFTER %u"
-                     " ATTEMPTS", r->partner, r->key, r->dsn, r->dest,
-                     r->attempts);
+                     " ATTEMPTS", r->partner, r->key,
+                     oftp_printable(sd, sizeof(sd), r->dsn),
+                     oftp_printable(sx, sizeof(sx), r->dest), r->attempts);
         queue_erp(m, r, OFTP_NERP, r->reasby == 'P' && r->reas ? r->reas : 99,
                   m->cfg.odetteid);
         remove(r->local);
     } else {
         r->state = SPL_HELD;
         oftp_mon_msg("OFTP215W %s: %.8s %s HELD AFTER %u ATTEMPTS", r->partner,
-                     r->key, r->dsn, r->attempts);
+                     r->key, oftp_printable(sd, sizeof(sd), r->dsn),
+                     r->attempts);
     }
 }
 
@@ -282,8 +288,13 @@ failed(OFTP_MON *m, OFTP_SPREC *r)
 typedef struct sesctx {
     OFTP_MON   *m;
     OFTP_PARTNER *pt;
-    const OFTP_PARTNER *tp;             /* the caller's entry, even when
-                                        ** disabled: for TRACE only    */
+    const OFTP_PARTNER *tp;             /* the first entry with the caller's
+                                        ** ID, even when disabled or behind
+                                        ** another, so a refused caller can
+                                        ** be traced. Where oftp_cfg_byid()
+                                        ** finds one it is this entry: a
+                                        ** second entry with an ID is
+                                        ** always disabled (TSTCFG).     */
     char        ip[16];
     int         sock;
     int         slot;                   /* in m->ssock, or -1            */
@@ -420,6 +431,7 @@ f_out_done(void *ctx, OFTP_FH *fh, int reas, char retry)
     SESCTX *c = ctx;
     OFTP_SPREC *r = &c->out;
     char t[80];
+    char sd[OFTP_DSNLEN + 1];
 
     (void)fh;
     r->recs = oftp_dsf_records(c->odsf);
@@ -431,14 +443,15 @@ f_out_done(void *ctx, OFTP_FH *fh, int reas, char retry)
         r->reas = 0;
         settext(r, "accepted by the partner, EERP outstanding");
         oftp_mon_msg("OFTP211P %s: %.8s %s SENT, %lu RECORDS", r->partner,
-                     r->key, r->dsn, r->recs);
+                     r->key, oftp_printable(sd, sizeof(sd), r->dsn), r->recs);
     } else {
         r->reas = reas;
         r->reasby = 'P';
         snprintf(t, sizeof(t), "refused by the partner, reason %02d", reas);
         settext(r, t);
         oftp_mon_msg("OFTP212P %s: %.8s %s REFUSED, REASON %02d RETRY %c",
-                     r->partner, r->key, r->dsn, reas, retry);
+                     r->partner, r->key,
+                     oftp_printable(sd, sizeof(sd), r->dsn), reas, retry);
         if (retry == 'Y')
             failed(c->m, r);
         else {
@@ -462,6 +475,7 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
     OFTP_SPREC r;
     OFTP_DSOPT opt;
     char final[45], last[8];
+    char sd[OFTP_DSNLEN + 1], sx[OFTP_IDLEN + 1];
     int rc, live;
 
     OFTP_PARTNER *next = NULL, *target = NULL;
@@ -480,7 +494,8 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
             next = oftp_cfg_route(&c->m->cfg, f->dest, &target);
         if (next == NULL || next == c->pt) {
             oftp_mon_msg("OFTP223W %s: %s FOR %s REFUSED, %s", c->pt->peer.name,
-                         f->dsn, f->dest,
+                         oftp_printable(sd, sizeof(sd), f->dsn),
+                         oftp_printable(sx, sizeof(sx), f->dest),
                          !c->m->cfg.relay ? "NOT OUR ODETTE ID"
                          : next == NULL ? "NO ROUTE" : "IT WOULD GO BACK");
             return 2;
@@ -555,7 +570,8 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
     unlock(c->m, 0);
     if (!live) {
         oftp_mon_msg("OFTP223W %s: %s FOR %s REFUSED, NO ROUTE",
-                     c->pt->peer.name, f->dsn, f->dest);
+                     c->pt->peer.name, oftp_printable(sd, sizeof(sd), f->dsn),
+                     oftp_printable(sx, sizeof(sx), f->dest));
         return 2;
     }
     if (rc != 0) {
@@ -582,7 +598,8 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
         if (oftp_rcv_name(rule, &x, final) != 0) {
             oftp_spl_del(c->m->spool, r.key);
             oftp_mon_msg("OFTP224W %s: %s REFUSED, RULE %s MAKES NO VALID"
-                         " DATA SET NAME", r.partner, f->dsn, rule->name);
+                         " DATA SET NAME", r.partner,
+                         oftp_printable(sd, sizeof(sd), f->dsn), rule->name);
             return 1;
         }
         strcpy(r.local, final);
@@ -592,7 +609,9 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
         if (!rule->replace && exists(final)) {
             oftp_spl_del(c->m->spool, r.key);
             oftp_mon_msg("OFTP225W %s: %s REFUSED, %s EXISTS (RULE %s,"
-                         " REPLACE=N)", r.partner, f->dsn, final, rule->name);
+                         " REPLACE=N)", r.partner,
+                         oftp_printable(sd, sizeof(sd), f->dsn), final,
+                         rule->name);
             *retry = 'Y';
             return 13;
         }
@@ -602,7 +621,8 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
             oftp_spl_del(c->m->spool, r.key);
             oftp_mon_msg("OFTP234W %s: %s REFUSED, %s IS NOT A SEQUENTIAL DATA"
                          " SET AND IS NOT REPLACED (RULE %s)", r.partner,
-                         f->dsn, final, rule->name);
+                         oftp_printable(sd, sizeof(sd), f->dsn), final,
+                         rule->name);
             return 12;
         }
     } else
@@ -642,7 +662,8 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
     if (rc != 0) {
         oftp_spl_del(c->m->spool, r.key);
         oftp_mon_msg("OFTP220E %s: %s NOT RECEIVED, %s NOT ALLOCATED (%02d)",
-                     r.partner, f->dsn, c->tmp, rc);
+                     r.partner, oftp_printable(sd, sizeof(sd), f->dsn), c->tmp,
+                     rc);
         *retry = 'Y';
         return rc;
     }
@@ -714,6 +735,7 @@ f_close_in(void *ctx, OFTP_FH *fh, int ok)
     SESCTX *c = ctx;
     OFTP_SPREC *r = &c->in;
     char bak[45];
+    char sd[OFTP_DSNLEN + 1], sf[OFTP_IDLEN + 1], sx[OFTP_IDLEN + 1];
     int rc, kind, replaced = 0;
 
     (void)fh;
@@ -735,8 +757,10 @@ f_close_in(void *ctx, OFTP_FH *fh, int ok)
         settext(r, "relay: received, queued to go on");
         oftp_spl_put(c->m->spool, r);
         oftp_mon_msg("OFTP241P %s: %.8s RELAY: %s FROM %s FOR %s QUEUED FOR %s",
-                     c->pt->peer.name, r->key, r->dsn, r->from, r->dest,
-                     r->partner);
+                     c->pt->peer.name, r->key,
+                     oftp_printable(sd, sizeof(sd), r->dsn),
+                     oftp_printable(sf, sizeof(sf), r->from),
+                     oftp_printable(sx, sizeof(sx), r->dest), r->partner);
         r->key[0] = '\0';
         ecb_post(&c->m->wake, 0);
         return 0;
@@ -752,7 +776,8 @@ f_close_in(void *ctx, OFTP_FH *fh, int ok)
             remove(c->tmp);
             oftp_spl_del(c->m->spool, r->key);
             oftp_mon_msg("OFTP226E %s: %s NOT RECEIVED, %s CANNOT BE REPLACED,"
-                         " IT STAYS", r->partner, r->dsn, r->local);
+                         " IT STAYS", r->partner,
+                         oftp_printable(sd, sizeof(sd), r->dsn), r->local);
             r->key[0] = '\0';
             return 12;
         }
@@ -782,7 +807,8 @@ f_close_in(void *ctx, OFTP_FH *fh, int ok)
     settext(r, "received, EERP owed");
     oftp_spl_put(c->m->spool, r);
     oftp_mon_msg("OFTP222P %s: %.8s %s RECEIVED AS %s, %lu RECORDS",
-                 r->partner, r->key, r->dsn, r->local, r->recs);
+                 r->partner, r->key, oftp_printable(sd, sizeof(sd), r->dsn),
+                 r->local, r->recs);
     r->key[0] = '\0';
     return 0;
 }
@@ -872,6 +898,7 @@ f_erp_recv(void *ctx, const OFTP_PEER *peer, char code, const OFTP_ERPCMD *e)
     SESCTX *c = ctx;
     OFTP_SPREC r;
     char last[8], t[80];
+    char sd[OFTP_DSNLEN + 1];
 
     (void)peer;
     last[0] = '\0';
@@ -908,7 +935,8 @@ f_erp_recv(void *ctx, const OFTP_PEER *peer, char code, const OFTP_ERPCMD *e)
             settext(&r, t);
         }
         oftp_spl_put(c->m->spool, &r);
-        oftp_mon_msg("OFTP213P %s: %.8s %s %s", r.partner, r.key, r.dsn,
+        oftp_mon_msg("OFTP213P %s: %.8s %s %s", r.partner, r.key,
+                     oftp_printable(sd, sizeof(sd), r.dsn),
                      code == OFTP_EERP ? "DELIVERED" : "NOT DELIVERED (NERP)");
         if (r.relay == 'Y') {
             queue_erp(c->m, &r, code, e->reas, e->crea);
@@ -917,7 +945,8 @@ f_erp_recv(void *ctx, const OFTP_PEER *peer, char code, const OFTP_ERPCMD *e)
         return;
     }
     oftp_mon_msg("OFTP214P %s: %s FOR UNKNOWN FILE %s", c->pt->peer.name,
-                 code == OFTP_EERP ? "EERP" : "NERP", e->dsn);
+                 code == OFTP_EERP ? "EERP" : "NERP",
+                 oftp_printable(sd, sizeof(sd), e->dsn));
 }
 
 static int
@@ -1765,6 +1794,7 @@ ctl_list(OFTP_MON *m, CTLOUT *o, const char *line)
 {
     OFTP_SPREC r;
     char last[8], partner[16], status[16], mine[4], out[200];
+    char sd[OFTP_DSNLEN + 1];
     int n = 0, own;
 
     kw(line, "PARTNER", partner, sizeof(partner));
@@ -1787,7 +1817,7 @@ ctl_list(OFTP_MON *m, CTLOUT *o, const char *line)
         snprintf(out, sizeof(out), "100 %.8s %-4s %-9s %-8s %-26s %s",
                  r.key, r.dir == SPL_SEND ? "SEND" : "RECV",
                  state_name(r.state), r.target[0] ? r.target : r.partner,
-                 r.dsn, r.local);
+                 oftp_printable(sd, sizeof(sd), r.dsn), r.local);
         ctl_put(o, out);
         n++;
     }
@@ -1800,6 +1830,7 @@ ctl_show(OFTP_MON *m, CTLOUT *o, const char *line)
 {
     OFTP_SPREC r;
     char key[12], out[200];
+    char sd[OFTP_DSNLEN + 1], sf[OFTP_IDLEN + 1], sx[OFTP_IDLEN + 1];
 
     kw(line, "KEY", key, sizeof(key));
     if (strlen(key) != 8 || oftp_spl_get(m->spool, key, &r) != 0) {
@@ -1817,14 +1848,16 @@ ctl_show(OFTP_MON *m, CTLOUT *o, const char *line)
              r.owner[0] ? r.owner : "-");
     ctl_put(o, out);
     snprintf(out, sizeof(out), "100 virtual file %s %s %s, format %c, LRECL %u",
-             r.dsn, r.date, r.time, r.fmt ? r.fmt : '-', r.lrecl);
+             oftp_printable(sd, sizeof(sd), r.dsn), r.date, r.time,
+             r.fmt ? r.fmt : '-', r.lrecl);
     ctl_put(o, out);
     snprintf(out, sizeof(out), "100 data set %s%s%s%s%s", r.local,
              r.member[0] ? "(" : "", r.member, r.member[0] ? ")" : "",
              r.disp == 'D' ? ", deleted once the EERP is in" : "");
     ctl_put(o, out);
     snprintf(out, sizeof(out), "100 from %s to %s, %lu records, %u attempts",
-             r.orig, r.dest, r.recs, r.attempts);
+             oftp_printable(sf, sizeof(sf), r.orig),
+             oftp_printable(sx, sizeof(sx), r.dest), r.recs, r.attempts);
     ctl_put(o, out);
     if (r.tstart || r.winfrom || r.winto) {
         char nb[40] = "", wn[32] = "";
@@ -3437,14 +3470,15 @@ cmd_display(OFTP_MON *m, const char *what)
         display_partners(m);
     } else if (what[0] == 'Q') {
         OFTP_SPREC r;
-        char last[8];
+        char last[8], sd[OFTP_DSNLEN + 1];
         int n = 0;
 
         last[0] = '\0';
         while (oftp_spl_next(m->spool, last, &r) == 0) {
             memcpy(last, r.key, 8);
             oftp_mon_msg("OFTP110I %.8s %c %c %-8s %s", r.key, r.dir,
-                         r.state, r.partner, r.dsn);
+                         r.state, r.partner,
+                         oftp_printable(sd, sizeof(sd), r.dsn));
             n++;
         }
         oftp_mon_msg("OFTP111I %d TRANSFERS IN THE SPOOL", n);
@@ -3468,28 +3502,11 @@ oftp_mon_command(OFTP_MON *m, const char *cmd)
     char verb[16], arg[40], arg2[40];
     OFTP_PARTNER *p;
 
-    /* split by hand: verb, then the first operand */
-    {
-        const char *p = cmd;
-        size_t n = 0;
-
-        while (*p == ' ')
-            p++;
-        while (*p && *p != ' ' && *p != ',' && n < sizeof(verb) - 1)
-            verb[n++] = *p++;
-        verb[n] = '\0';
-        while (*p == ' ' || *p == ',')
-            p++;
-        n = 0;
-        while (*p && *p != ' ' && *p != ',' && n < sizeof(arg) - 1)
-            arg[n++] = *p++;
-        arg[n] = '\0';
-        while (*p == ' ' || *p == ',')
-            p++;
-        n = 0;
-        while (*p && *p != ' ' && *p != ',' && n < sizeof(arg2) - 1)
-            arg2[n++] = *p++;
-        arg2[n] = '\0';
+    oftp_opr_split(cmd, verb, sizeof(verb), arg, sizeof(arg), arg2,
+                   sizeof(arg2));
+    if (oftp_opr_extra(verb, arg2)) {
+        oftp_mon_msg("OFTP122E %s: UNEXPECTED OPERAND %s", verb, arg2);
+        return;
     }
     if (strcmp(verb, "D") == 0 || strcmp(verb, "DISPLAY") == 0)
         cmd_display(m, arg);

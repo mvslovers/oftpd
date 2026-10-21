@@ -70,6 +70,9 @@ sources = ["test/tstptn.c"]
 sources = ["test/tstjob.c", "src/mvs/oftp#job.c"]
 mvs = false
 
+[test.TSTOPR]            # the operator command line (F OFTPD,...)
+sources = ["test/tstopr.c"]
+
 [test.TSTSESS]           # two engines joined by a socket pair; POSIX
 sources = ["test/tstsess.c"]
 mvs = false
