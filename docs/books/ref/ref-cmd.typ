@@ -354,18 +354,20 @@ with #cmd("ODETTEID") and #cmd("OURID")\; #cmd("HOST"), #cmd("PORT"),
 #cmd("SESSIONS"), #cmd("COMPRESS") and #cmd("XLATE")\; #cmd("SDEB"),
 #cmd("CREDIT"), #cmd("ADDRESS") and #cmd("VIA")\; and #cmd("PASSWORD") and
 #cmd("OURPASSWORD"). The passwords are never shown\: each one reads
-#cmd("SET") or #cmd("NONE"). For a user who is not an administrator,
-#cmd("OURID") and #cmd("ADDRESS") read #cmd("-"), and the lines keep their
-shape. The dash in place of #cmd("ADDRESS") hides the address of every
-partner that has one. The dash in place of #cmd("OURID") hides something only
-when the partner has an #cmd("OURID") that differs from the default, the
-Odette ID of OFTPD itself, because that one is shown to every user in the
-status of the monitor. The other fields stay visible to every user\; only
-#cmd("PARTNER SHOW") hides these two. The #cmd("SHOW") of a transfer (@cmd-show) gives the
-Odette IDs the transfer carries to every user who may see that transfer. The
-sixth line starts with #cmd("source:") and tells where the partner comes from\: #cmd("OFTPPTN"), #cmd("kept by command"),
+#cmd("SET") or #cmd("NONE"). The sixth line starts with #cmd("source:") and
+tells where the partner comes from\: #cmd("OFTPPTN"), #cmd("kept by command"),
 or #cmd("kept by command, overrides OFTPPTN"), followed by the number of
 sessions the partner has now. The answer ends with #cmd("partner").
+
+For a user who is not an administrator, #cmd("OURID") and #cmd("ADDRESS") read
+#cmd("-"), and the lines keep their shape. The dash in place of
+#cmd("ADDRESS") hides the address of every partner that has one. The dash in
+place of #cmd("OURID") hides something only when the partner has an
+#cmd("OURID") that differs from the default, the Odette ID of OFTPD itself,
+because that one is shown to every user in the status of the monitor. The
+other fields stay visible to every user\; only #cmd("PARTNER SHOW") hides
+these two. The #cmd("SHOW") of a transfer (@cmd-show) gives the Odette IDs the
+transfer carries to every user who may see that transfer.
 
 === DELETE <cmd-partner-delete>
 
