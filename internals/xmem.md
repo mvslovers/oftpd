@@ -1958,3 +1958,145 @@ dispatched inside the routine there was not checked, so this is
 the caller's own bytes or a protection exception in the caller's own
 task, before the slot is PENDING, and the slot stays CLAIMED until the
 sweep frees it (section 15 case 5, by hand-written state).
+
+## 18. How long a request takes over the SVC (2026-10-20, #60)
+
+The old TCP control port took 1.1-1.2 s per request. This is the same
+measurement over the SVC, for the requests the dialog and `OFTP` make:
+`test/mvs/tstlat.c` (`TSTLAT`) calls `oftp_cli_request()`, the function
+the dialog calls (`src/oftpi.c`), and reads the TOD clock around it:
+wall clock, what a user waits for, not CPU. Load: `test/mvs/tstlod.c`.
+
+**These are container figures, not stand figures.** One throwaway MVS/CE
+container (Hercules, one CP) on a Docker host that was running other
+containers; OFTPD from `SYS2.LINKLIB`, `SVC=237`, `PARTNER1` with
+`CALL=N`, so a held `SEND` is only queued. Container and host are shared,
+so the same run again gives other numbers; the three idle runs below show
+how much.
+
+### The clock was checked first
+
+Before anything is measured `TSTLAT` reads `usleep(200000)` on the TOD
+clock five times: 200.4-200.7 ms in every run. At the end it compares the
+elapsed time by the TOD clock with `time()`: 113 s / 114 s, 118 s / 119 s,
+127 s / 127 s, 443 s / 443 s. The program fails on a clock that disagrees,
+never on a slow request; the slow ones are counted and printed.
+
+### What was timed
+
+`STATUS` (30 times), `LIST` and `LIST MINE` (10 times each, with 0, 10,
+50, 100 and 200 held transfers in the spool), `SHOW` of the first and of
+the last transfer (10 times each), every `SEND ... HOLD=Y` (the spool is
+grown in steps, so each size has its own sends), `DELETE` of every
+transfer at the end (200). Min, median and maximum are printed together
+with every sample of the `LIST`. Every request answered 0.
+
+### Idle: three runs (`IDLE1`-`IDLE3`, jobs 34-36)
+
+Only `TSTLAT` ran in the container. The host's CPU pressure ("some",
+`avg10`) was 10.0 before and 16.9 after the runs, the load average 2.4
+and 3.3. Medians of the three runs (the range of the three), maxima over
+the three:
+
+| Request | median, ms | max, ms |
+|---|---|---|
+| `STATUS` | 2.1 - 4.8 | 8.3 |
+| `SHOW` (first or last) | 1.1 - 4.8 | 22 |
+| `DELETE` | 3.1 - 3.5 | 42.4 |
+| `SEND`, spool 0-9 | 27 - 33 | 43 |
+| `SEND`, spool 10-49 | 36 - 46 | 67 |
+| `SEND`, spool 50-99 | 68 - 78 | 156 |
+| `SEND`, spool 100-199 | 130 - 143 | 380 |
+| `LIST`, 0 rows (1 piece) | 2.4 - 6.6 | 11 |
+| `LIST`, 10 rows (1 piece) | 9.2 - 19 | 34 |
+| `LIST`, 50 rows (3 pieces) | 141 - 228 | 352 |
+| `LIST`, 100 rows (5 pieces) | 474 - 569 | **1068** |
+| `LIST`, 200 rows (9 pieces) | **1781 - 2474** | **6604** |
+
+`LIST MINE` is the same within the noise. 40-41 requests per run took
+more than a second: all of them `LIST` of 100 and 200 rows. Nothing else
+did, `SEND` included.
+
+### Loaded: one run (`LOAD1`, job 40)
+
+Five address spaces on the one CP: OFTPD, `TSTLAT`, two jobs spinning the
+processor (`TSTLOD CPU`, classes D and E) and one writing and reading a
+data set over and over (`TSTLOD IO`, class F), the last three started on
+extra initiators 20 s before `TSTLAT`. Each load job got about 90-115 s
+of CPU in the 503 s they lived.
+
+| Request | median, ms | max, ms |
+|---|---|---|
+| `STATUS` | 81 | 338 |
+| `SHOW` | 2.2 - 13.5 | 49 |
+| `DELETE` | 6.5 | 52 |
+| `SEND`, spool 0-9 / 10-49 / 50-99 / 100-199 | 149 / 164 / 308 / 398 | 256 / 540 / 505 / **7099** |
+| `LIST`, 0 rows | 55 | 231 |
+| `LIST`, 10 rows | 125 | 268 |
+| `LIST`, 50 rows | **800** | **1119** |
+| `LIST`, 100 rows | **2126** | **2909** |
+| `LIST`, 200 rows | **6144 - 6600** | **13078** |
+
+68 requests took more than a second. One run only, so no range: the
+host was also busier (load average up to 5.2, CPU pressure "some" `avg10`
+up to 32 % during it; 2.3 and 11 % before, 2.2 and 15 % after).
+
+### Reading it
+
+**A request that is one row (`STATUS`, `SHOW`, `DELETE`) costs 1-5 ms idle
+and stays under 100 ms loaded**, a fraction of the 1.1-1.2 s of the
+control port. `SEND` costs 27 ms on an empty spool and grows with what
+the spool holds (130-143 ms at 100-200 transfers): not a problem at these
+sizes, but not flat either; not investigated, since nothing is optimized
+here. The one 7.1 s `SEND` of the loaded run is a single sample among the 100 sends of that step.
+
+**`LIST` is the request over a second, and it is the number of rows that
+decides.** Idle it passes a second between 100 and 200 transfers; with
+the system loaded already at 50. The cause is in the code and the numbers
+fit it (opened as #101):
+
+- an answer comes in pieces of about 22 rows (the reply area is 2048
+  bytes) and OFTPD keeps nothing between them: the client sends the request
+  again with a resume index and the handler scans the whole spool again;
+- `put_slot()` (`src/mvs/oftp#mon.c`) throws away the rows the caller has
+  and the rows after a full area, but cannot stop the handler, so every
+  piece reads and formats **all** n rows;
+- the work is pieces x rows, about n^2 / 22. Time divided by
+  (pieces x rows) is 0.9-1.1 ms at 10, 50, 100 and 200 rows alike
+  (9.2 ms / 10, 141 / 150, 474 / 500, 1781 / 1800), and the slowest
+  single piece of the 200-row `LIST`, 195-372 ms, is one full scan of 200
+  rows at that rate. OFTPD used 7 min 39 s of CPU in the 17 min 43 s
+  it ran: the time is CPU in the monitor, not waiting on I/O or the SVC.
+
+Fewer than about 150 transfers visible to the caller is under a second on
+an idle system, and a freshly installed OFTPD has none; a dialog on a
+busy monitor with a long spool is where the user waits. `KEEPDAYS`
+bounds how long finished transfers stay in it.
+
+### Traps met on the way
+
+- **A batch OFTPD needs `TIME=1440` on its `EXEC`.** The first attempt
+  ended `S322` after exactly 100 s of CPU, the JES2 default, in the middle
+  of the second `LIST` of 200 rows: `OFTP098E OFTPD ABEND, 1 SOCKETS
+  CLOSED, SVC RESTORED`, so the recovery exit did its work, and the rest
+  of that run (and two more) saw `OFTPD not reached` (rc 12). Those runs
+  are discarded. The started task is not affected.
+- `TSTLAT` prints at most three failed `DELETE`s now; the first attempt
+  printed 200 lines.
+- `TSTLAT` printed a `SEND` line for a size that queued nothing (a second
+  step clamped to `max`); fixed.
+
+### What this does not show
+
+- The ISPF side: building the table and painting the screen come on top
+  of `oftp_cli_request()`. A user at a 3270 over a network adds what the
+  network adds.
+- A real stand, or any machine but this container's Hercules. The ratios
+  between requests and the n^2 are the finding; the milliseconds are not
+  portable.
+- `LIST` with a filter (`PARTNER=`, a state) or with transfers of several
+  owners: all `LIST` here are the caller's own, 512-byte records, one
+  partner.
+- A second client at the same time (slots, `inflight`): one caller at a
+  time here. The sweep of section 11 is not involved.
+- TK5: not run.

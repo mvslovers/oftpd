@@ -359,6 +359,13 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   the same output as on 2.23.0. `TSTSCH` fails 8 of 32 assertions on
   MVS/CE with 2.23.0 and with 2.24.1 alike, so the bump did not cause it
   (the test reads the zone through `localtime_r()`); not yet understood.
+- ~~#60: how long a request takes over the SVC~~ -- measured in a
+  container 2026-10-20 (`internals/xmem.md` section 18): `STATUS`,
+  `SHOW`, `DELETE` 1-5 ms idle and under 100 ms loaded, `SEND` 27-143 ms
+  by spool size, `LIST` over a second from about 150 transfers idle and
+  from 50 loaded. Cause (every piece scans the whole spool again) and
+  the fix are #101; a batch OFTPD needs `TIME=1440` (sample updated).
+- #101: `LIST` is quadratic in the number of transfers.
 
 ## After the MVP
 
