@@ -52,7 +52,7 @@ different messages share the number; each is listed.
 | `OFTP013W` | Console + log | `DD OFTPPTN CANNOT BE OPENED, NO PARTNERS` |
 | `OFTP014P` | Log only | `ODETTE ID <id>, n OF m PARTNERS ENABLED` |
 | `OFTP015W` | Console + log | `PARTNER <name> NOT ADDED, TABLE FULL` |
-| `OFTP016I` | Console + log | `PARTNERS RELOADED: n ENABLED, n NEW, n DISABLED`: the answer to `F OFTPD,REFRESH` |
+| `OFTP016I` | Console + log | `PARTNERS RELOADED: n ENABLED, n NEW, n DISABLED, n REMOVED`: the answer to `F OFTPD,REFRESH`; `REMOVED` counts the entries that are gone from the member and were not in use |
 | `OFTP017E` | Console + log | `DD OFTPPTN CANNOT BE READ` (`F OFTPD,REFRESH`) |
 | `OFTP018I` | Console + log | `n PARTNERS KEPT BY COMMAND, n OVERRIDE OFTPPTN`: the partners added or changed by `PARTNER` commands (`docs/partners.md`), read from the spool at start |
 | `OFTP018W` | Console + log | a partner record of the spool was not taken (`HAS NO NAME`, `<reason>, IGNORED`, `IS KEPT BY COMMAND ALREADY`), two partners have one Odette ID (the second is `DISABLED`), or `THE PARTNER RECORDS OF THE SPOOL CANNOT BE READ` |
@@ -161,7 +161,7 @@ The ones that report a normal transfer are `P`.
 | `OFTP227E` | Console + log | `<partner>: THE OLD <data set> IS NOW <backup>, NOT RENAMED BACK`: rename the backup to the data set name by hand |
 | `OFTP228W` | Console + log | `<partner>: THE OLD <data set> IS NOW <backup>, NOT DELETED`: the new file is in place; delete the backup |
 | `OFTP229I` | Console + log | `<partner>: <data set> REPLACED` |
-| `OFTP234W` | Console + log | `<partner>: <dsn> REFUSED, <data set> IS NOT A SEQUENTIAL DATA SET AND IS NOT REPLACED (RULE <rule>)`: `REPLACE=Y` on a PDS, VSAM or member name; reason 12, no retry |
+| `OFTP234W` | Console + log | `<partner>: <dsn> REFUSED, <data set> IS NOT A SEQUENTIAL DATA SET AND IS NOT REPLACED (RULE <rule>)`: `REPLACE=Y` on a PDS or VSAM name; reason 12, no retry |
 | `OFTP239I` | Console + log | `<partner>: THE OLD <data set> PUT BACK FROM <backup>`: at start, after a stop in the middle of a replace |
 | `OFTP240P` | Log only | `<partner>: <key> RELAY: EERP/NERP FOR <dsn> QUEUED` |
 | `OFTP241P` | Log only | `<partner>: <key> RELAY: <dsn> FROM <id> FOR <id> QUEUED FOR <partner>` |
