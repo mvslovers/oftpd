@@ -23,8 +23,8 @@ queued #56, EERP claim #57, file over 750 KB from mendelson #58, daily
 `KEEPDAYS` run #59, dialog response time #60, `D P` VIA partner #61,
 TN3270 test for Show and Configure #62, libc370 2.24.1 #66.
 
-**Open without a milestone**: samplib `oftpdjob` and `oftprcv0` examples
-#150, unfiltered partner and wire bytes in the log #156.
+**Open without a milestone**: unfiltered partner and wire bytes in the log
+#156.
 
 **1.1** (milestone `1.1`): user exit after receipt #67, restart #68,
 NERPs beyond the relay case #69, buffer compression #70, per-send
