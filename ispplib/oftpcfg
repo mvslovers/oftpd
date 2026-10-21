@@ -17,8 +17,10 @@
 +
 +     changed partners are updated,
 +     new ones are added,
-+     removed ones are disabled.
++     removed ones leave the table; one that a session, a call or a
++     transfer still holds is disabled instead.
 +
++  Partners kept by command (option 3) are not read again.
 +
 !OFTMSG
 +
