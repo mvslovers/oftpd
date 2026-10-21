@@ -70,6 +70,9 @@ sources = ["test/tstptn.c"]
 sources = ["test/tstjob.c", "src/mvs/oftp#job.c"]
 mvs = false
 
+[test.TSTOPR]            # the operator command line (F OFTPD,...)
+sources = ["test/tstopr.c"]
+
 [test.TSTSESS]           # two engines joined by a socket pair; POSIX
 sources = ["test/tstsess.c"]
 mvs = false
@@ -158,6 +161,30 @@ host = false
 sources = ["test/mvs/tstsvcr.c"]
 host = false
 
+# How long a request takes over the SVC (internals/xmem.md section 18):
+# the requests the dialog makes, timed with the TOD clock, against a
+# RUNNING OFTPD. Runs for real only from test/mvs/tstlat.jcl; measures,
+# and fails on a wrong clock or a refused request, never on a slow one.
+[test.TSTLAT]
+sources = ["test/mvs/tstlat.c"]
+host = false
+
+# Background load for TSTLAT: spins the processor or writes and reads a
+# data set for a number of seconds. Measures nothing.
+[test.TSTLOD]
+sources = ["test/mvs/tstlod.c"]
+host = false
+
+# A send from a caller without an ACEE, and on a system without a
+# security product (#54). It clears ASXBSENV of its own address space for
+# one SVC, so it must be APF-authorized: AC(1) in an authorized library, or
+# authorization through SVC 244 as OFTPD does. The opposite of TSTSVC.
+# Runs for real only from test/mvs/tstsec.jcl.
+[test.TSTSEC]
+sources = ["test/mvs/tstsec.c"]
+host = false
+ac = 1
+
 # The SMP installation package (mbt package): the load modules go to
 # OFTPD.LINKLIB (SMP's, distribution library OFTPD.AOFTPLOD), samplib/
 # and ispplib/ are received as text libraries beside it.
@@ -183,3 +210,6 @@ prereq = []
 # panels are made for.
 [tso.ispf]
 size = "80x43"
+
+[tso.ispf.fixtures]
+PARMS = ["test/tso/oftpptn0"]
