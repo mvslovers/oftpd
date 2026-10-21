@@ -309,6 +309,8 @@ quiet(void *ctx, int warn, const char *line)
 static OFTP_LOGFN g_log = quiet;
 static OFTP_TRACEFN g_traced;
 static const char *g_pw = "PW";         /* both sides' password         */
+static const char *g_rpw;               /* the responder answers with this
+                                           instead of g_pw, when set     */
 static const char *g_ocode = "O0013000000MVS1"; /* initiator's own ID    */
 static const char *g_dsn;               /* initiator's first file name   */
 
@@ -408,6 +410,8 @@ run_initiator(const SCEN *sc, int fd)
 
     if (sess.xbuf != NULL)
         return 20;
+    if (g_rpw != NULL && strcmp(g_rpw, g_pw) != 0)
+        return rc == 4 && sess.esid_local ? 0 : 9;
     if (strcmp(sc->ipw, g_pw) != 0)
         return rc == 4 && !sess.esid_local ? 0 : 10;
     if (sc->refuse)
@@ -462,6 +466,8 @@ scenario(const SCEN *sc)
     m.nerp = sc->nerp;
     peer_init(&resp_view, "MVS1", "O0013000000MVS1", "O0013000000MVS2",
               sc->rlevel, sc->sdeb, sc->cred, sc->cmpr);
+    if (g_rpw != NULL)
+        strcpy(resp_view.pswd_out, g_rpw);
     sess_init(&sess, &sv[1], &m, 0);
     strcpy(sess.localcode, "O0013000000MVS2");
     rc = oftp_sess_run(&sess);
@@ -477,6 +483,11 @@ scenario(const SCEN *sc)
     if (strcmp(sc->ipw, g_pw) != 0) {
         snprintf(msg, sizeof(msg), "%s: responder ends with ESID 04", sc->name);
         CHECK(rc == 4 && sess.esid_local, msg);
+        return;
+    }
+    if (g_rpw != NULL && strcmp(g_rpw, g_pw) != 0) {
+        snprintf(msg, sizeof(msg), "%s: responder is left by ESID 04", sc->name);
+        CHECK(rc == 4 && !sess.esid_local, msg);
         return;
     }
     snprintf(msg, sizeof(msg), "%s: normal end (rc %d)", sc->name, rc);
@@ -1087,6 +1098,37 @@ printable_scenario(void)
     g_traced = NULL;
 }
 
+/* A partner without PASSWORD expects an empty password and sends one: the
+** check is an exact comparison in both directions of a call, and an empty
+** password is no wildcard (the books say so: ref-cfg, "A Partner Without a
+** Password")
+*/
+static void
+empty_pw_scenarios(void)
+{
+    static const SCEN both = { "empty both ways", 5, 5, 4096, 99, 0, "", 0, 0 };
+    static const SCEN sent = { "empty expected, one sent", 5, 5, 4096, 99, 0,
+                               "XX", 0, 0 };
+    static const SCEN none = { "one expected, empty sent", 5, 5, 4096, 99, 0,
+                               "", 0, 0 };
+    static const SCEN ans1 = { "empty expected, answer has one", 5, 5, 4096, 99,
+                               0, "", 0, 0 };
+    static const SCEN ans2 = { "one expected, answer empty", 5, 5, 4096, 99,
+                               0, "PW", 0, 0 };
+
+    g_pw = "";
+    scenario(&both);
+    scenario(&sent);
+    g_rpw = "XX";
+    scenario(&ans1);
+    g_pw = "PW";
+    g_rpw = "";
+    scenario(&ans2);
+    g_rpw = NULL;
+    scenario(&none);
+    g_pw = "PW";
+}
+
 int
 main(void)
 {
@@ -1110,6 +1152,7 @@ main(void)
     printf("=== TSTSESS session engine ===\n");
     for (i = 0; i < sizeof(sc) / sizeof(sc[0]); i++)
         scenario(&sc[i]);
+    empty_pw_scenarios();
     abend_scenario('W');
     abend_scenario('R');
     midfile_scenario();
