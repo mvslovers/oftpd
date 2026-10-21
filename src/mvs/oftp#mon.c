@@ -25,6 +25,7 @@
 #include "oftp.h"
 #include "oftpdsf.h"
 #include "oftpdsn.h"
+#include "oftpjob.h"
 #include "oftplog.h"
 #include "oftpmon.h"
 #include "oftprcv.h"
@@ -671,6 +672,42 @@ f_write(void *ctx, OFTP_FH *fh, const unsigned char *b, unsigned n, int eor)
     return oftp_dsf_write(c->idsf, b, n, eor);
 }
 
+/* JOB= of the rule: the file is under its final name, the job goes to the
+** internal reader. What it did is in the record and on the console; it
+** never refuses the file. The EERP does not wait for the job to run.
+*/
+static void
+run_job(SESCTX *c, OFTP_SPREC *r)
+{
+    OFTP_SUBCTX x;
+    char key[9], jobid[OFTP_JOB_ID], why[OFTP_JOB_WHY];
+
+    r->ppstate = ' ';
+    r->pprc = 0;
+    r->pptext[0] = '\0';
+    if (!c->hasrule || c->rule.job[0] == '\0')
+        return;
+    memcpy(key, r->key, 8);
+    key[8] = '\0';
+    x.pfile = r->local;
+    x.vfile = r->dsn;
+    x.partner = r->partner;
+    x.key = key;
+    if (oftp_job_submit(c->rule.job, &x, jobid, why) == 0) {
+        r->ppstate = 'S';
+        snprintf(r->pptext, sizeof(r->pptext), "%s",
+                 jobid[0] ? jobid : "(JOB NUMBER UNKNOWN)");
+        oftp_mon_msg("OFTP246P %s: %s SUBMITTED AS %s: JOB %s FOR %s",
+                     r->partner, key, r->pptext, c->rule.job, r->local);
+        return;
+    }
+    r->ppstate = 'E';
+    r->pprc = 8;
+    snprintf(r->pptext, sizeof(r->pptext), "%s", why);
+    oftp_mon_msg("OFTP247W %s: %s NOT SUBMITTED, %s: JOB %s FOR %s",
+                 r->partner, key, why, c->rule.job, r->local);
+}
+
 static int
 f_close_in(void *ctx, OFTP_FH *fh, int ok)
 {
@@ -739,6 +776,7 @@ f_close_in(void *ctx, OFTP_FH *fh, int ok)
         else
             oftp_mon_msg("OFTP229I %s: %s REPLACED", r->partner, r->local);
     }
+    run_job(c, r);
     r->state = SPL_RECEIVED;
     r->tdone = (long)time(NULL);
     settext(r, "received, EERP owed");
@@ -1807,6 +1845,12 @@ ctl_show(OFTP_MON *m, CTLOUT *o, const char *line)
         snprintf(out, sizeof(out), "100 start %s%s", nb, wn);
         ctl_put(o, out);
     }
+    if (r.ppstate == 'S' || r.ppstate == 'E') {
+        snprintf(out, sizeof(out), "100 job %s%s%s", r.ppstate == 'S'
+                 ? "submitted " : "not submitted: ", r.pptext,
+                 r.ppstate == 'S' ? " (JES job id)" : "");
+        ctl_put(o, out);
+    }
     if (r.reas)
         snprintf(out, sizeof(out), "100 reason %02d (%s): %s", r.reas,
                  r.reasby == 'P' ? "partner" : "local", r.text);
@@ -2168,8 +2212,9 @@ ctl_show_ptn(OFTP_MON *m, CTLOUT *o, const char *rest)
     n = m->busy[i];
     unlock(m, 0);
 
+    /* OURID and ADDRESS are for an administrator; the line keeps its shape */
     snprintf(out, sizeof(out), "100 PARTNER=%s ODETTEID=%s OURID=%s",
-             p.peer.name, p.peer.code, p.peer.ourcode);
+             p.peer.name, p.peer.code, o->admin ? p.peer.ourcode : "-");
     ctl_put(o, out);
     snprintf(out, sizeof(out), "100 HOST=%s PORT=%d LEVEL=%d MODE=%c",
              p.host, p.port, p.peer.level, p.peer.mode);
@@ -2179,7 +2224,7 @@ ctl_show_ptn(OFTP_MON *m, CTLOUT *o, const char *rest)
              p.sessions, p.peer.cmpr ? 'Y' : 'N', p.xlate ? 'Y' : 'N');
     ctl_put(o, out);
     snprintf(out, sizeof(out), "100 SDEB=%u CREDIT=%u ADDRESS=%s VIA=%s",
-             p.peer.sdeb, p.peer.cred, p.address, p.via);
+             p.peer.sdeb, p.peer.cred, o->admin ? p.address : "-", p.via);
     ctl_put(o, out);
     snprintf(out, sizeof(out), "100 PASSWORD=%s OURPASSWORD=%s",
              p.peer.pswd_in[0] ? "SET" : "NONE",
@@ -2201,6 +2246,7 @@ typedef struct {
     const char *rest;                   /* the keywords of the request   */
     int         slot;
     int         ovr;                    /* DELETE: OFTPPTN has the name  */
+    int         nopw;                   /* enabled, and no PASSWORD      */
     char        out[160];
 } PTNREQ;
 
@@ -2400,6 +2446,7 @@ ptn_save(OFTP_MON *m, PTNREQ *q, int adding)
         return ptn_refuse(q, "451 spool not available");
     }
     ptn_put(m, i, &n);
+    q->nopw = n.enabled && n.peer.pswd_in[0] == '\0';
     if (adding)
         ptn_slot_reset(m, i);
     else
@@ -2429,8 +2476,13 @@ ptn_report(OFTP_MON *m, CTLOUT *o, PTNREQ *q, const char *sub)
     oftp_mon_msg("OFTP24%cI PARTNER %s %s BY %s", sub[0] == 'A' ? '3' : '4',
                  q->name, sub[0] == 'A' ? "ADDED" : "CHANGED", ctl_by(o));
     ecb_post(&m->wake, 0);
-    snprintf(q->out, sizeof(q->out), "200 partner %s %s", q->name,
-             sub[0] == 'A' ? "added" : "changed");
+    snprintf(q->out, sizeof(q->out), "%s partner %s %s%s",
+             q->nopw ? "210" : "200", q->name,
+             sub[0] == 'A' ? "added" : "changed",
+             q->nopw ? ", but it has no PASSWORD" : "");
+    if (q->nopw)
+        ctl_put(o, "100 WARNING: without a PASSWORD every peer that knows "
+                "the Odette ID of the partner can log on");
 }
 
 static void
@@ -3352,18 +3404,20 @@ display_partners(OFTP_MON *m)
     for (i = 0; i < m->cfg.nptn; i++) {
         OFTP_PARTNER *p = &m->cfg.ptn[i];
         char ss[32];
+        char where[sizeof(p->host) + 8];
 
         if (p->peer.name[0] == '\0')
             continue;
+        oftp_cfg_where(p, where, sizeof(where));
         ss[0] = '\0';
         if (m->busy[i])
             snprintf(ss, sizeof(ss), " %d OF %d SESSIONS", m->busy[i],
                      p->sessions);
         if (m->trace_all || m->trace[i])
             strcat(ss, " TRACE");
-        oftp_mon_msg("OFTP100I %-8s %-25s %s%s LEVEL %d %s:%d", p->peer.name,
+        oftp_mon_msg("OFTP100I %-8s %-25s %s%s LEVEL %d %s", p->peer.name,
                      p->peer.code, p->enabled ? "ENABLED" : "DISABLED",
-                     ss, p->peer.level, p->host[0] ? p->host : "-", p->port);
+                     ss, p->peer.level, where);
     }
     oftp_mon_msg("OFTP101I %d PARTNERS, %d SESSIONS",
                  oftp_cfg_count(&m->cfg, NULL), m->nsess);

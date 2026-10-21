@@ -52,7 +52,7 @@ typedef struct oftp_sprec {
     char        member[9];
     char        xlate;                  /* 'Y' translate F/V/U data       */
     char        erp;                    /* send: 'E'/'N' arrived          */
-    char        ppstate;                /* post-processing, later         */
+    char        ppstate;                /* the job after receipt, below   */
     char        disp;                   /* send: 'D' delete the data set
                                            once the EERP is in; else keep */
     unsigned    lrecl;
@@ -74,6 +74,9 @@ typedef struct oftp_sprec {
     ** and only inside winfrom-winto each day (both 0 = any time) */
     long        tstart;
     unsigned short winfrom, winto;      /* minutes of the day, local      */
+    /* the job after receipt (oftpjob.h): ppstate 'S' submitted, 'E' not,
+    ** NUL or ' ' none; pprc 0 or 8; pptext the JES job id or the reason */
+    char        pptext[48];
 } OFTP_SPREC;
 
 /* A partner kept by command: the entry as KEYWORD=VALUE text, the syntax

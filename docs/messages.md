@@ -166,6 +166,8 @@ The ones that report a normal transfer are `P`.
 | `OFTP240P` | Log only | `<partner>: <key> RELAY: EERP/NERP FOR <dsn> QUEUED` |
 | `OFTP241P` | Log only | `<partner>: <key> RELAY: <dsn> FROM <id> FOR <id> QUEUED FOR <partner>` |
 | `OFTP242W` | Console + log | `<partner>: <key> RELAY: <dsn> FOR <id> GIVEN UP AFTER n ATTEMPTS`: the originator gets a NERP |
+| `OFTP246P` | Log only | `<partner>: <key> SUBMITTED AS <jobid>: JOB <pds(member)> FOR <data set>`: the job of the rule's `JOB=` is on the internal reader |
+| `OFTP247W` | Console + log | `<partner>: <key> NOT SUBMITTED, <reason>: JOB <pds(member)> FOR <data set>` (the reason comes first, so a long name cuts the names and not the reason): member missing, empty or unreadable; a member that ended early or changed between the two reads (`MEMBER CHANGED DURING READ`); a record past column 80; a line too long after the symbols; `?VFILE` with a character not allowed in JCL (`?VFILE NOT ALLOWED IN JCL`); the internal reader failed. The file is kept and acknowledged |
 | `OFTP248W` | Console + log | `<partner>: <data set> EXISTS AND SO DOES THE OLD VERSION <backup>, DELETE <backup> BY HAND`: at start, after a stop in the middle of a replace |
 | `OFTP290W` | Console + log | `<partner>: <text>` for a failed identity or password check: `UNKNOWN CALLER <id>`, `WRONG PASSWORD FROM <partner>` (the engine's text, in lower case), `ANSWERED BY <id>, NOT <id>`, `PARTNER PASSWORD DOES NOT MATCH` |
 | `OFTP290P` | Log only | `<partner>: <text>`: any other line the protocol engine reports (a refusal reason, a timeout, a file sent or received, the session parameters, and the `TRACE SEND|RECV ...` lines of `F OFTPD,TRACE`) |

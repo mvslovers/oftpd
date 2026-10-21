@@ -9,7 +9,9 @@ An OFTP (ODETTE File Transfer Protocol) implementation for MVS 3.8j: a
 monitor running as a started task (`OFTPD`) plus TSO and batch utilities
 (`OFTP`). Not meant for production use; the aim is a managed file transfer
 tool for the MVS hobbyist community — MVS to MVS over TCP/IP, and MVS to PC
-peers. The commercial rvsMVS is the model for the operational design.
+peers. A commercial OFTP product is the model for the operational design.
+Never name it, in the repo or on GitHub: call it "The Other" (or "other"),
+and describe its behaviour instead of citing its manuals.
 
 Product name: **OFTPD**, repo `oftpd` (decided 2026-10-13, matching FTPD
 and HTTPD; the repo was called oftp370 before). The started task and its

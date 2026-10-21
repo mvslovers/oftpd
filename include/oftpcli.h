@@ -14,13 +14,15 @@
 typedef void (*OFTP_CLILINE)(void *ctx, const char *text);
 
 /* Sends req over the SVC and collects the answer. final[cap] gets the
-** final line's text.
+** final line's text, and *code (when not NULL) the three digits of its
+** code, 0 when OFTPD gave no answer.
 ** Returns the return code the utility documents:
 **   0 done, 4 warning or refused for now, 8 error in the request,
 **   12 severe (unknown partner, OFTPD not reached or not answering).
 */
 extern int  oftp_cli_request(const char *req, OFTP_CLILINE line, void *ctx,
-                             char *final, int cap)      asm("OFTPCLRQ");
+                             char *final, int cap, int *code)
+                                                        asm("OFTPCLRQ");
 
 /* The return code for one final line (the table in oftp#rep.c) */
 extern int  oftp_cli_rc(const char *line)               asm("OFTPCLRC");
@@ -30,10 +32,10 @@ extern int  oftp_cli_rc(const char *line)               asm("OFTPCLRC");
 ** piece ends with the final line, whose text goes to final[cap]; -1
 ** when it ends with a 1xx line, so that more is to come; -2 when it is
 ** not an answer (a line without its '\n', or a line after the final
-** one).
+** one). *code (when not NULL) gets the final line's code.
 */
 extern int  oftp_cli_piece(const char *buf, unsigned len, OFTP_CLILINE line,
-                           void *ctx, char *final, int cap)
+                           void *ctx, char *final, int cap, int *code)
                                                         asm("OFTPCLPC");
 
 #endif /* OFTPCLI_H */

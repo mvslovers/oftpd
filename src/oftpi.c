@@ -99,15 +99,23 @@ define(DLG *d)
     return 0;
 }
 
-/* A request to OFTPD; the final answer goes into OFTMSG */
+/* A request to OFTPD; the final answer goes into OFTMSG and its code
+** into *code
+*/
 static int
-ask(DLG *d, const char *req, OFTP_CLILINE line, void *ctx)
+ask_code(DLG *d, const char *req, OFTP_CLILINE line, void *ctx, int *code)
 {
     char final[200];
-    int rc = oftp_cli_request(req, line, ctx, final, sizeof(final));
+    int rc = oftp_cli_request(req, line, ctx, final, sizeof(final), code);
 
     PUT(d, oftmsg, final);
     return rc;
+}
+
+static int
+ask(DLG *d, const char *req, OFTP_CLILINE line, void *ctx)
+{
+    return ask_code(d, req, line, ctx, NULL);
 }
 
 /* Column cut from an answer line: from..to inclusive, blanks trimmed;
@@ -438,7 +446,9 @@ pentry(DLG *d, const char *name, int adding)
     PVAL old, now;
     char req[256];
     size_t n;
-    int i, rc;
+    int i;
+    int rc;
+    int code = 0;
 
     if (pentry_init(d, name, adding, old) != 0)
         return 0;
@@ -467,7 +477,11 @@ pentry(DLG *d, const char *name, int adding)
             PUT(d, oftmsg, "Nothing was changed");
             continue;
         }
-        if (ask(d, req, NULL, NULL) == 0)
+        /* 2xx is taken, also 210 (taken, with a warning, RC 4); the
+        ** answer stays in OFTMSG for the caller to leave there
+        */
+        ask_code(d, req, NULL, NULL, &code);
+        if (code / 100 == 2)
             return 1;
     }
 }

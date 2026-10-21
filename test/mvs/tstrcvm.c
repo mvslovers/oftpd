@@ -13,11 +13,22 @@
 **           names (INPREFIX.<vfn>), and a rule that makes an invalid
 **           name (SFNA 01, nothing allocated), and REPLACE=Y onto a PDS
 **           and onto a VSAM cluster (SFNA 12, they stay)
+**           and the job after receipt (#45): a JOB= file whose job runs
+**           with the symbols put in (the file is delivered, the EERP does
+**           not wait for the job), one whose line grows past column 71
+**           (delivered, no job), one whose member is not there
+**           (delivered, no job), one whose member is a load module
+**           (RECFM=U: delivered, no job), the edge of the card (a
+**           statement of 71 columns runs, one of 72 does not) and the
+**           symbol names (?IDX stays, ?ID.X goes)
 **   RUN 2   the member was replaced by a second set and B told REFRESH:
 **           the new pattern decides, a rule that left the member no
 **           longer does
 **   RUN 3   the member now has a syntax error and B was told REFRESH
 **           again: the second set stays in force
+**   RUN 4   B is up again with the SVC (tstrcvmd.jcl, TSTRCVMC) and the
+**           spool it kept: the records of the JOB= files say
+**           "job submitted JOBnnnnn" and "job not submitted: reason"
 **
 ** What B did is read off the data sets it made; what A saw, off the spool.
 ** The console messages of B are looked at by hand (tstrcvm.jcl).
@@ -224,6 +235,7 @@ phase1(void)
     time_t now = time(NULL);
     struct tm tmv;
     struct tm *tm = localtime_r(&now, &tmv);
+    int i;
 
     /* the pattern rule: DSN=IBMUSER.RCVTEST.%ID.%Q3 */
     CHECK(transfer(D1, "TSTRCV.PAT.ONE", key, st, why),
@@ -321,6 +333,62 @@ phase1(void)
     CHECK(strcmp(st, "REJECTED") == 0 && strstr(why, "reason 01") != NULL,
           "invalid name: refused with SFNA 01, no retry");
     CHECK(!exists("IBMUSER.RCVTEST.9X"), "invalid name: nothing was made");
+
+    /* the job after receipt: a line that grows past column 71, a member
+    ** that is not there, then the job that runs. The file is delivered in
+    ** all three cases, the EERP does not wait for the job.
+    */
+    CHECK(transfer(D1, "TSTRCV.JOB.LONG", key, st, why),
+          "job, line too long: the file is delivered all the same");
+    CHECK(has("IBMUSER.RCVTEST.JOB.LONG", "D1 "),
+          "job, line too long: the data set is there");
+    CHECK(transfer(D1, "TSTRCV.JOB.NONE", key, st, why),
+          "job, no member: the file is delivered all the same");
+    CHECK(has("IBMUSER.RCVTEST.JOB.NONE", "D1 "),
+          "job, no member: the data set is there");
+    CHECK(transfer(D1, "TSTRCV.JOB.ONE", key, st, why),
+          "job: the file is delivered, the EERP is back");
+    CHECK(has("IBMUSER.RCVTEST.JOB.ONE", "D1 "), "job: the data set is there");
+    for (i = 0; i < 45 && !exists("IBMUSER.RCVTEST.JOBV.TSTRCV.JOB.ONE");
+         i++)
+        sleep(2);
+    printf("    the job ran after about %d s\n", i * 2);
+    CHECK(has("IBMUSER.RCVTEST.JOBOUT.TSTA", "D1 "),
+          "job: it ran, and ?PFILE and ?ID are in it");
+    CHECK(has("IBMUSER.RCVTEST.JOBV.TSTRCV.JOB.ONE", "D1 "),
+          "job: and ?VFILE");
+    CHECK(!exists("IBMUSER.RCVTEST.JOBOUT.LONG"),
+          "job, line too long: no job ran");
+
+    /* a member of RECFM=U (a load module) is no JCL: the file is
+    ** delivered, no job
+    */
+    CHECK(transfer(D1, "TSTRCV.JOB.RECU", key, st, why),
+          "job, RECFM=U: the file is delivered all the same");
+    CHECK(has("IBMUSER.RCVTEST.JOB.RECU", "D1 "),
+          "job, RECFM=U: the data set is there");
+
+    /* the edge of the card, tstrcvmd.jcl: a // statement of 72 columns
+    ** (sent first: a job of it would run before the other) is not
+    ** submitted, one of 71 with a sequence number behind it runs, and the
+    ** symbol names: ?IDX ?PFILE1 ?KEYS ?VFILEX stay, ?ID.X and ?ID-?KEY go
+    */
+    CHECK(transfer(D1, "TSTRCV.JOB.Q72", key, st, why),
+          "job, 72 columns: the file is delivered all the same");
+    CHECK(transfer(D1, "TSTRCV.JOB.Q71", key, st, why),
+          "job, 71 columns: the file is delivered");
+    CHECK(transfer(D1, "TSTRCV.JOB.SYM", key, st, why),
+          "job, symbol names: the file is delivered");
+    for (i = 0; i < 45 && !exists("IBMUSER.RCVTEST.JOBSYM.DONE"); i++)
+        sleep(2);
+    printf("    the symbol job ran after about %d s\n", i * 2);
+    CHECK(exists("IBMUSER.RCVTEST.JOBQ71.TSTA"),
+          "job, 71 columns: it ran, the comma in column 71 is the text's");
+    CHECK(!exists("IBMUSER.RCVTEST.JOBQ72.TSTA"),
+          "job, 72 columns: no job ran");
+    CHECK(has("IBMUSER.RCVTEST.JOBSYM",
+              "?IDX ?PFILE1 ?KEYS ?VFILEX TSTA.X TSTA-T"),
+          "job, symbol names: other names stay, ?ID.X and ?ID-?KEY go");
 }
 
 static void
@@ -355,6 +423,97 @@ phase3(void)
           "after a bad member: the second set is still in force");
 }
 
+/* The latest transfer in the LIST reply whose line holds local (the spool
+** keeps those of earlier runs), its key in key[9]; 0 when there is none
+*/
+static int
+key_of(const char *local, char *key)
+{
+    unsigned i = 0;
+    int found = 0;
+
+    while (i < rlen) {
+        unsigned e = i;
+
+        while (e < rlen && reply[e] != '\n')
+            e++;
+        if (e - i > 12 && memcmp(reply + i, "100 ", 4) == 0) {
+            char line[200];
+
+            snprintf(line, sizeof(line), "%.*s", (int)(e - i), reply + i);
+            if (strstr(line, local) != NULL) {
+                memcpy(key, line + 4, 8);
+                key[8] = '\0';
+                found = 1;
+            }
+        }
+        i = e + 1;
+    }
+    return found;
+}
+
+/* What B recorded for the file it made as local: the "100 job" line */
+static const char *
+job_of(const char *local)
+{
+    char key[9], req[40];
+    unsigned next = 0, from = 0;
+    int rc, found = 0;
+
+    do {
+        memset(reply, 0, sizeof(reply));
+        rlen = 0;
+        rc = oftp_svc_call("LIST PARTNER=TSTA", reply, sizeof(reply), from,
+                           &rlen, &next);
+        if (rc != OFTP_SVC_OK && rc != OFTP_SVC_MORE) {
+            printf("    LIST PARTNER=TSTA: transport answered %d\n", rc);
+            return NULL;
+        }
+        if (key_of(local, key))
+            found = 1;
+        from = next;
+    } while (rc == OFTP_SVC_MORE);
+    if (!found)
+        return NULL;
+    snprintf(req, sizeof(req), "SHOW KEY=%s", key);
+    if (ask(req) != OFTP_SVC_OK)
+        return NULL;
+    return find("100 job");
+}
+
+static void
+phase4(void)
+{
+    const char *j;
+
+    j = job_of("IBMUSER.RCVTEST.JOB.ONE");
+    printf("    %s\n", j != NULL ? j : "(no job line)");
+    CHECK(j != NULL && strncmp(j, "100 job submitted JOB", 21) == 0,
+          "record of the job: submitted, with the JES job id");
+    j = job_of("IBMUSER.RCVTEST.JOB.LONG");
+    printf("    %s\n", j != NULL ? j : "(no job line)");
+    CHECK(j != NULL && strstr(j, "not submitted: LINE TOO LONG") != NULL,
+          "record of the long line: not submitted, with the reason");
+    j = job_of("IBMUSER.RCVTEST.JOB.NONE");
+    printf("    %s\n", j != NULL ? j : "(no job line)");
+    CHECK(j != NULL && strstr(j, "not submitted: MEMBER NOT FOUND") != NULL,
+          "record of the missing member: not submitted, with the reason");
+    j = job_of("IBMUSER.RCVTEST.JOB.RECU");
+    printf("    %s\n", j != NULL ? j : "(no job line)");
+    CHECK(j != NULL && strstr(j, "not submitted: RECORD FORMAT NOT SUPPORTED")
+          != NULL, "record of the load module: not submitted, with the reason");
+    j = job_of("IBMUSER.RCVTEST.JOB.Q72");
+    printf("    %s\n", j != NULL ? j : "(no job line)");
+    CHECK(j != NULL && strstr(j, "not submitted: LINE TOO LONG") != NULL,
+          "record of the 72 columns: not submitted, with the reason");
+    j = job_of("IBMUSER.RCVTEST.JOB.Q71");
+    printf("    %s\n", j != NULL ? j : "(no job line)");
+    CHECK(j != NULL && strncmp(j, "100 job submitted JOB", 21) == 0,
+          "record of the 71 columns: submitted");
+    j = job_of("IBMUSER.RCVTEST.TSTA.ONE");
+    CHECK(j == NULL, "a file whose rule has no JOB= has no job line");
+}
+
 int
 main(int argc, char **argv)
 {
@@ -371,7 +530,9 @@ main(int argc, char **argv)
         phase2();
     else if (argv[2][0] == '3')
         phase3();
+    else if (argv[2][0] == '4')
+        phase4();
     else
-        printf("  PARM='RUN 1', 'RUN 2' or 'RUN 3'\n");
+        printf("  PARM='RUN 1', 'RUN 2', 'RUN 3' or 'RUN 4'\n");
     return mbt_test_summary("TSTRCVM");
 }

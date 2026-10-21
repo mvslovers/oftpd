@@ -53,7 +53,24 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   deleted: it is disabled and the delete is refused. The spool holds the
   partner passwords in clear text, like `OFTPPTN`: protect it the same
   way. OFTPD does not start when it cannot read the partner records
-  (`OFTP019E`). See `docs/partners.md`.
+  (`OFTP019E`). A partner without `PASSWORD` is allowed, but `ADD` and
+  `CHANGE` answer with a warning (210). `SHOW` prints `-` for `OURID` and
+  `ADDRESS` to a caller who is not an administrator. See `docs/partners.md`.
+- **A job after receipt.** a receive rule with `JOB=pds(member)` makes OFTPD
+  read that member once the file is under its final name, put `?PFILE`
+  (the data set), `?VFILE` (the virtual file name), `?ID` (the partner) and
+  `?KEY` (the transfer) into it and give it to the internal reader of the
+  started task; the job runs as the default user of the security product
+  (RAKF: `PROD`), not as the started task, unless the member has a `USER=`
+  of its own. The EERP does not wait for the job. The transfer record
+  (`OFTP SHOW`) says whether the job was submitted, with its JES job id, or
+  why not; a line that grows past column 71 (a JCL statement) or 80 after
+  the substitution, a member that is missing or empty, or a virtual file
+  name with a character JCL must not get from a partner leaves the job
+  unsubmitted and the file received (`OFTP247W`). So does a member that
+  has a different number of records the second time it is read. The
+  reason comes first in `OFTP246P` / `OFTP247W`, so the console and log
+  cut cannot remove it.
 - **Operator log.** OFTPD writes its messages to a SYSOUT data set,
   `DD OFTPLOG` of the started task, each line with its date and time. A new
   message class `P` goes to the log only: every single transfer, session
@@ -132,6 +149,8 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   hangs is ended by `CANCEL`.
 - A batch job cancelled while its request was parked kept its slot for 300
   seconds. It is recognised by its job now and its slot is freed.
+- `D P` printed `-:3305` for a partner that is reached through another node
+  (`VIA=`). It now names the node.
 - An answer given while OFTPD was stopping was thrown away. It is delivered,
   and a request that was never served is told so.
 
