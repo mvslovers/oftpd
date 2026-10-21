@@ -46,17 +46,20 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   rules stay. `F OFTPD,REFRESH` reads it again.
 - **Partner maintenance at run time:** `OFTP PARTNER ADD|CHANGE|ENABLE|
   DISABLE|DELETE|SHOW|LIST` from TSO and batch, and the same in the ISPF
-  dialog (option 3), for the userids named in `ADMIN=`. No parmlib edit and
-  no restart; the partners are kept in the spool and survive a restart. A
+  dialog (option 3). `ADD`, `CHANGE`, `ENABLE`, `DISABLE` and `DELETE` are
+  for the userids named in `ADMIN=`; `SHOW` and `LIST` are open to every
+  caller. No parmlib edit and no restart; the partners are kept in the spool and survive a restart. A
   partner of the same name there wins over `OFTPPTN`, and `REFRESH` reads
   `OFTPPTN` only. A partner that has transfers in the spool is never
-  deleted: it is disabled and the delete is refused. The spool holds the
-  partner passwords in clear text, like `OFTPPTN`: protect it the same
-  way. OFTPD does not start when it cannot read the partner records
+  deleted: it is disabled and the delete is refused. A partner that is only
+  in `OFTPPTN` is not deleted by the command (remove it there and `REFRESH`);
+  deleting one that overrides an `OFTPPTN` entry brings that entry back. The
+  spool holds the partner passwords in clear text, like `OFTPPTN`: protect
+  it the same way. OFTPD does not start when it cannot read the partner records
   (`OFTP019E`). A partner without `PASSWORD` is allowed, but `ADD` and
   `CHANGE` answer with a warning (210). `SHOW` prints `-` for `OURID` and
   `ADDRESS` to a caller who is not an administrator. See `docs/partners.md`.
-- **A job after receipt.** a receive rule with `JOB=pds(member)` makes OFTPD
+- **A job after receipt.** A receive rule with `JOB=pds(member)` makes OFTPD
   read that member once the file is under its final name, put `?PFILE`
   (the data set), `?VFILE` (the virtual file name), `?ID` (the partner) and
   `?KEY` (the transfer) into it and give it to the internal reader of the
@@ -120,7 +123,8 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   `PASSWORD` can be written, an error text names the position of a bad word
   instead of the word, and the request and reply slots in common storage are
   erased as soon as they have been read.
-- The build toolchain is libc370 2.24.1 and cc370 1.6.1.
+- OFTPD is built with libc370 2.24.1 (the C library) and cc370 1.6.1 (the
+  C compiler).
 
 ### Removed
 
@@ -132,6 +136,15 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
 
 - A file of more than about 750 KB between two OFTPDs ended with `EFNA`
   reason 12, because the file description carried no usable size.
+- A file with fixed-length records of about 5 MB from a partner that
+  restarts its subrecord pattern at the head of every data buffer (mendelson
+  OFTP2 CE does) was refused with `EFNA` reason 05, although the payload and
+  the octet count were right: a record cut by the end of a buffer lost its
+  end-of-record flag, and the flags that followed fell inside the next record.
+  For fixed records OFTPD now cuts at the record length of the file
+  description, counts the flags only, and accepts a record count in the end
+  of file that matches either its own count or the flags seen. Variable
+  records are unchanged.
 - A spool that an abend or a `CANCEL` had left open could not be opened
   again. OFTPD now runs `VERIFY` itself and says so (`OFTP021W`).
 - A session that abended stayed counted as running: its partner was refused,
