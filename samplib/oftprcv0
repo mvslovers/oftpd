@@ -42,8 +42,9 @@
 * that can name a data set under TMPPREFIX is refused as well.
 * REPLACE=Y works on a plain sequential data set; a PDS, a VSAM cluster or
 * a member is refused (SFNA 12, OFTP234W) and left alone. While a file is
-* replaced the old one waits under TMPPREFIX.B<key>; see docs/installation.md
-* for what to do after a crash.
+* replaced the old one waits under TMPPREFIX.B and the 7 digits of the spool
+* key (OFTP.TMP.B0000012); see docs/installation.md for what to do after a
+* crash.
 * A qualifier is 1-8 characters and starts with a letter, so a date in
 * one needs a letter in front and no more than 7 characters after it:
 * Y%YYYY is 5, D%MM%DD is 5, T%HH%MI%SS is 7.
@@ -76,10 +77,13 @@
 * used at all: the rules that were in force stay, and the console names
 * the line (OFTP010W) and says OFTP025E.
 *
+* Examples. The rules are tried from the top, so the narrow ORDERS.URGENT
+* comes before the ORDERS.* that would match it as well:
+*
+* RULE=URGENT  FROM=PARTNER1  VFN=ORDERS.URGENT
+*              DSN=PROD.ORDERS.URGENT  REPLACE=Y
+*              JOB=PROD.JCL(ORDERS)
 * RULE=ORDERS  FROM=PARTNER1  VFN=ORDERS.*
 *              DSN=PROD.ORDERS.Y%YYYY.D%MM%DD.T%HH%MI%SS
 * RULE=INVOICE FROM=*  VFN=INV?????.DATA
 *              DSN=ACCT.IN.%ID.%VFN  REPLACE=Y  VOLSER=WORK01  SPACE=30
-* RULE=ORDERS2 FROM=PARTNER1  VFN=ORDERS.*
-*              DSN=PROD.ORDERS.IN.%ID  REPLACE=Y
-*              JOB=PROD.JCL(ORDERS)
