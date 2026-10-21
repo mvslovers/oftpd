@@ -68,7 +68,7 @@ The number is the place of the word, counted from the first word after
 `PARTNER CHANGE`. The message never shows the word, because it may be a
 password. `XLATE` alone is taken as `XLATE(Y)`. An operand whose value is
 longer than 79 characters is refused with `OFTP003E OPERAND TOO LONG:` and
-its keyword, again never the value (`docs/messages.md`).
+its keyword, again never the value (message reference, `docs/books/ref`).
 
 OFTPD reads every request in upper case, so values (passwords and the
 host name included) are upper case. `SHOW` never prints a password: it says

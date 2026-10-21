@@ -15,8 +15,8 @@
     for MVS 3.8j (oftpd 1.0.0), and to all subsequent releases and
     modifications until otherwise indicated in new editions.
 
-    *Draft.* OFTPD 1.0 is still in development, and so is this book:
-    chapters still to be written say so.
+    *Draft.* OFTPD 1.0 is still in development, and so is this book. It
+    describes the state of the main branch of the repository.
 
     Comments on this book may be addressed to the issue tracker of the
     mvslovers/oftpd repository on GitHub.
@@ -34,12 +34,8 @@
 
 This book describes OFTPD (oftpd), the OFTP server for MVS 3.8j, in full:
 the commands of the #cmd("OFTP") utility, the operator commands of the
-monitor, the configuration parameters and the partner table, the messages,
-and the protocol levels with their field layouts. How to use them together
-is the subject of the companion volume, the _OFTPD User's Guide_.
-
-#note[This book is a Draft. Its chapters are placeholders until they are
-written\; each one says so.]
+monitor, the configuration parameters and the partner table, the receive
+rules, and the messages. How to use them together is the subject of the companion volume, the _OFTPD User's Guide_.
 
 == How This Book Is Organized
 
@@ -47,8 +43,8 @@ written\; each one says so.]
   [Chapter 1], [“The OFTP Command”.],
   [Chapter 2], [“Operator Commands”.],
   [Chapter 3], [“Configuration and the Partner Table”.],
+  [Chapter 4], [“Receive Rules”.],
   [Appendix A], [“Messages”.],
-  [Appendix B], [“Protocol Levels and Field Layouts”.],
 )
 
 == Related Publications
@@ -65,10 +61,10 @@ written\; each one says so.]
 #part("ref-cmd.html", include "ref/ref-cmd.typ")
 #part("ref-op.html", include "ref/ref-op.typ")
 #part("ref-cfg.html", include "ref/ref-cfg.typ")
+#part("ref-rcv.html", include "ref/ref-rcv.typ")
 
 #show: appendices
 #part("apx-messages.html", include "ref/apx-messages.typ")
-#part("apx-levels.html", include "ref/apx-levels.typ")
 
 #part("index-terms.html", title: [Index])[
 #heading(numbering: none)[Index]
