@@ -559,7 +559,7 @@ abend_scenario(int where)
 ** call applies.
 */
 static void
-cut_scenario(void)
+midfile_scenario(void)
 {
     MFILES m, r;
     int sv[2], status = -1, rc;
@@ -1112,7 +1112,7 @@ main(void)
         scenario(&sc[i]);
     abend_scenario('W');
     abend_scenario('R');
-    cut_scenario();
+    midfile_scenario();
     refuse_scenario(-1, 3);
     refuse_scenario(8, 8);
     cut_scenario();
