@@ -70,6 +70,21 @@ password. `XLATE` alone is taken as `XLATE(Y)`. An operand whose value is
 longer than 79 characters is refused with `OFTP003E OPERAND TOO LONG:` and
 its keyword, again never the value (message reference, `docs/books/ref`).
 
+A value cannot hold a blank or a comma, not even in quotes: OFTPD reads the
+request word by word. `PASSWORD('a b')` reaches it as `PASSWORD=A B`, and
+OFTPD refuses the request with return code 8, changing nothing:
+
+```
+word 3 is not KEYWORD=VALUE
+```
+
+The number is the place of the word in the request, counted from the first
+word after `PARTNER ADD` or `PARTNER CHANGE`, in the order you wrote them.
+The partner name counts as a word where you wrote it: it is word 1 only when
+it comes first, so in `PARTNER ADD ACME PASSWORD('a b')` the word `B` is
+word 3, but in `PARTNER ADD PASSWORD('a b') ACME` it is word 2. The text
+never shows the word: it may be the rest of a password.
+
 OFTPD reads every request in upper case, so values (passwords and the
 host name included) are upper case. `SHOW` never prints a password: it says
 `PASSWORD=SET` or `NONE`. To change a password, give the new one. To clear a host, an address or a
@@ -88,16 +103,19 @@ Odette IDs the transfer carries, the local one included.
 **A password is as secret as the place you type it.** In batch `OFTP`
 echoes each command of `SYSIN` to `SYSPRINT` and prints the value after
 `PASSWORD` and after `OURPASSWORD` as eight stars (`PASSWORD(********)`),
-whatever its length. It does so in every way the command can be written:
-`PASSWORD(x)`, `PASSWORD=x`, `PASSWORD('x y')`, and with blanks between the
-keyword and the value (`PASSWORD x`, `PASSWORD (x)`, `PASSWORD = x`). The
-echo looks for the text `PASSWORD` in any case and anywhere in the line,
-so a keyword that ends in it is masked as well. A `PASSWORD` that stands
-alone masks the word after it, whatever that word is. The echo is cut into
-lines of at most 72 columns; a line that goes on ends in ` -`, as it does in
-`SYSIN`. But the password is in your JCL, and under TSO it is on your
-terminal and in your session's history. Keep the JCL in a data set only you
-can read.
+whatever its length. The echo masks one word: the value ends at the first
+blank that is not inside quotes. So it hides a password written as one word
+(`PASSWORD(x)`, `PASSWORD=x`) or in quotes (`PASSWORD('x y')`). A password
+with a blank in it must therefore be quoted. Unquoted, `PASSWORD(ab cd)` is
+echoed as `PASSWORD(******** cd)`: the rest of the password stands in
+`SYSPRINT`. (`OFTP` then refuses the command, `OFTP007E` above, but the echo
+has been written by then.) A password in quotes is masked whole, yet OFTPD
+still refuses it, because a value cannot hold a blank (above). The echo
+looks for the text `PASSWORD` in any case and anywhere in the line, so a
+keyword that ends in it is masked as well. The echo is cut into lines of at
+most 72 columns; a line that goes on ends in ` -`, as it does in `SYSIN`.
+But the password is in your JCL, and under TSO it is on your terminal and
+in your session's history. Keep the JCL in a data set only you can read.
 
 A password in a `PARTNER` command also travels through common storage
 (CSA): `OFTP` hands the request to OFTPD in a slot there, and OFTPD
@@ -180,6 +198,7 @@ OFTPD not reached. An answer with return code 12 is printed after
 | `ADD` of a name that exists | `partner exists: use CHANGE` | 8 |
 | `ADD` when the table holds 32 partners | `the partner table is full` | 8 |
 | a keyword that is none, or a value that does not fit | for example `unknown keyword TOKEN`, `invalid value for TOKEN`, `ODETTEID is required` | 8 |
+| a word that is not `KEYWORD=VALUE`, such as the second half of a value with a blank | `word n is not KEYWORD=VALUE`, `n` the place of the word | 8 |
 | `CHANGE`, `ENABLE`, `DISABLE` or `DELETE` of a name that is not there | `OFTP010E no such partner` | 12 |
 | `CHANGE` while a session with the partner runs (or OFTPD is calling it); only `ENABLE` and `DISABLE` are taken at once | `the partner has a session now, try again` | 4 |
 | `DELETE` while a session with it runs | `the partner has a session now, try again` | 4 |

@@ -422,8 +422,14 @@ number.
     [501], [#cmd("no such partner")], [The partner is not in the table.],
     [507], [#cmd("needs ADMIN= in OFTPPRM")],
       [The user is not an administrator.],
-    [508], [The reason, for example #cmd("the entry is too long")],
-      [The partner name or an operand is not valid, or the entry is too long.],
+    [508], [The reason, for example #cmd("unknown keyword token") \
+      #cmd("invalid value for token") \
+      #cmd("word n is not KEYWORD=VALUE") \
+      #cmd("ODETTEID is required") \
+      #cmd("the entry is too long")],
+      [The partner name or an operand is not valid, or the entry is too long.
+      A word that is not #cmd("KEYWORD=VALUE") is often the second half of a
+      value with a blank in it\; #var("n") is its place, not the word.],
     [509], [#cmd("partner exists: use CHANGE")],
       [The partner exists\; #cmd("ADD") is refused.],
     [512], [#cmd("partner other is reached through it") \
@@ -462,15 +468,32 @@ A password given with #cmd("ADD") or #cmd("CHANGE") needs care.
   the commands from #cmd("SYSIN") it echoes each one with the prefix
   #cmd("OFTP"), and writes eight stars in place of the value of
   #cmd("PASSWORD") and #cmd("OURPASSWORD"), whatever its length. That masks the
-  echo only. A long command is echoed in lines of at most 72 columns, each
-  one but the last ending in #cmd(" -").
+  echo only. The mask hides one word\: the value ends at the first blank that
+  is not inside quotes. A password written as one word (#cmd("PASSWORD(x)"),
+  #cmd("PASSWORD=x")) is hidden, and so is one in quotes
+  (#cmd("PASSWORD('x y')")), with or without blanks between the keyword and
+  the value. Unquoted, #cmd("PASSWORD(ab cd)") is echoed as
+  #cmd("PASSWORD(******** cd)")\: the rest of the password stands in
+  #cmd("SYSPRINT"). The utility then refuses the command (#cmd("OFTP007E")),
+  but the echo has been written by then. The echo looks for the text
+  #cmd("PASSWORD") in any case and anywhere in the line, so a keyword that
+  ends in it is masked as well. A long command is echoed in lines of at most
+  72 columns, each one but the last ending in #cmd(" -").
 - The request passes through a slot in common storage (CSA) on its way to
   OFTPD. OFTPD wipes the request from the slot as soon as it has taken it,
   and the slot is wiped again, request and answer, when it is released. Until
   then, a program that can read common storage could read the password.
 - An operand that is not #cmd("KEYWORD=VALUE") is named in the answer by its
   place, as #cmd("word n is not KEYWORD=VALUE"), never by the word itself,
-  because that can be the second half of a password with a blank in it.
+  because that can be the second half of a password with a blank in it. A
+  value cannot hold a blank or a comma, not even in quotes, because OFTPD
+  reads the request word by word\: #cmd("PASSWORD('a b')") reaches it as
+  #cmd("PASSWORD=A B"), and the command is refused with code 508 and return
+  code 8, changing nothing. #var("n") counts from the first word after
+  #cmd("ADD") or #cmd("CHANGE"), in the order in which the utility sends the
+  words, and the partner name counts as a word where you wrote it. In
+  #cmd("PARTNER ADD ACME PASSWORD('a b')") the word #cmd("B") is word 3\; in
+  #cmd("PARTNER ADD PASSWORD('a b') ACME") it is word 2.
 - #cmd("SHOW") and the ISPF dialog show whether a password is set, never the
   password. The messages #cmd("OFTP243I") and #cmd("OFTP244I") do not carry it.
 
