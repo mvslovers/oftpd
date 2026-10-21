@@ -15,8 +15,8 @@
     for MVS 3.8j (oftpd 1.0.0), and to all subsequent releases and
     modifications until otherwise indicated in new editions.
 
-    *Draft.* OFTPD 1.0 is still in development, and so is this book:
-    chapters still to be written say so.
+    *Draft.* OFTPD 1.0 is still in development, and so is this book. It
+    describes the state of the main branch of the repository.
 
     Comments on this book may be addressed to the issue tracker of the
     mvslovers/oftpd repository on GitHub.
@@ -38,9 +38,6 @@ are set up, and how files are sent and received. Every command, parameter
 and message is described in full in the companion volume, the _OFTPD
 Reference_.
 
-#note[This book is a Draft. Its chapters are placeholders until they are
-written\; each one says so.]
-
 == How This Book Is Organized
 
 #deflist(width: 1.35in,
@@ -58,7 +55,7 @@ written\; each one says so.]
 #deflist(width: 1.35in,
   [ML09-0002], [_OFTPD Reference_: the commands of #cmd("OFTP"), the
     operator commands, the configuration parameters and the partner table,
-    the messages, and the protocol levels.],
+    and the messages.],
 )
 
 #mainmatter()
