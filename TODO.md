@@ -1,7 +1,44 @@
 # Open Work, Ranked
 
-Holds order and rationale only; once the repo is on GitHub, its issues are
-the source of truth. The MVP scope is `internals/design.md` section 0.
+The repo is on GitHub: **the issues are the source of truth** for everything
+open (milestones `1.0.0` and `1.1`, label `later`). This file keeps the
+history of what was done and measured, and the decisions below. A mention of
+an open point in the history further down is history; the issue holds its
+state. The MVP scope is `internals/design.md` section 0.
+
+## Open work (state of 2026-10-22)
+
+Checked against the issues on this date; the issues win if they disagree.
+
+**1.0.0** (milestone `1.0.0`), open: levels 1.4 and 1.3 against a real
+peer #50, `MAXRETRY` cut off mid-file #51, `docs/` #63, book area #64,
+release preparation #65, colon after the partner name in three messages
+#93, `LIST` over 150 transfers #101, books: partner password, VIA and
+OURID #163. Closed in this
+milestone: receive rules #44, job after receipt #45, partner maintenance
+#46, log to SYSOUT #47, `TRACE` #48, `TRACE` follow-ups #86,
+spool-thread recovery #49, SVC on TK5 #52, dialog on TK5 #53, no ACEE /
+no security product #54, SVC length check #55, session abort while
+queued #56, EERP claim #57, file over 750 KB from mendelson #58, daily
+`KEEPDAYS` run #59, dialog response time #60, `D P` VIA partner #61,
+TN3270 test for Show and Configure #62, libc370 2.24.1 #66.
+
+**Open without a milestone**: samplib `oftpdjob` and `oftprcv0` examples
+#150, unfiltered partner and wire bytes in the log #156.
+
+**1.1** (milestone `1.1`): user exit after receipt #67, restart #68,
+NERPs beyond the relay case #69, buffer compression #70, per-send
+overrides #71, `STOP partner` and the three stop strengths #72.
+
+**Later** (label `later`): CMS compression #73, allowed virtual file
+names per partner #74, `DISP=COPY` #75, virtual local Odette IDs #76,
+routing over several hops #77, RECFM/BLKSIZE through SFIDUSER #78,
+exit for the authorization check #79, HTTP API #80, TBCREATE RC 20
+from a CLIST #81.
+
+**Never** (decided 2026-10-20, no issue): call windows per partner;
+spanned V records over 32752 bytes; a drop file to queue a send while OFTPD
+is not running.
 
 ## MVP
 
@@ -253,7 +290,7 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 - Retry limit (`MAXRETRY`, design 3.3): measured on dev1 2026-10-13
   (`internals/interop.md`). Still untried there: a transfer cut off
   mid-file, the wait after a call that failed before any file, a NERP
-  for a level 1.3 sender.
+  for a level 1.3 sender (#51, #50).
 - Dialog: `S` (show) and Configure are driven by the TN3270 test (#62,
   TK5 container 2026-10-20), as is the partner maintenance. Panels for 80x43, measured on dev1 2026-10-13 at 80x43 and 160x62
   (s3270 `-model 3279-4-E`, `-model 3279-5-E -oversize 160x62`): on
@@ -264,7 +301,7 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   it with an attribute; `&VAR` in text is substituted before expanding
   and swallows the blank after it. Menu and Send need more than 24 rows;
   `test/tso/ispf.lua` runs at 80x43 (`[tso.ispf] size`, mbt 3.0.0-dev).
-- TBCREATE from a CLIST answers RC 20 on dev1 (also with the variables
+- TBCREATE from a CLIST (#81) answers RC 20 on dev1 (also with the variables
   set first, as Wally's CMEMFIND does); not understood.
 - ~~Dialog lag over the control port~~ (1.1-1.2 s per request, suspects
   connect() and closesocket() through DYN75) -- moot, the port is gone
@@ -282,7 +319,7 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   change) and `F OFTPD,HOLD|RELEASE name|ALL`; the changes and the
   single-key HOLD/RELEASE/RETRY are conditional puts now
   (`oftp_spl_putif()`). Measured in an MVS/CE container, `TSTSPL` 33/33.
-  Still open from design 8: `STOP partner`, the three stop
+  Still open from design 8 (#72): `STOP partner`, the three stop
   strengths, and the other's `C-sid` (cancel the running transfer into HELD).
   The session's own claim (`claim_out`) is still a plain get and put.
 - ~~Delete after EERP~~ (the other's `DISP=DELETE`): `SEND ... DISP(DELETE)`,
@@ -381,13 +418,12 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 
 ## After the MVP
 
-- Restart, buffer compression, NERP generation beyond a relay that gives
-  up, post-processing (JCL and exit), virtual local Odette IDs,
-  routing beyond one hop, cross-memory transport.
+Everything that was listed here is an issue now; see "Open work" above.
 
 ## Maintainer decisions
 
 - ~~Product name~~ — OFTPD, repo `oftpd` (2026-10-13).
-- FMID prefix `TOFT` (check `LIST CDS/ACDS SYSMOD(TOFT010)` on MVS/CE
-  and TK5, with job numbers); ~~book area~~ (ML09, approved);
-  rows in the root `CLAUDE.md`.
+- ~~FMID prefix `TOFT`~~ -- in use (`TOFT010` spent). The first final
+  release is `TOFT100`, not `TOFT020`; `TOFT020` and `TOFT050` were never
+  spent (#65). ~~Book area~~ (ML09, approved); the rows in the root
+  `CLAUDE.md` are the maintainer's.
