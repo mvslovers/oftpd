@@ -2,7 +2,7 @@ schema = 3
 
 [project]
 name = "oftpd"
-version = "0.1.0-dev"
+version = "1.0.0-dev"
 
 [toolchain]
 mbt = "3.0"
@@ -146,12 +146,12 @@ readme = "docs/installation.md"
 [smp]
 # The id is the release: T + three product letters + the version digits,
 # spent exactly once; each release deletes the one before it. No version
-# component may exceed 9. TOFT010 is the first level, so nothing to delete.
-# It is spent by the 0.1.0-dev prerelease installed on the test systems
-# (maintainer, 2026-10-13); the first final release is 0.2.0, TOFT020,
-# and it deletes TOFT010.
+# component may exceed 9. 1.0.0 is TOFT100 and deletes TOFT010, the id
+# spent by the 0.1.0-dev prerelease installed on the test systems
+# (maintainer, 2026-10-13). TOFT020 and TOFT050 were never spent; TOFT020
+# was checked free on the four test systems on 2026-10-19, CDS and ACDS.
 prefix = "TOFT"
-delete = []
+delete = ["TOFT010"]
 prereq = []
 
 [distribution.library.samplib]   # OFTPD.SAMPLIB: PROC, PARMLIB, jobs

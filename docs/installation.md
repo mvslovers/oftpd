@@ -32,15 +32,15 @@ This package installs it through SMP 4, the SMP that comes with MVS 3.8j.
 | `oftpd-<v>-inst.jcl` | receives the three files and installs the SYSMOD |
 
 The SYSMOD is a `++FUNCTION` with the FMID `TOFT` + version digits:
-0.1.0 is `TOFT010`.
+1.0.0 is `TOFT100`.
 
 ## 1. Check that the FMID is free
 
 ```
 //LIST    EXEC SMPAPP
 //SMPCNTL  DD  *
- LIST CDS SYSMOD(TOFT010) .
- LIST ACDS SYSMOD(TOFT010) .
+ LIST CDS SYSMOD(TOFT100) .
+ LIST ACDS SYSMOD(TOFT100) .
 /*
 ```
 
@@ -97,9 +97,11 @@ add it with its volume to `SYS1.PARMLIB(IEAAPF00)`; MVS 3.8j reads that
 member only at IPL.
 
 The log (section 7) says which route it took: `OFTP004P AUTHORIZED BY
-LIBRARY` or `OFTP004P AUTHORIZED BY SVC`. This release needs no
-authorization yet, so `OFTP005W NOT AUTHORIZED, RC=n, CONTINUING` (on the
-console as well) is a warning only; later releases will need it.
+LIBRARY` or `OFTP004P AUTHORIZED BY SVC`. The cross-memory transport
+(`SVC=` in `OFTPPRM0`) needs the authorization: without it OFTPD still
+starts, and says `OFTP005W NOT AUTHORIZED, RC=n, CONTINUING` and
+`OFTP035W NO CROSS MEMORY, NOT AUTHORIZED` (both on the console as well),
+but the `OFTP` command and the dialog cannot reach it.
 
 ## 5. The spool
 
@@ -407,7 +409,9 @@ partner table (`docs/partners.md`).
 
 ## Upgrading
 
-**From 0.1.0:** the TCP control port is gone. Remove `CONTROLPORT=` from
+**From 0.1.0:** `TOFT100` deletes `TOFT010` (`++VER(Z038) DELETE(TOFT010)`),
+so the SYSMOD installs over the prerelease; step 1 above still applies to
+`TOFT100`. The TCP control port is gone. Remove `CONTROLPORT=` from
 `OFTPPRM0` (OFTPD reports it as an unknown keyword with `OFTP010W`) and add
 `SVC=237`, without which the utilities and the dialog cannot reach OFTPD at
 all.

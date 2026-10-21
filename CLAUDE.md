@@ -49,9 +49,8 @@ module carry the same name, as FTPD's do.
 mbt 3 (`mbt.toml`, no submodule, no Makefile). `mbt build`, `mbt test`
 (host), `mbt test --mvs`, `mbt module-data`. Shared code is `src/oftp#*.c`
 (`[internal]`, also linked into host tests via `[build.host]`); module mains
-carry no `#`. `[distribution]`/`[smp]` are added with the first PROC; the
-proposed FMID prefix is `TOFT` (0.1.0 = `TOFT010`), not yet checked on any
-stand.
+carry no `#`. `[distribution]`/`[smp]` carry the FMID prefix `TOFT`: 0.1.0-dev is
+`TOFT010` (spent), 1.0.0 is `TOFT100` and deletes it.
 
 ## Rules specific to this project
 
