@@ -72,7 +72,7 @@
   [Make room: delete partners that are kept by command with #cmd("PARTNER DELETE"), or remove entries from OFTPPTN, and use #cmd("F OFTPD,REFRESH"). A partner of OFTPPTN that a refresh skipped is read again by the next refresh. A partner kept by command that was skipped at the start is read again when OFTPD is restarted.])
 
 #msg("OFTP016I", "PARTNERS RELOADED: n ENABLED, n NEW, n DISABLED, n REMOVED",
-  [OFTPD has read OFTPPTN again after #cmd("F OFTPD,REFRESH") or the same request from the ISPF dialog of an administrator. The first number is the enabled partners now in the table, including those kept by command. The second is the number of partners found in OFTPPTN that were not in the table before. A partner that is no longer in OFTPPTN is taken out of the table, and counted in the fourth number, unless a session, a call or a transfer in the spool still names it\; then it stays in the table, disabled, and is counted in the third number if it was enabled before. A partner whose entry now has ENABLED=NO is not counted in the third number. Partners kept by command are not changed by a refresh.],
+  [OFTPD has read OFTPPTN again after #cmd("F OFTPD,REFRESH"), the same request from the ISPF dialog of an administrator, or a #cmd("PARTNER DELETE") of a partner that OFTPPTN names too (message #cmd("OFTP245I")). The first number is the enabled partners now in the table, including those kept by command. The second is the number of partners found in OFTPPTN that were not in the table before. A partner that is no longer in OFTPPTN is taken out of the table, and counted in the fourth number, unless a session, a call or a transfer in the spool still names it\; then it stays in the table, disabled, and is counted in the third number if it was enabled before. A partner whose entry now has ENABLED=NO is not counted in the third number. Partners kept by command are not changed by a refresh.],
   [None. Information only. Check the numbers against what you changed, and look for #cmd("OFTP010W") messages before this one. A partner that was disabled and not removed is removed by a later refresh, when no session and no transfer names it any more.])
 
 #msg("OFTP017E", "DD OFTPPTN CANNOT BE READ",
@@ -110,7 +110,7 @@
   dest: "console only")
 
 #msg("OFTP024I", "RECEIVE RULES: n READ",
-  [OFTPD has read the receive rules from DD OFTPRCV, at start or after #cmd("F OFTPD,REFRESH"), and uses them from now on. #var("n") is the number of rules. It is 0 for a member that holds only comments. The message is not written when the started task has no DD OFTPRCV. It is written after #cmd("OFTP016I") at a refresh.],
+  [OFTPD has read the receive rules from DD OFTPRCV, at start, after #cmd("F OFTPD,REFRESH"), or after a #cmd("PARTNER DELETE") that brought back an entry of OFTPPTN, and uses them from now on. #var("n") is the number of rules. It is 0 for a member that holds only comments. The message is not written when the started task has no DD OFTPRCV. It is written after #cmd("OFTP016I") at a refresh.],
   [None. Information only. Check #var("n") against the number of #cmd("RULE=") entries you wrote.])
 
 #msg("OFTP025E", "RECEIVE RULES NOT USED, n ERRORS[, THE OLD RULES STAY]",
