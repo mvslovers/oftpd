@@ -6,7 +6,7 @@ history of what was done and measured, and the decisions below. A mention of
 an open point in the history further down is history; the issue holds its
 state. The MVP scope is `internals/design.md` section 0.
 
-## Open work (state of 2026-10-22)
+## Open work (state of 2026-10-21)
 
 Checked against the issues on this date; the issues win if they disagree.
 
