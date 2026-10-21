@@ -21,7 +21,7 @@ static int
 piece(const char *buf, char *final)
 {
     final[0] = '\0';
-    return oftp_cli_piece(buf, (unsigned)strlen(buf), row, NULL, final, 80);
+    return oftp_cli_piece(buf, (unsigned)strlen(buf), row, NULL, final, 80, NULL);
 }
 
 int
@@ -76,8 +76,23 @@ main(void)
     rows = 0;
     CHECK_EQ(piece("100\n200 ok\n", final), 0, "a row with no text");
     CHECK(strcmp(last, "") == 0, "comes as an empty string");
-    CHECK_EQ(oftp_cli_piece("100 x\n200 y\n", 12, NULL, NULL, final, 80), 0,
+    CHECK_EQ(oftp_cli_piece("100 x\n200 y\n", 12, NULL, NULL, final, 80, NULL), 0,
              "no callback: rows are skipped");
+
+    /* the code of the final line, for a caller that must tell 210 from 4xx */
+    {
+        int code = -1;
+
+        CHECK_EQ(oftp_cli_piece("100 w\n210 done\n", 15, NULL, NULL, final,
+                                80, &code), 4, "210 is RC 4");
+        CHECK_EQ(code, 210, "and its code is handed out");
+        CHECK_EQ(oftp_cli_piece("450 busy\n", 9, NULL, NULL, final, 80,
+                                &code), 4, "450 is RC 4 too");
+        CHECK_EQ(code, 450, "but with another code");
+        CHECK_EQ(oftp_cli_piece("200 ok\n", 7, NULL, NULL, final, 80, &code),
+                 0, "200 is RC 0");
+        CHECK_EQ(code, 200, "with its code");
+    }
 
     return mbt_test_summary("TSTREP");
 }

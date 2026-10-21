@@ -323,9 +323,19 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   walk the spool outside the monitor lock (they held it 4 to 9 s at 3000
   records, about 1.4 to 2.4 ms a record); a session set-up during a
   `DELETE` walk waited 6.1 s before, 80 ms (the idle figure) after.
-  `TSTPTM` A 61/61, P1/P2/B/C unchanged, `TSTTAKE` 9/9. Still open:
-  `PASSWORD` empty means an open partner, and `PARTNER SHOW` shows
-  ADDRESS and OURID to every user (both waiting for a decision).
+  `TSTPTM` A 61/61, P1/P2/B/C unchanged, `TSTTAKE` 9/9.
+  ~~`PASSWORD` empty means an open partner~~ (#129): still allowed;
+  `PARTNER ADD`/`CHANGE` of an enabled partner that ends up without a
+  `PASSWORD` answers `210` plus a `100 WARNING` row (batch RC 4). A
+  partner from `OFTPPTN` without `PASSWORD` is open the same way and
+  gets no warning (the member is not a command).
+  ~~`PARTNER SHOW` shows ADDRESS and OURID to every user~~ (#129): for
+  a caller without `ADMIN=` both print `-`, the line keeps its shape.
+  Measured (container, 2026-10-21): `TSTPTM` A 69/69, P1 11/11, P2 4/4,
+  B 13/13, C 10/10; before the change A 66/69 and C 8/10 (the new
+  checks). The ISPF partner editor takes any `2xx` as done (it read RC 0 only,
+  so a `210` left it in the entry panel); changed by reading, **not
+  driven**: nothing in `test/` runs the dialog.
 - ~~GitHub repository, CI~~ — `mvslovers/oftpd` (2026-10-13).
 
 - ~~#13: about 520 bytes per session abend~~ -- libc370's `try()`
