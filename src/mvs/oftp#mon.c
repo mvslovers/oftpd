@@ -25,11 +25,14 @@
 #include "oftp.h"
 #include "oftpdsf.h"
 #include "oftpdsn.h"
+#include "oftpjob.h"
 #include "oftplog.h"
 #include "oftpmon.h"
+#include "oftprcv.h"
 #include "oftpsch.h"
 #include "oftpsec.h"
 #include "oftpnet.h"
+#include "oftpopr.h"
 #include "oftpsess.h"
 
 /* ---- messages ---------------------------------------------------- */
@@ -161,6 +164,13 @@ exists(const char *dsn)
     return 1;
 }
 
+/* Where REPLACE=Y puts the old data set while the new one is renamed in */
+static void
+bakname(const OFTP_MON *m, const char *key, char *bak, size_t cap)
+{
+    snprintf(bak, cap, "%s.B%.7s", m->cfg.tmpprefix, key + 1);
+}
+
 static void
 settext(OFTP_SPREC *r, const char *text)
 {
@@ -212,6 +222,7 @@ queue_erp(OFTP_MON *m, const OFTP_SPREC *sent, char code, int reas,
           const char *crea)
 {
     OFTP_SPREC e;
+    char sd[OFTP_DSNLEN + 1];
 
     memset(&e, 0, sizeof(e));
     e.dir = SPL_RECV;
@@ -232,7 +243,8 @@ queue_erp(OFTP_MON *m, const OFTP_SPREC *sent, char code, int reas,
              code == OFTP_EERP ? "EERP" : "NERP", sent->from);
     if (oftp_spl_add(m->spool, &e) == 0)
         oftp_mon_msg("OFTP240P %s: %.8s RELAY: %s FOR %s QUEUED", e.partner,
-                     e.key, code == OFTP_EERP ? "EERP" : "NERP", e.dsn);
+                     e.key, code == OFTP_EERP ? "EERP" : "NERP",
+                     oftp_printable(sd, sizeof(sd), e.dsn));
     ecb_post(&m->wake, 0);
 }
 
@@ -245,6 +257,7 @@ static void
 failed(OFTP_MON *m, OFTP_SPREC *r)
 {
     char t[80];
+    char sd[OFTP_DSNLEN + 1], sx[OFTP_IDLEN + 1];
 
     if (oftp_cfg_retry(&m->cfg, r->attempts, (long)time(NULL), &r->tnext) == 0) {
         r->state = SPL_WAITING;
@@ -256,15 +269,17 @@ failed(OFTP_MON *m, OFTP_SPREC *r)
     if (r->relay == 'Y') {
         r->state = SPL_REJECTED;
         oftp_mon_msg("OFTP242W %s: %.8s RELAY: %s FOR %s GIVEN UP AFTER %u"
-                     " ATTEMPTS", r->partner, r->key, r->dsn, r->dest,
-                     r->attempts);
+                     " ATTEMPTS", r->partner, r->key,
+                     oftp_printable(sd, sizeof(sd), r->dsn),
+                     oftp_printable(sx, sizeof(sx), r->dest), r->attempts);
         queue_erp(m, r, OFTP_NERP, r->reasby == 'P' && r->reas ? r->reas : 99,
                   m->cfg.odetteid);
         remove(r->local);
     } else {
         r->state = SPL_HELD;
         oftp_mon_msg("OFTP215W %s: %.8s %s HELD AFTER %u ATTEMPTS", r->partner,
-                     r->key, r->dsn, r->attempts);
+                     r->key, oftp_printable(sd, sizeof(sd), r->dsn),
+                     r->attempts);
     }
 }
 
@@ -273,8 +288,13 @@ failed(OFTP_MON *m, OFTP_SPREC *r)
 typedef struct sesctx {
     OFTP_MON   *m;
     OFTP_PARTNER *pt;
-    const OFTP_PARTNER *tp;             /* the caller's entry, even when
-                                        ** disabled: for TRACE only    */
+    const OFTP_PARTNER *tp;             /* the first entry with the caller's
+                                        ** ID, even when disabled or behind
+                                        ** another, so a refused caller can
+                                        ** be traced. Where oftp_cfg_byid()
+                                        ** finds one it is this entry: a
+                                        ** second entry with an ID is
+                                        ** always disabled (TSTCFG).     */
     char        ip[16];
     int         sock;
     int         slot;                   /* in m->ssock, or -1            */
@@ -287,6 +307,9 @@ typedef struct sesctx {
     OFTP_DSF   *odsf;
     OFTP_SPREC  in;                     /* the file being received       */
     OFTP_DSF   *idsf;
+    OFTP_RULE   rule;                   /* the receive rule it matched,  */
+    int         hasrule;                /* a copy: REFRESH may replace
+                                        ** the set under the session    */
     char        tmp[45];
     char        erpkey[8];
     int         rc;                     /* oftp_sess_run(): try() keeps
@@ -408,6 +431,7 @@ f_out_done(void *ctx, OFTP_FH *fh, int reas, char retry)
     SESCTX *c = ctx;
     OFTP_SPREC *r = &c->out;
     char t[80];
+    char sd[OFTP_DSNLEN + 1];
 
     (void)fh;
     r->recs = oftp_dsf_records(c->odsf);
@@ -419,14 +443,15 @@ f_out_done(void *ctx, OFTP_FH *fh, int reas, char retry)
         r->reas = 0;
         settext(r, "accepted by the partner, EERP outstanding");
         oftp_mon_msg("OFTP211P %s: %.8s %s SENT, %lu RECORDS", r->partner,
-                     r->key, r->dsn, r->recs);
+                     r->key, oftp_printable(sd, sizeof(sd), r->dsn), r->recs);
     } else {
         r->reas = reas;
         r->reasby = 'P';
         snprintf(t, sizeof(t), "refused by the partner, reason %02d", reas);
         settext(r, t);
         oftp_mon_msg("OFTP212P %s: %.8s %s REFUSED, REASON %02d RETRY %c",
-                     r->partner, r->key, r->dsn, reas, retry);
+                     r->partner, r->key,
+                     oftp_printable(sd, sizeof(sd), r->dsn), reas, retry);
         if (retry == 'Y')
             failed(c->m, r);
         else {
@@ -450,12 +475,17 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
     OFTP_SPREC r;
     OFTP_DSOPT opt;
     char final[45], last[8];
+    char sd[OFTP_DSNLEN + 1], sx[OFTP_IDLEN + 1];
     int rc, live;
 
     OFTP_PARTNER *next = NULL, *target = NULL;
     OFTP_SFIDCMD alloc;
+    const OFTP_RULE *rule = NULL;
+    int named = 0;                      /* the rule makes the name, and
+                                        ** %KEY needs the spool record  */
 
     *retry = 'N';
+    c->hasrule = 0;
     /* for us, by our own ID or the one we have towards this partner; for
     ** anyone else only as a node (RELAY=Y) towards a partner we know */
     if (strcmp(f->dest, c->m->cfg.odetteid) != 0
@@ -464,13 +494,27 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
             next = oftp_cfg_route(&c->m->cfg, f->dest, &target);
         if (next == NULL || next == c->pt) {
             oftp_mon_msg("OFTP223W %s: %s FOR %s REFUSED, %s", c->pt->peer.name,
-                         f->dsn, f->dest,
+                         oftp_printable(sd, sizeof(sd), f->dsn),
+                         oftp_printable(sx, sizeof(sx), f->dest),
                          !c->m->cfg.relay ? "NOT OUR ODETTE ID"
                          : next == NULL ? "NO ROUTE" : "IT WOULD GO BACK");
             return 2;
         }
     }
-    if (next != NULL)
+    /* a file that ends here may meet a receive rule: the first that
+    ** matches decides, none leaves it as it always was */
+    if (next == NULL) {
+        lock(c->m, 0);
+        rule = oftp_rcv_match(&c->m->rules, c->pt->peer.name, f->dsn);
+        if (rule != NULL) {
+            c->rule = *rule;
+            c->hasrule = 1;
+        }
+        unlock(c->m, 0);
+        rule = c->hasrule ? &c->rule : NULL;
+        named = rule != NULL && rule->dsn[0];
+    }
+    if (next != NULL || named)
         snprintf(final, sizeof(final), "%s", "");
     /* any virtual file name becomes a valid data set name */
     else if (oftp_dsn_map(c->m->cfg.inprefix, f->dsn, "", final) != 0)
@@ -497,6 +541,8 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
     r.fmt = f->fmt;
     r.lrecl = f->lrecl;
     r.xlate = c->pt->xlate ? 'Y' : 'N';
+    if (rule != NULL && rule->xlate >= 0)
+        r.xlate = rule->xlate ? 'Y' : 'N';
     strcpy(r.partner, c->pt->peer.name);
     strcpy(r.dsn, f->dsn);
     strcpy(r.date, f->date);
@@ -511,23 +557,75 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
         r.relay = 'Y';
         r.xlate = 'N';
         strcpy(r.from, c->pt->peer.name);
-        strcpy(r.target, target != next ? target->peer.name : "");
         strcpy(r.partner, next->peer.name);
     }
     lock(c->m, 0);
-    live = next == NULL || (next->enabled
-                            && strcmp(next->peer.name, r.partner) == 0);
+    /* the route was looked up without the lock: both partners must still
+    ** be there, enabled and the ones looked up, and the final one's name
+    ** is read here and not before */
+    live = next == NULL
+        || oftp_cfg_relay_live(next, r.partner, target, f->dest, r.target,
+                               sizeof(r.target));
     rc = live ? oftp_spl_add(c->m->spool, &r) : 0;
     unlock(c->m, 0);
     if (!live) {
         oftp_mon_msg("OFTP223W %s: %s FOR %s REFUSED, NO ROUTE",
-                     c->pt->peer.name, f->dsn, f->dest);
+                     c->pt->peer.name, oftp_printable(sd, sizeof(sd), f->dsn),
+                     oftp_printable(sx, sizeof(sx), f->dest));
         return 2;
     }
     if (rc != 0) {
         *retry = 'Y';
         return 99;
     }
+    if (named) {
+        OFTP_RCVCTX x;
+        char key[9], arrival[15];
+        time_t now = time(NULL);
+        struct tm tm;
+
+        memcpy(key, r.key, 8);
+        key[8] = '\0';
+        localtime_r(&now, &tm);
+        snprintf(arrival, sizeof(arrival), "%04d%02d%02d%02d%02d%02d",
+                 tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
+                 tm.tm_min, tm.tm_sec);
+        x.vfn = f->dsn;
+        x.partner = c->pt->peer.name;
+        x.key = key;
+        x.arrival = arrival;
+        x.sfidtime = f->time;
+        if (oftp_rcv_name(rule, &x, final) != 0) {
+            oftp_spl_del(c->m->spool, r.key);
+            oftp_mon_msg("OFTP224W %s: %s REFUSED, RULE %s MAKES NO VALID"
+                         " DATA SET NAME", r.partner,
+                         oftp_printable(sd, sizeof(sd), f->dsn), rule->name);
+            return 1;
+        }
+        strcpy(r.local, final);
+        oftp_spl_put(c->m->spool, &r);
+        /* a name the rule fixed is not changed: REPLACE=Y replaces it
+        ** at the end, REPLACE=N refuses the file */
+        if (!rule->replace && exists(final)) {
+            oftp_spl_del(c->m->spool, r.key);
+            oftp_mon_msg("OFTP225W %s: %s REFUSED, %s EXISTS (RULE %s,"
+                         " REPLACE=N)", r.partner,
+                         oftp_printable(sd, sizeof(sd), f->dsn), final,
+                         rule->name);
+            *retry = 'Y';
+            return 13;
+        }
+        /* REPLACE=Y renames, and a rename takes only a sequential data
+        ** set safely: a PDS or a VSAM name is refused, and stays */
+        if (rule->replace && oftp_dsf_kind(final) == OFTP_DSK_OTHER) {
+            oftp_spl_del(c->m->spool, r.key);
+            oftp_mon_msg("OFTP234W %s: %s REFUSED, %s IS NOT A SEQUENTIAL DATA"
+                         " SET AND IS NOT REPLACED (RULE %s)", r.partner,
+                         oftp_printable(sd, sizeof(sd), f->dsn), final,
+                         rule->name);
+            return 12;
+        }
+    } else
     /* the name is taken: the transfer number makes it unique */
     if (next == NULL && exists(final)) {
         char key[9];
@@ -549,6 +647,13 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
     opt.ublksize = c->m->cfg.ublksize;
     strcpy(opt.unit, c->m->cfg.unit);
     strcpy(opt.volser, c->m->cfg.volser);
+    if (rule != NULL) {
+        if (rule->unit[0])
+            strcpy(opt.unit, rule->unit);
+        if (rule->volser[0])
+            strcpy(opt.volser, rule->volser);
+        opt.space = rule->space;
+    }
     /* a relayed T file is kept as it came: a byte stream, format U */
     alloc = *f;
     if (next != NULL && f->fmt == 'T')
@@ -557,7 +662,8 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
     if (rc != 0) {
         oftp_spl_del(c->m->spool, r.key);
         oftp_mon_msg("OFTP220E %s: %s NOT RECEIVED, %s NOT ALLOCATED (%02d)",
-                     r.partner, f->dsn, c->tmp, rc);
+                     r.partner, oftp_printable(sd, sizeof(sd), f->dsn), c->tmp,
+                     rc);
         *retry = 'Y';
         return rc;
     }
@@ -587,12 +693,50 @@ f_write(void *ctx, OFTP_FH *fh, const unsigned char *b, unsigned n, int eor)
     return oftp_dsf_write(c->idsf, b, n, eor);
 }
 
+/* JOB= of the rule: the file is under its final name, the job goes to the
+** internal reader. What it did is in the record and on the console; it
+** never refuses the file. The EERP does not wait for the job to run.
+*/
+static void
+run_job(SESCTX *c, OFTP_SPREC *r)
+{
+    OFTP_SUBCTX x;
+    char key[9], jobid[OFTP_JOB_ID], why[OFTP_JOB_WHY];
+
+    r->ppstate = ' ';
+    r->pprc = 0;
+    r->pptext[0] = '\0';
+    if (!c->hasrule || c->rule.job[0] == '\0')
+        return;
+    memcpy(key, r->key, 8);
+    key[8] = '\0';
+    x.pfile = r->local;
+    x.vfile = r->dsn;
+    x.partner = r->partner;
+    x.key = key;
+    if (oftp_job_submit(c->rule.job, &x, jobid, why) == 0) {
+        r->ppstate = 'S';
+        snprintf(r->pptext, sizeof(r->pptext), "%s",
+                 jobid[0] ? jobid : "(JOB NUMBER UNKNOWN)");
+        oftp_mon_msg("OFTP246P %s: %s SUBMITTED AS %s: JOB %s FOR %s",
+                     r->partner, key, r->pptext, c->rule.job, r->local);
+        return;
+    }
+    r->ppstate = 'E';
+    r->pprc = 8;
+    snprintf(r->pptext, sizeof(r->pptext), "%s", why);
+    oftp_mon_msg("OFTP247W %s: %s NOT SUBMITTED, %s: JOB %s FOR %s",
+                 r->partner, key, why, c->rule.job, r->local);
+}
+
 static int
 f_close_in(void *ctx, OFTP_FH *fh, int ok)
 {
     SESCTX *c = ctx;
     OFTP_SPREC *r = &c->in;
-    int rc;
+    char bak[45];
+    char sd[OFTP_DSNLEN + 1], sf[OFTP_IDLEN + 1], sx[OFTP_IDLEN + 1];
+    int rc, kind, replaced = 0;
 
     (void)fh;
     r->recs = oftp_dsf_records(c->idsf);
@@ -613,13 +757,36 @@ f_close_in(void *ctx, OFTP_FH *fh, int ok)
         settext(r, "relay: received, queued to go on");
         oftp_spl_put(c->m->spool, r);
         oftp_mon_msg("OFTP241P %s: %.8s RELAY: %s FROM %s FOR %s QUEUED FOR %s",
-                     c->pt->peer.name, r->key, r->dsn, r->from, r->dest,
-                     r->partner);
+                     c->pt->peer.name, r->key,
+                     oftp_printable(sd, sizeof(sd), r->dsn),
+                     oftp_printable(sf, sizeof(sf), r->from),
+                     oftp_printable(sx, sizeof(sx), r->dest), r->partner);
         r->key[0] = '\0';
         ecb_post(&c->m->wake, 0);
         return 0;
     }
+    /* REPLACE=Y: the old data set goes aside first and is deleted only
+    ** when the new one is under its name, so a rename that fails (the
+    ** old one in use, a full catalog) costs nothing
+    */
+    if (c->hasrule && c->rule.replace
+        && (kind = oftp_dsf_kind(r->local)) != OFTP_DSK_NONE) {
+        bakname(c->m, r->key, bak, sizeof(bak));
+        if (kind != OFTP_DSK_PS || rename(r->local, bak) != 0) {
+            remove(c->tmp);
+            oftp_spl_del(c->m->spool, r->key);
+            oftp_mon_msg("OFTP226E %s: %s NOT RECEIVED, %s CANNOT BE REPLACED,"
+                         " IT STAYS", r->partner,
+                         oftp_printable(sd, sizeof(sd), r->dsn), r->local);
+            r->key[0] = '\0';
+            return 12;
+        }
+        replaced = 1;
+    }
     if (rename(c->tmp, r->local) != 0) {
+        if (replaced && rename(bak, r->local) != 0)
+            oftp_mon_msg("OFTP227E %s: THE OLD %s IS NOW %s, NOT RENAMED BACK",
+                         r->partner, r->local, bak);
         remove(c->tmp);
         oftp_spl_del(c->m->spool, r->key);
         oftp_mon_msg("OFTP221E %s: %s NOT RENAMED TO %s", r->partner,
@@ -627,12 +794,21 @@ f_close_in(void *ctx, OFTP_FH *fh, int ok)
         r->key[0] = '\0';
         return 12;
     }
+    if (replaced) {
+        if (remove(bak) != 0)
+            oftp_mon_msg("OFTP228W %s: THE OLD %s IS NOW %s, NOT DELETED",
+                         r->partner, r->local, bak);
+        else
+            oftp_mon_msg("OFTP229I %s: %s REPLACED", r->partner, r->local);
+    }
+    run_job(c, r);
     r->state = SPL_RECEIVED;
     r->tdone = (long)time(NULL);
     settext(r, "received, EERP owed");
     oftp_spl_put(c->m->spool, r);
     oftp_mon_msg("OFTP222P %s: %.8s %s RECEIVED AS %s, %lu RECORDS",
-                 r->partner, r->key, r->dsn, r->local, r->recs);
+                 r->partner, r->key, oftp_printable(sd, sizeof(sd), r->dsn),
+                 r->local, r->recs);
     r->key[0] = '\0';
     return 0;
 }
@@ -722,6 +898,7 @@ f_erp_recv(void *ctx, const OFTP_PEER *peer, char code, const OFTP_ERPCMD *e)
     SESCTX *c = ctx;
     OFTP_SPREC r;
     char last[8], t[80];
+    char sd[OFTP_DSNLEN + 1];
 
     (void)peer;
     last[0] = '\0';
@@ -758,7 +935,8 @@ f_erp_recv(void *ctx, const OFTP_PEER *peer, char code, const OFTP_ERPCMD *e)
             settext(&r, t);
         }
         oftp_spl_put(c->m->spool, &r);
-        oftp_mon_msg("OFTP213P %s: %.8s %s %s", r.partner, r.key, r.dsn,
+        oftp_mon_msg("OFTP213P %s: %.8s %s %s", r.partner, r.key,
+                     oftp_printable(sd, sizeof(sd), r.dsn),
                      code == OFTP_EERP ? "DELIVERED" : "NOT DELIVERED (NERP)");
         if (r.relay == 'Y') {
             queue_erp(c->m, &r, code, e->reas, e->crea);
@@ -767,43 +945,54 @@ f_erp_recv(void *ctx, const OFTP_PEER *peer, char code, const OFTP_ERPCMD *e)
         return;
     }
     oftp_mon_msg("OFTP214P %s: %s FOR UNKNOWN FILE %s", c->pt->peer.name,
-                 code == OFTP_EERP ? "EERP" : "NERP", e->dsn);
+                 code == OFTP_EERP ? "EERP" : "NERP",
+                 oftp_printable(sd, sizeof(sd), e->dsn));
 }
 
 static int
 p_lookup(void *ctx, const char *code, OFTP_PEER *peer)
 {
     SESCTX *c = ctx;
-    OFTP_PARTNER *p = oftp_cfg_byid(&c->m->cfg, code);
-    int i, n;
+    OFTP_PARTNER *p;
+    char name[sizeof(p->peer.name)];
+    char addr[sizeof(p->address)];
+    int i;
+    int n;
 
+    /* The partner is found, checked and counted under one lock: a
+    ** command deletes a slot and a later ADD may reuse it for another
+    ** partner, so a pointer found before the lock may no longer be the
+    ** partner it was found for (#113).
+    */
+    lock(c->m, 0);
     for (i = 0; c->tp == NULL && i < c->m->cfg.nptn; i++)
         if (strcmp(c->m->cfg.ptn[i].peer.code, code) == 0)
             c->tp = &c->m->cfg.ptn[i];
-    if (p == NULL)
+    p = oftp_cfg_byid(&c->m->cfg, code);
+    if (p == NULL) {
+        unlock(c->m, 0);
         return -1;
+    }
     if (p->address[0] && strcmp(p->address, c->ip) != 0) {
-        oftp_mon_msg("OFTP201W %s CALLED FROM %s, NOT %s", p->peer.name,
-                     c->ip, p->address);
+        snprintf(name, sizeof(name), "%s", p->peer.name);
+        snprintf(addr, sizeof(addr), "%s", p->address);
+        unlock(c->m, 0);
+        oftp_mon_msg("OFTP201W %s CALLED FROM %s, NOT %s", name, c->ip, addr);
         return -1;
     }
     i = ptn_index(c->m, p);
-    lock(c->m, 0);
-    /* disabled or deleted by command since the lookup above */
-    if (!p->enabled) {
-        unlock(c->m, 0);
-        return -1;
-    }
     if ((n = c->m->busy[i]) >= p->sessions) {
+        snprintf(name, sizeof(name), "%s", p->peer.name);
+        i = p->sessions;
         unlock(c->m, 0);
         oftp_mon_msg("OFTP202W %s REFUSED, %d SESSIONS RUNNING, SESSIONS=%d",
-                     p->peer.name, n, p->sessions);
+                     name, n, i);
         return 8;                       /* ESID 08: retry later (#18)   */
     }
     c->m->busy[i]++;
-    unlock(c->m, 0);
     c->pt = p;
     *peer = p->peer;
+    unlock(c->m, 0);
     return 0;
 }
 
@@ -1605,6 +1794,7 @@ ctl_list(OFTP_MON *m, CTLOUT *o, const char *line)
 {
     OFTP_SPREC r;
     char last[8], partner[16], status[16], mine[4], out[200];
+    char sd[OFTP_DSNLEN + 1];
     int n = 0, own;
 
     kw(line, "PARTNER", partner, sizeof(partner));
@@ -1627,7 +1817,7 @@ ctl_list(OFTP_MON *m, CTLOUT *o, const char *line)
         snprintf(out, sizeof(out), "100 %.8s %-4s %-9s %-8s %-26s %s",
                  r.key, r.dir == SPL_SEND ? "SEND" : "RECV",
                  state_name(r.state), r.target[0] ? r.target : r.partner,
-                 r.dsn, r.local);
+                 oftp_printable(sd, sizeof(sd), r.dsn), r.local);
         ctl_put(o, out);
         n++;
     }
@@ -1640,6 +1830,7 @@ ctl_show(OFTP_MON *m, CTLOUT *o, const char *line)
 {
     OFTP_SPREC r;
     char key[12], out[200];
+    char sd[OFTP_DSNLEN + 1], sf[OFTP_IDLEN + 1], sx[OFTP_IDLEN + 1];
 
     kw(line, "KEY", key, sizeof(key));
     if (strlen(key) != 8 || oftp_spl_get(m->spool, key, &r) != 0) {
@@ -1657,14 +1848,16 @@ ctl_show(OFTP_MON *m, CTLOUT *o, const char *line)
              r.owner[0] ? r.owner : "-");
     ctl_put(o, out);
     snprintf(out, sizeof(out), "100 virtual file %s %s %s, format %c, LRECL %u",
-             r.dsn, r.date, r.time, r.fmt ? r.fmt : '-', r.lrecl);
+             oftp_printable(sd, sizeof(sd), r.dsn), r.date, r.time,
+             r.fmt ? r.fmt : '-', r.lrecl);
     ctl_put(o, out);
     snprintf(out, sizeof(out), "100 data set %s%s%s%s%s", r.local,
              r.member[0] ? "(" : "", r.member, r.member[0] ? ")" : "",
              r.disp == 'D' ? ", deleted once the EERP is in" : "");
     ctl_put(o, out);
     snprintf(out, sizeof(out), "100 from %s to %s, %lu records, %u attempts",
-             r.orig, r.dest, r.recs, r.attempts);
+             oftp_printable(sf, sizeof(sf), r.orig),
+             oftp_printable(sx, sizeof(sx), r.dest), r.recs, r.attempts);
     ctl_put(o, out);
     if (r.tstart || r.winfrom || r.winto) {
         char nb[40] = "", wn[32] = "";
@@ -1683,6 +1876,12 @@ ctl_show(OFTP_MON *m, CTLOUT *o, const char *line)
                      nb[0] ? ", " : "", r.winfrom / 60U, r.winfrom % 60U,
                      r.winto / 60U, r.winto % 60U);
         snprintf(out, sizeof(out), "100 start %s%s", nb, wn);
+        ctl_put(o, out);
+    }
+    if (r.ppstate == 'S' || r.ppstate == 'E') {
+        snprintf(out, sizeof(out), "100 job %s%s%s", r.ppstate == 'S'
+                 ? "submitted " : "not submitted: ", r.pptext,
+                 r.ppstate == 'S' ? " (JES job id)" : "");
         ctl_put(o, out);
     }
     if (r.reas)
@@ -2046,8 +2245,9 @@ ctl_show_ptn(OFTP_MON *m, CTLOUT *o, const char *rest)
     n = m->busy[i];
     unlock(m, 0);
 
+    /* OURID and ADDRESS are for an administrator; the line keeps its shape */
     snprintf(out, sizeof(out), "100 PARTNER=%s ODETTEID=%s OURID=%s",
-             p.peer.name, p.peer.code, p.peer.ourcode);
+             p.peer.name, p.peer.code, o->admin ? p.peer.ourcode : "-");
     ctl_put(o, out);
     snprintf(out, sizeof(out), "100 HOST=%s PORT=%d LEVEL=%d MODE=%c",
              p.host, p.port, p.peer.level, p.peer.mode);
@@ -2057,7 +2257,7 @@ ctl_show_ptn(OFTP_MON *m, CTLOUT *o, const char *rest)
              p.sessions, p.peer.cmpr ? 'Y' : 'N', p.xlate ? 'Y' : 'N');
     ctl_put(o, out);
     snprintf(out, sizeof(out), "100 SDEB=%u CREDIT=%u ADDRESS=%s VIA=%s",
-             p.peer.sdeb, p.peer.cred, p.address, p.via);
+             p.peer.sdeb, p.peer.cred, o->admin ? p.address : "-", p.via);
     ctl_put(o, out);
     snprintf(out, sizeof(out), "100 PASSWORD=%s OURPASSWORD=%s",
              p.peer.pswd_in[0] ? "SET" : "NONE",
@@ -2079,6 +2279,8 @@ typedef struct {
     const char *rest;                   /* the keywords of the request   */
     int         slot;
     int         ovr;                    /* DELETE: OFTPPTN has the name  */
+    int         nopw;                   /* enabled, and no PASSWORD      */
+    int         addr;                   /* and an ADDRESS is checked    */
     char        out[160];
 } PTNREQ;
 
@@ -2116,6 +2318,7 @@ ptn_delete(OFTP_MON *m, PTNREQ *q)
     OFTP_PARTNER *old = q->slot >= 0 ? &m->cfg.ptn[q->slot] : NULL;
     OFTP_PARTNER n;
     OFTP_SPPTN rec;
+    char skey[8];
     int k, uses, was;
 
     if (old == NULL)
@@ -2143,13 +2346,30 @@ ptn_delete(OFTP_MON *m, PTNREQ *q)
             return ptn_refuse(q, "451 spool not available");
         old->enabled = 0;
     }
+    /* The walk takes time in proportion to the spool, and every session
+    ** that starts or ends waits for the lock meanwhile (#113): it is made
+    ** without it. The partner is disabled, so nothing new comes for it;
+    ** what changed while the lock was off is checked afterwards.
+    */
+    memcpy(skey, old->skey, sizeof(skey));
+    unlock(m, 0);
     uses = spool_uses(m, q->name);
+    lock(m, 0);
+    if (strcmp(old->peer.name, q->name) != 0 || memcmp(old->skey, skey, sizeof(skey)) != 0)
+        return ptn_refuse(q, "450 the partner was changed meanwhile, try "
+                          "again");
+    if (old->enabled || m->busy[q->slot] > 0 || m->calling[q->slot] > 0
+        || ptn_via_users(m, q->name, 0) >= 0)
+        return ptn_refuse(q, "450 the partner was changed meanwhile, try "
+                          "again");
     if (uses < 0)
         return ptn_refuse(q, "451 spool not available");
     if (uses > 0) {
-        snprintf(q->out, sizeof(q->out), "512 %d transfers in the spool name "
-                 "partner %s%s: PURGE or DELETE them first", uses, q->name,
-                 was ? " (it is disabled now)" : "");
+        /* the ISPF message line cuts at column 79: at most 76 with an
+        ** 8-character name and a 5-digit count */
+        snprintf(q->out, sizeof(q->out), "512 %d transfers name partner "
+                 "%s%s: PURGE or DELETE them first", uses, q->name,
+                 was ? " (disabled)" : "");
         return PTN_NO;
     }
     if (oftp_spl_ptn_del(m->spool, old->skey) != 0)
@@ -2260,6 +2480,8 @@ ptn_save(OFTP_MON *m, PTNREQ *q, int adding)
         return ptn_refuse(q, "451 spool not available");
     }
     ptn_put(m, i, &n);
+    q->nopw = n.enabled && n.peer.pswd_in[0] == '\0';
+    q->addr = n.address[0] != '\0';
     if (adding)
         ptn_slot_reset(m, i);
     else
@@ -2289,8 +2511,17 @@ ptn_report(OFTP_MON *m, CTLOUT *o, PTNREQ *q, const char *sub)
     oftp_mon_msg("OFTP24%cI PARTNER %s %s BY %s", sub[0] == 'A' ? '3' : '4',
                  q->name, sub[0] == 'A' ? "ADDED" : "CHANGED", ctl_by(o));
     ecb_post(&m->wake, 0);
-    snprintf(q->out, sizeof(q->out), "200 partner %s %s", q->name,
-             sub[0] == 'A' ? "added" : "changed");
+    snprintf(q->out, sizeof(q->out), "%s partner %s %s%s",
+             q->nopw ? "210" : "200", q->name,
+             sub[0] == 'A' ? "added" : "changed",
+             q->nopw ? ", but it has no PASSWORD" : "");
+    if (q->nopw && q->addr)
+        ctl_put(o, "100 WARNING: without a PASSWORD every peer calling from "
+                "the ADDRESS of the partner that knows the Odette ID can "
+                "log on");
+    else if (q->nopw)
+        ctl_put(o, "100 WARNING: without a PASSWORD every peer that knows "
+                "the Odette ID of the partner can log on");
 }
 
 static void
@@ -2320,7 +2551,7 @@ ctl_partner(OFTP_MON *m, CTLOUT *o, const char *line)
         return;
     }
     if (!o->admin) {
-        ctl_put(o, "507 needs ADMIN= in OFTPRM");
+        ctl_put(o, "507 needs ADMIN= in OFTPPRM");
         return;
     }
     memset(&q, 0, sizeof(q));
@@ -2795,11 +3026,146 @@ oftp_mon_maint(OFTP_MON *m)
     return n;
 }
 
+typedef struct {
+    char name[9];
+    int wasen;
+    int uses;
+} REFLEFT;
+
+/* A partner that left the member is looked for in the spool, and the walk
+** takes time in proportion to it: it is made without the lock, which every
+** session waits for (#113). The partner is disabled first, so that nothing
+** new comes for it meanwhile.
+*/
+static void
+refresh_mark(OFTP_MON *m, const OFTP_CONFIG *n, REFLEFT *left)
+{
+    int i;
+
+    memset(left, 0, sizeof(*left) * OFTP_MAXPTN);
+    lock(m, 0);
+    for (i = 0; i < m->cfg.nptn; i++) {
+        OFTP_PARTNER *o = &m->cfg.ptn[i];
+
+        if (o->peer.name[0] == '\0' || o->skey[0] != '\0'
+            || oftp_cfg_slot(n, o->peer.name) >= 0
+            || m->busy[i] > 0 || m->calling[i] > 0)
+            continue;
+        snprintf(left[i].name, sizeof(left[i].name), "%s", o->peer.name);
+        left[i].wasen = o->enabled;
+        o->enabled = 0;
+    }
+    unlock(m, 0);
+    for (i = 0; i < OFTP_MAXPTN; i++)
+        if (left[i].name[0] != '\0')
+            left[i].uses = spool_uses(m, left[i].name);
+}
+
+/* One slot of the table against the member just read. Called with the lock. */
+static void
+refresh_slot(OFTP_MON *m, OFTP_CONFIG *n, const REFLEFT *left, int i,
+             int *dropped, int *removed)
+{
+    OFTP_PARTNER *o = &m->cfg.ptn[i];
+    int same = strcmp(left[i].name, o->peer.name) == 0;
+    int j = oftp_cfg_slot(n, o->peer.name);
+
+    if (o->skey[0] != '\0') {
+        /* kept by command: the spool wins, the member's entry of the
+        ** name is not used */
+        o->ovr = j >= 0;
+        if (j >= 0)
+            n->ptn[j].peer.name[0] = '\0';
+    } else if (j >= 0) {
+        *o = n->ptn[j];
+        m->tcall[i] = 0;                        /* perhaps a new HOST */
+        n->ptn[j].peer.name[0] = '\0';         /* taken */
+    } else if (same && left[i].uses == 0 && m->busy[i] == 0
+               && m->calling[i] == 0) {
+        oftp_cfg_free(&m->cfg, i);
+        ptn_slot_reset(m, i);
+        (*removed)++;
+    } else {
+        if (o->enabled || (same && left[i].wasen))
+            (*dropped)++;
+        o->enabled = 0;
+    }
+}
+
+/* The member's partners that the table does not have yet. */
+static int
+refresh_add(OFTP_MON *m, OFTP_CONFIG *n)
+{
+    int added = 0;
+
+    for (int j = 0; j < n->nptn; j++) {
+        int i;
+
+        if (n->ptn[j].peer.name[0] == '\0')
+            continue;
+        if ((i = oftp_cfg_alloc(&m->cfg)) < 0) {
+            oftp_mon_msg("OFTP015W PARTNER %s NOT ADDED, TABLE FULL",
+                         n->ptn[j].peer.name);
+            continue;
+        }
+        m->cfg.ptn[i] = n->ptn[j];
+        ptn_slot_reset(m, i);
+        added++;
+    }
+    return added;
+}
+
+int
+oftp_mon_rules(OFTP_MON *m, int refresh)
+{
+    OFTP_RULES *n;
+    char line[256], ctx[] = "OFTPRCV";
+    FILE *fp;
+    int lineno = 0, errors;
+
+    if ((n = malloc(sizeof(*n))) == NULL)
+        return -1;
+    oftp_rcv_clear(n);
+    if ((fp = fopen("DD:OFTPRCV", "r")) == NULL) {
+        free(n);
+        /* no DD is no rules, and nothing to say; a member that was read
+        ** once and cannot be now keeps what it said */
+        if (refresh && m->rules.n > 0)
+            oftp_mon_msg("OFTP026W DD OFTPRCV CANNOT BE OPENED, THE %d RULES"
+                         " STAY", m->rules.n);
+        return -1;
+    }
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        /* fixed records: columns 73-80 are sequence numbers */
+        if (strlen(line) > 72)
+            line[72] = '\0';
+        oftp_rcv_line(n, line, ++lineno, cfgmsg, ctx);
+    }
+    fclose(fp);
+    errors = oftp_rcv_finish(n, &m->cfg, cfgmsg, ctx);
+    if (errors > 0) {
+        oftp_mon_msg("OFTP025E RECEIVE RULES NOT USED, %d ERRORS%s", errors,
+                     refresh ? ", THE OLD RULES STAY" : "");
+        free(n);
+        return -1;
+    }
+    lock(m, 0);
+    m->rules = *n;
+    unlock(m, 0);
+    oftp_mon_msg("OFTP024I RECEIVE RULES: %d READ", n->n);
+    free(n);
+    return 0;
+}
+
 int
 oftp_mon_refresh(OFTP_MON *m)
 {
     OFTP_CONFIG *n;
-    int i, j, on = 0, added = 0, dropped = 0, removed = 0;
+    REFLEFT left[OFTP_MAXPTN];
+    int on = 0;
+    int added;
+    int dropped = 0;
+    int removed = 0;
 
     if ((n = malloc(sizeof(*n))) == NULL)
         return -1;
@@ -2812,46 +3178,12 @@ oftp_mon_refresh(OFTP_MON *m)
     }
     oftp_cfg_finish(n, cfgmsg, "OFTPPTN");
 
+    refresh_mark(m, n, left);
     lock(m, 0);
-    for (i = 0; i < m->cfg.nptn; i++) {
-        OFTP_PARTNER *o = &m->cfg.ptn[i];
-
-        if (o->peer.name[0] == '\0')
-            continue;
-        j = oftp_cfg_slot(n, o->peer.name);
-        if (o->skey[0] != '\0') {
-            /* kept by command: the spool wins, the member's entry of the
-            ** name is not used */
-            o->ovr = j >= 0;
-            if (j >= 0)
-                n->ptn[j].peer.name[0] = '\0';
-        } else if (j >= 0) {
-            *o = n->ptn[j];
-            m->tcall[i] = 0;                    /* perhaps a new HOST */
-            n->ptn[j].peer.name[0] = '\0';     /* taken */
-        } else if (m->busy[i] == 0 && m->calling[i] == 0
-                   && spool_uses(m, o->peer.name) == 0) {
-            oftp_cfg_free(&m->cfg, i);
-            ptn_slot_reset(m, i);
-            removed++;
-        } else {
-            if (o->enabled)
-                dropped++;
-            o->enabled = 0;
-        }
-    }
-    for (j = 0; j < n->nptn; j++) {
-        if (n->ptn[j].peer.name[0] == '\0')
-            continue;
-        if ((i = oftp_cfg_alloc(&m->cfg)) < 0) {
-            oftp_mon_msg("OFTP015W PARTNER %s NOT ADDED, TABLE FULL",
-                         n->ptn[j].peer.name);
-            continue;
-        }
-        m->cfg.ptn[i] = n->ptn[j];
-        ptn_slot_reset(m, i);
-        added++;
-    }
+    for (int i = 0; i < m->cfg.nptn; i++)
+        if (m->cfg.ptn[i].peer.name[0] != '\0')
+            refresh_slot(m, n, left, i, &dropped, &removed);
+    added = refresh_add(m, n);
     ptn_dups(&m->cfg);
     oftp_cfg_vias(&m->cfg, cfgmsg, "OFTPPTN");
     oftp_cfg_count(&m->cfg, &on);
@@ -2859,6 +3191,7 @@ oftp_mon_refresh(OFTP_MON *m)
     free(n);
     oftp_mon_msg("OFTP016I PARTNERS RELOADED: %d ENABLED, %d NEW, %d DISABLED,"
                  " %d REMOVED", on, added, dropped, removed);
+    oftp_mon_rules(m, 1);
     return on;
 }
 
@@ -2957,6 +3290,32 @@ oftp_mon_abend(OFTP_MON *m)
     return n;
 }
 
+/* A stop between the two renames of a REPLACE=Y leaves the old data set
+** under its backup name and nothing under its own. Put it back; when both
+** exist the new one is complete and the backup is the old, which is for
+** the operator to delete.
+*/
+static void
+restore_old(const OFTP_MON *m, const OFTP_SPREC *r)
+{
+    char bak[45];
+
+    if (r->relay == 'Y' || r->local[0] == '\0')
+        return;
+    bakname(m, r->key, bak, sizeof(bak));
+    if (!exists(bak))
+        return;
+    if (exists(r->local))
+        oftp_mon_msg("OFTP248W %s: %s EXISTS AND SO DOES THE OLD VERSION %s,"
+                     " DELETE %s BY HAND", r->partner, r->local, bak, bak);
+    else if (rename(bak, r->local) == 0)
+        oftp_mon_msg("OFTP239I %s: THE OLD %s PUT BACK FROM %s", r->partner,
+                     r->local, bak);
+    else
+        oftp_mon_msg("OFTP227E %s: THE OLD %s IS NOW %s, NOT RENAMED BACK",
+                     r->partner, r->local, bak);
+}
+
 void
 oftp_mon_recover(OFTP_MON *m)
 {
@@ -2978,6 +3337,7 @@ oftp_mon_recover(OFTP_MON *m)
         } else {
             snprintf(tmp, sizeof(tmp), "%s.%.8s", m->cfg.tmpprefix, r.key);
             remove(tmp);
+            restore_old(m, &r);
             oftp_spl_del(m->spool, r.key);
             recvs++;
         }
@@ -3083,18 +3443,20 @@ display_partners(OFTP_MON *m)
     for (i = 0; i < m->cfg.nptn; i++) {
         OFTP_PARTNER *p = &m->cfg.ptn[i];
         char ss[32];
+        char where[sizeof(p->host) + 8];
 
         if (p->peer.name[0] == '\0')
             continue;
+        oftp_cfg_where(p, where, sizeof(where));
         ss[0] = '\0';
         if (m->busy[i])
             snprintf(ss, sizeof(ss), " %d OF %d SESSIONS", m->busy[i],
                      p->sessions);
         if (m->trace_all || m->trace[i])
             strcat(ss, " TRACE");
-        oftp_mon_msg("OFTP100I %-8s %-25s %s%s LEVEL %d %s:%d", p->peer.name,
+        oftp_mon_msg("OFTP100I %-8s %-25s %s%s LEVEL %d %s", p->peer.name,
                      p->peer.code, p->enabled ? "ENABLED" : "DISABLED",
-                     ss, p->peer.level, p->host[0] ? p->host : "-", p->port);
+                     ss, p->peer.level, where);
     }
     oftp_mon_msg("OFTP101I %d PARTNERS, %d SESSIONS",
                  oftp_cfg_count(&m->cfg, NULL), m->nsess);
@@ -3108,14 +3470,15 @@ cmd_display(OFTP_MON *m, const char *what)
         display_partners(m);
     } else if (what[0] == 'Q') {
         OFTP_SPREC r;
-        char last[8];
+        char last[8], sd[OFTP_DSNLEN + 1];
         int n = 0;
 
         last[0] = '\0';
         while (oftp_spl_next(m->spool, last, &r) == 0) {
             memcpy(last, r.key, 8);
             oftp_mon_msg("OFTP110I %.8s %c %c %-8s %s", r.key, r.dir,
-                         r.state, r.partner, r.dsn);
+                         r.state, r.partner,
+                         oftp_printable(sd, sizeof(sd), r.dsn));
             n++;
         }
         oftp_mon_msg("OFTP111I %d TRANSFERS IN THE SPOOL", n);
@@ -3139,28 +3502,11 @@ oftp_mon_command(OFTP_MON *m, const char *cmd)
     char verb[16], arg[40], arg2[40];
     OFTP_PARTNER *p;
 
-    /* split by hand: verb, then the first operand */
-    {
-        const char *p = cmd;
-        size_t n = 0;
-
-        while (*p == ' ')
-            p++;
-        while (*p && *p != ' ' && *p != ',' && n < sizeof(verb) - 1)
-            verb[n++] = *p++;
-        verb[n] = '\0';
-        while (*p == ' ' || *p == ',')
-            p++;
-        n = 0;
-        while (*p && *p != ' ' && *p != ',' && n < sizeof(arg) - 1)
-            arg[n++] = *p++;
-        arg[n] = '\0';
-        while (*p == ' ' || *p == ',')
-            p++;
-        n = 0;
-        while (*p && *p != ' ' && *p != ',' && n < sizeof(arg2) - 1)
-            arg2[n++] = *p++;
-        arg2[n] = '\0';
+    oftp_opr_split(cmd, verb, sizeof(verb), arg, sizeof(arg), arg2,
+                   sizeof(arg2));
+    if (oftp_opr_extra(verb, arg2)) {
+        oftp_mon_msg("OFTP122E %s: UNEXPECTED OPERAND %s", verb, arg2);
+        return;
     }
     if (strcmp(verb, "D") == 0 || strcmp(verb, "DISPLAY") == 0)
         cmd_display(m, arg);

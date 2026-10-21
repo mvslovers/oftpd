@@ -15,6 +15,7 @@
 
 #include <mbtcheck.h>
 
+#include "oftpdata.h"
 #include "oftpsess.h"
 
 /* ---- transport over a socket ------------------------------------- */
@@ -303,6 +304,8 @@ quiet(void *ctx, int warn, const char *line)
 static OFTP_LOGFN g_log = quiet;
 static OFTP_TRACEFN g_traced;
 static const char *g_pw = "PW";         /* both sides' password         */
+static const char *g_ocode = "O0013000000MVS1"; /* initiator's own ID    */
+static const char *g_dsn;               /* initiator's first file name   */
 
 static void
 peer_init(OFTP_PEER *p, const char *name, const char *code,
@@ -341,7 +344,7 @@ init_files(MFILES *m)
 {
     memset(m, 0, sizeof(*m));
     m->nout = 2;
-    m->out[0].dsn = "PAYROLL.DATA";
+    m->out[0].dsn = g_dsn != NULL ? g_dsn : "PAYROLL.DATA";
     m->out[0].fmt = 'F';
     m->out[0].lrecl = 10;
     m->out[0].recs[0] = "AAAAAAAAAA";
@@ -567,7 +570,7 @@ refuse_scenario(int lrc, int esid)
         close(sv[1]);
         init_files(&im);
         sess_init(&sess, &fd, &im, 1);
-        peer_init(&sess.peer, "MVS2", "O0013000000MVS2", "O0013000000MVS1",
+        peer_init(&sess.peer, "MVS2", "O0013000000MVS2", g_ocode,
                   sc.ilevel, sc.sdeb, sc.cred, sc.cmpr);
         rc = oftp_sess_run(&sess);
         close(sv[0]);
@@ -753,6 +756,283 @@ trace_scenario(const char *name, OFTP_TRACEFN fn, int level)
         CHECK(tr_count("SSRM") == 0, "partner-only trace: SSRM came before the partner was known");
 }
 
+/* ---- a peer that packs F records as mendelson OFTP2 CE does ------- */
+
+#define MF_LREC     80
+#define MF_NREC     6
+#define MF_SDEB     240
+
+static int
+mf_frame(int fd, unsigned char *b, unsigned n)
+{
+    unsigned len = n + 4;
+
+    b[0] = 0x10;
+    b[1] = (unsigned char)((len >> 16) & 0xFF);
+    b[2] = (unsigned char)((len >> 8) & 0xFF);
+    b[3] = (unsigned char)(len & 0xFF);
+    return x_send(&fd, b, len);
+}
+
+/* Reads one frame; returns its command code, 0 on failure */
+static char
+mf_read(int fd, unsigned char *b)
+{
+    unsigned len;
+
+    if (x_recv(&fd, b, 4, 5) != 0)
+        return 0;
+    len = ((unsigned)b[1] << 16) | ((unsigned)b[2] << 8) | b[3];
+    if (len < 5 || len > 4100 || x_recv(&fd, b + 4, len - 4, 5) != 0)
+        return 0;
+    return oftp_cmd_code(b + 4, len - 4);
+}
+
+/* The initiator's side, run in the child. Each buffer is filled with
+** subrecords of 63 octets and of 17 with the end-of-record flag, the
+** pattern starting afresh at the head of every buffer whatever the record
+** boundary: a record cut by the end of a buffer loses its flag and the
+** flags after it stand 63 octets into the next record. The EFID counts the
+** flags set. 0 when the responder sent EFPA.
+*/
+static int
+run_mendelson(int fd, const unsigned char *data, unsigned total)
+{
+    unsigned char b[4200];
+    OFTP_SSIDCMD o;
+    OFTP_SFIDCMD f;
+    OFTP_EFIDCMD e;
+    unsigned long eors = 0;
+    unsigned pos = 0;
+    int n;
+
+    if (mf_read(fd, b) != OFTP_SSRM)
+        return 1;
+    memset(&o, 0, sizeof(o));
+    o.level = 5;
+    strcpy(o.code, "O0013000000MVS1");
+    strcpy(o.pswd, g_pw);
+    o.sdeb = MF_SDEB;
+    o.sr = 'B';
+    o.cmpr = o.rest = o.spec = o.auth = 'N';
+    o.cred = 99;
+    n = oftp_enc_ssid(&o, b + 4, sizeof(b) - 4);
+    if (n < 0 || mf_frame(fd, b, (unsigned)n) != 0)
+        return 2;
+    if (mf_read(fd, b) != OFTP_SSID)
+        return 3;
+
+    memset(&f, 0, sizeof(f));
+    strcpy(f.dsn, "MENDEL.F80");
+    strcpy(f.date, "20261020");
+    strcpy(f.time, "1200000001");
+    strcpy(f.dest, "O0013000000MVS2");
+    strcpy(f.orig, "O0013000000MVS1");
+    f.fmt = 'F';
+    f.lrecl = MF_LREC;
+    f.fsiz = f.osiz = 1;
+    f.sign = 'N';
+    n = oftp_enc_sfid(5, &f, b + 4, MF_SDEB);
+    if (n < 0 || mf_frame(fd, b, (unsigned)n) != 0)
+        return 4;
+    if (mf_read(fd, b) != OFTP_SFPA)
+        return 5;
+
+    while (pos < total) {
+        unsigned used = 1;
+        int tail = 0;
+
+        b[4] = OFTP_DATA;
+        while (pos < total) {
+            unsigned k = tail ? MF_LREC - OFTP_SR_MAX : OFTP_SR_MAX;
+            unsigned char hdr;
+
+            if (k > total - pos)
+                k = total - pos;
+            if (used + 1 + k > MF_SDEB)
+                break;
+            hdr = (unsigned char)k;
+            if (tail || pos + k == total) {
+                hdr |= OFTP_SR_EOR;
+                eors++;
+            }
+            b[4 + used] = hdr;
+            memcpy(b + 4 + used + 1, data + pos, k);
+            used += 1 + k;
+            pos += k;
+            tail = !tail;
+        }
+        if (mf_frame(fd, b, used) != 0)
+            return 6;
+    }
+    e.rcnt = eors;
+    e.ucnt = total;
+    n = oftp_enc_efid(5, &e, b + 4, MF_SDEB);
+    if (n < 0 || mf_frame(fd, b, (unsigned)n) != 0)
+        return 7;
+    return mf_read(fd, b) == OFTP_EFPA ? 0 : 8;
+}
+
+/* An F file from such a peer arrives whole, in records of its LRECL */
+static void
+mendelson_scenario(void)
+{
+    unsigned char data[MF_NREC * MF_LREC];
+    char want[MF_NREC * (MF_LREC + 1) + 1];
+    MFILES m;
+    int sv[2], status = -1, rc, i;
+    unsigned w = 0;
+    pid_t pid;
+    char msg[120];
+
+    for (i = 0; i < MF_NREC; i++) {
+        memset(data + i * MF_LREC, 'A' + i, MF_LREC);
+        data[i * MF_LREC] = (unsigned char)('0' + i);
+        memcpy(want + w, data + i * MF_LREC, MF_LREC);
+        w += MF_LREC;
+        want[w++] = '|';
+    }
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) != 0) {
+        CHECK(0, "socketpair");
+        return;
+    }
+    pid = fork();
+    if (pid == 0) {
+        close(sv[1]);
+        rc = run_mendelson(sv[0], data, sizeof(data));
+        close(sv[0]);
+        _exit(rc);
+    }
+    close(sv[0]);
+
+    memset(&m, 0, sizeof(m));
+    peer_init(&resp_view, "MVS1", "O0013000000MVS1", "O0013000000MVS2",
+              5, MF_SDEB, 99, 0);
+    sess_init(&sess, &sv[1], &m, 0);
+    strcpy(sess.localcode, "O0013000000MVS2");
+    rc = oftp_sess_run(&sess);
+    close(sv[1]);
+    waitpid(pid, &status, 0);
+
+    snprintf(msg, sizeof(msg), "mendelson F: the peer got EFPA (child rc %d)",
+             WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+    CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0, msg);
+    CHECK(m.nin == 1 && m.in[0].closed == 1, "mendelson F: file kept");
+    CHECK(m.nin == 1 && m.in[0].len == w
+          && memcmp(m.in[0].data, want, w) == 0,
+          "mendelson F: records cut at the LRECL, payload intact");
+    (void)rc;
+}
+
+/* The trace goes off in the middle of the first file's DATA run (#86):
+** the buffers counted before the switch must not be logged at the end of
+** the session, after the operator was told TRACE OFF.
+*/
+static int tr_calls, tr_limit, tr_pend;
+
+static int
+trace_limited(void *ctx)
+{
+    (void)ctx;
+    if (++tr_calls == tr_limit + 1)
+        tr_pend = (int)(sess.tr_nbuf[0] + sess.tr_nbuf[1]);
+    return tr_calls <= tr_limit;
+}
+
+static void
+switchoff_scenario(void)
+{
+    SCEN sc = { "switch off", 5, 5, 4096, 99, 0, "PW", 0, 0 };
+
+    ntr = 0;
+    tr_calls = tr_pend = 0;
+    tr_limit = 6;               /* SSRM, SSID, SSID, SFID, SFPA, first DATA */
+    g_log = capture;
+    g_traced = trace_limited;
+    scenario(&sc);
+    g_log = quiet;
+    g_traced = NULL;
+
+    CHECK(tr_calls > tr_limit, "switch off: the switch was asked after it went off");
+    CHECK(tr_count("RECV SFID") == 1, "switch off: the trace was on at the start");
+    CHECK(tr_pend > 0, "switch off: DATA was counted before the switch");
+    CHECK(tr_count("buffers") == 0, "switch off: no DATA line after the switch");
+    CHECK(sess.tr_nbuf[0] == 0 && sess.tr_nbuf[1] == 0,
+          "switch off: the counters are dropped");
+}
+
+/* Bytes of the network in the log (#86) */
+static char alog[24][160];
+static int nal;
+
+static void
+capture_all(void *ctx, int warn, const char *line)
+{
+    (void)ctx;
+    (void)warn;
+    if (nal < 24)
+        snprintf(alog[nal++], sizeof(alog[0]), "%s", line);
+}
+
+static int
+al_dirty(void)
+{
+    int i;
+    const unsigned char *p;
+
+    for (i = 0; i < nal; i++)
+        for (p = (const unsigned char *)alog[i]; *p; p++)
+            if (*p < ' ' || *p > '~')
+                return 1;
+    return 0;
+}
+
+static int
+al_count(const char *what)
+{
+    int i, n = 0;
+
+    for (i = 0; i < nal; i++)
+        if (strstr(alog[i], what) != NULL)
+            n++;
+    return n;
+}
+
+static void
+printable_scenario(void)
+{
+    SCEN sc = { "file refused", 5, 5, 4096, 99, 0, "PW", 13, 0 };
+
+    /* an unknown caller and a refused one, with control characters in
+    ** the ID; the trace of the SSID shows it as well */
+    g_log = capture_all;
+    g_traced = trace_always;
+    g_ocode = "O00130\x01\x1b[2JMVS1";
+    nal = 0;
+    refuse_scenario(-1, 3);
+    CHECK(al_count("unknown caller O00130..[2JMVS1") == 1, "ID with controls: unknown caller logged");
+    CHECK(al_count("RECV SSID") == 1, "ID with controls: SSID traced");
+    CHECK(!al_dirty(), "ID with controls: unknown caller, no control byte in the log");
+    nal = 0;
+    refuse_scenario(8, 8);
+    CHECK(al_count("caller O00130..[2JMVS1") == 1 && al_count("refused, reason 08") == 1,
+          "ID with controls: refused caller logged");
+    CHECK(!al_dirty(), "ID with controls: refused caller, no control byte in the log");
+    g_ocode = "O0013000000MVS1";
+
+    /* a file name with controls, traced and refused */
+    g_dsn = "PAY\x01ROLL\x1b[31m\x7f\xe9.X";
+    nal = 0;
+    scenario(&sc);
+    g_dsn = NULL;
+    CHECK(al_count("RECV SFID 165: dsn PAY.ROLL") == 1
+          && al_count("PAY.ROLL.[31m...X refused") == 1,
+          "file name with controls: traced and refused, both lines show it");
+    CHECK(!al_dirty(), "file name with controls: no control byte in the log");
+    g_log = quiet;
+    g_traced = NULL;
+}
+
 int
 main(void)
 {
@@ -786,5 +1066,8 @@ main(void)
     trace_scenario("trace on 1.4", trace_always, 4);
     trace_scenario("trace on 1.3", trace_always, 2);
     trace_scenario("trace partner", trace_known, 5);
+    mendelson_scenario();
+    switchoff_scenario();
+    printable_scenario();
     return mbt_test_summary("TSTSESS");
 }

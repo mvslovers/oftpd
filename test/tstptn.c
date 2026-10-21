@@ -110,6 +110,38 @@ main(void)
              "a partner cannot be renamed");
     CHECK_EQ(oftp_cfg_apply(&n, "PARTNER=MVS2 SESSIONS=0", why, sizeof(why)), -1,
              "SESSIONS=0 refused");
+    /* a word of more than 99 characters is refused, not cut short: the
+    ** cut PORT=0...0799 into PORT=0...07 (#113)
+    */
+    {
+        char w[160];
+        int port = c.ptn[0].port;
+
+        n = c.ptn[0];
+        memset(w, '0', 98);
+        memcpy(w, "PORT=", 5);
+        strcpy(w + 98, "799");
+        CHECK_EQ(oftp_cfg_apply(&n, w, why, sizeof(why)), -1,
+                 "a word of 101 characters is refused");
+        CHECK(strstr(why, "longer than 99") != NULL, "and the reason says so");
+        CHECK_EQ(n.port, port, "nothing was applied");
+        memset(w, '0', 92);
+        memcpy(w, "PORT=", 5);
+        strcpy(w + 92, "77");
+        CHECK_EQ(oftp_cfg_apply(&n, w, why, sizeof(why)), 0,
+                 "a word of 99 characters is still taken");
+        CHECK_EQ(n.port, 77, "with its whole value");
+    }
+    /* a word that is not KEYWORD=VALUE is named by its place: after
+    ** PASSWORD=ab the word cd is the rest of a password (#121)
+    */
+    n = c.ptn[0];
+    why[0] = '\0';
+    CHECK_EQ(oftp_cfg_apply(&n, "PORT=4000 PASSWORD=ab cd", why, sizeof(why)), -1,
+             "a word without '=' is refused");
+    CHECK(strstr(why, "cd") == NULL && strstr(why, "ab") == NULL,
+          "and the reason shows none of the words");
+    CHECK(strcmp(why, "word 3 is not KEYWORD=VALUE") == 0, "but where it is");
     n = c.ptn[0];
     oftp_cfg_apply(&n, "ODETTEID=O0013000000ACME", why, sizeof(why));
     CHECK_EQ(oftp_cfg_check(&c, &n, 0, why, sizeof(why)), -1,

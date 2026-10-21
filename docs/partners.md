@@ -75,6 +75,16 @@ host name included) are upper case. `SHOW` never prints a password: it says
 `PASSWORD=SET` or `NONE`. To change a password, give the new one. To clear a host, an address or a
 `VIA`, give an empty value (`HOST()`).
 
+`SHOW` prints `-` for `OURID` and `ADDRESS` to a caller who is not named in
+`ADMIN=`; the line keeps its shape. An administrator sees both. This is
+defence in depth, not confidentiality: `ODETTEID`, `HOST`, `PORT`, the
+status and `PASSWORD` and `OURPASSWORD` (`SET` or `NONE`) stay visible to
+everyone. `OURID` defaults to the local Odette ID, which `OFTP STATUS`
+shows to everyone, so the `-` hides only an `OURID` that differs from it.
+Only `PARTNER SHOW` is masked. The display of a transfer (`OFTP SHOW` of a
+key, its `from ... to ...` line) shows whoever may see that transfer the
+Odette IDs the transfer carries, the local one included.
+
 **A password is as secret as the place you type it.** In batch `OFTP`
 echoes each command of `SYSIN` to `SYSPRINT` and prints the value after
 `PASSWORD` and after `OURPASSWORD` as eight stars (`PASSWORD(********)`),
@@ -102,6 +112,56 @@ the slot until its caller leaves or the slot is freed. Whenever a slot is
 freed, its request and its answer are erased first, and when OFTPD stops
 it erases every slot.
 
+### A partner without a PASSWORD
+
+A partner without `PASSWORD` is allowed. OFTPD then expects the partner to
+send an empty password, so every peer that knows the Odette ID of the
+partner and sends an empty password logs on. A peer that sends a password is
+refused. With an `ADDRESS` in the entry the call must also come from that
+address (`OFTP201W` otherwise); without one it may come from anywhere.
+
+This holds in both directions. When OFTPD calls the partner, the partner's
+answer must carry an empty password too, so a partner that insists on a
+password while its entry has none fails the call. `PASSWORD` is what OFTPD
+expects, `OURPASSWORD` what it sends.
+
+A partner with `VIA` is never matched by its own Odette ID at log-on, so it
+cannot log on itself. For such a partner the warning below is only a hint.
+
+`ADD` and `CHANGE` warn when an enabled partner has no `PASSWORD` after the
+command. `ENABLE` is a `CHANGE` of `ENABLED`, so enabling a partner without
+a password warns as well.
+
+```
+OFTP PARTNER ADD DOCPTN ODETTEID(O0000000000DOCP) HOST(127.0.0.1) -
+     CALL(N)
+WARNING: without a PASSWORD every peer that knows the Odette ID of the partner can log on
+partner DOCPTN added, but it has no PASSWORD
+```
+
+The warning is no refusal: the partner is added or changed. OFTPD answers
+with the code `210` where it would answer `200`, and the batch `OFTP` step
+ends with RC 4. The warning has two texts. It says what the partner
+allows: with no `ADDRESS` in the entry any peer that knows the Odette ID,
+with an `ADDRESS` only a peer that calls from that address, because the
+address check still applies. The `210` line is the same in both cases.
+
+```
+no ADDRESS:  100 WARNING: without a PASSWORD every peer that knows the Odette ID of the partner can log on
+ADDRESS set: 100 WARNING: without a PASSWORD every peer calling from the ADDRESS of the partner that knows the Odette ID can log on
+```
+
+(`OFTP` prints the text after the code, as in the example above.)
+
+There is no warning when the partner has a `PASSWORD` after the command
+(`CHANGE ... PASSWORD(...)` answers a plain `partner DOCPTN changed`, RC 0),
+when the partner is disabled, and when the command changes nothing
+(`unchanged`).
+
+A partner from the `OFTPPTN` member without `PASSWORD` is just as open and
+gets no warning: reading the member, at start or at `REFRESH`, is not a
+command. Check the member for entries without `PASSWORD`.
+
 ### What is refused
 
 `OFTP` prints the text of OFTPD's final answer and nothing else: not the
@@ -116,6 +176,7 @@ OFTPD not reached. An answer with return code 12 is printed after
 | Request | Text shown | Return code |
 |---|---|---|
 | any change by a userid not in `ADMIN=` | `needs ADMIN= in OFTPPRM` | 8 |
+| `PARTNER=` missing, longer than 8, or with a character that is not a letter, digit, `#`, `@`, `$`, `_` or `-` | `PARTNER= is a name of 1 to 8 letters, digits, # @ $ _ -` | 8 |
 | `ADD` of a name that exists | `partner exists: use CHANGE` | 8 |
 | `ADD` when the table holds 32 partners | `the partner table is full` | 8 |
 | a keyword that is none, or a value that does not fit | for example `unknown keyword TOKEN`, `invalid value for TOKEN`, `ODETTEID is required` | 8 |
@@ -128,11 +189,15 @@ OFTPD not reached. An answer with return code 12 is printed after
 | `DELETE` of a partner that is only in `OFTPPTN` | `the partner is in OFTPPTN: remove it there, then REFRESH` | 8 |
 | `DELETE` while the spool holds a transfer for, to or from it | `n transfers name partner NAME: PURGE or DELETE them first`, with `(disabled)` after the name when this `DELETE` disabled it | 8 |
 | `DELETE` when the partner changed while OFTPD looked through the spool | `the partner was changed meanwhile, try again` | 4 |
-| any of the above when OFTPD cannot use its spool | `spool not available` | 4 |
+| any request that gets past the userid and the name check, when OFTPD cannot use its spool | `spool not available` | 4 |
 | `SEND` to a disabled partner | `OFTP010E unknown or disabled partner` | 12 |
+| `ADD`, `CHANGE` or `ENABLE` that changes an entry and leaves the enabled partner without `PASSWORD` | **taken**: `partner NAME added, but it has no PASSWORD` (or `changed, ...`), after the warning line | 4 |
 
 `X` is the partner that is reached through the one you named. The
 dialog shows the same text, without `OFTP010E`.
+
+RC 4 has two meanings: the request was not done and may be tried again, or
+it was done with a warning. The last row of the table is the second case.
 
 **A partner with transfers in the spool is never deleted.** That counts
 every transfer, finished ones too (a finished transfer is the record of what
@@ -172,5 +237,14 @@ leave as it is stays as it is; type a new value into a password input
 field to replace the password, and leave it blank to keep it. The new partner starts with level 5, mode both, no compression,
 may be called, one session and enabled. The refusals above come back as the
 panel's message.
+
+When OFTPD takes the entry, the entry panel ends and the answer stands in
+the message line of the partner list. Any `2xx` answer counts as taken,
+`210` included (`partner PARTNER2 added, but it has no PASSWORD`). The
+dialog shows only that last line, not the `WARNING:` line before it. The
+line commands `E` and `X` show their answer in the same place. Any answer
+that is not `2xx` keeps the entry panel open: a refusal, OFTPD busy or not
+reached, or an answer that ends before its last line (`incomplete answer
+from OFTPD`), which carries no code.
 
 The panels are made for the 43-row screen (`docs/installation.md`, "What you need").

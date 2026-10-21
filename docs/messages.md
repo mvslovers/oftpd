@@ -46,7 +46,7 @@ different messages share the number; each is listed.
 | `OFTP004P` | Log only | `AUTHORIZED BY LIBRARY` or `BY SVC`: how OFTPD got authorization |
 | `OFTP005W` | Console + log | `NOT AUTHORIZED, RC=n, CONTINUING` |
 | `OFTP006W` | Console + log | `NO ABEND RECOVERY (ESTAE FAILED)`: an abend of OFTPD will not close its sockets |
-| `OFTP010W` | Console + log | `<member>: <line>`: a line of `OFTPPRM` or `OFTPPTN` that was not understood; the entry is skipped or disabled |
+| `OFTP010W` | Console + log | `<member>: <line>`: a line of `OFTPPRM`, `OFTPPTN` or `OFTPRCV` that was not understood; the entry is skipped or disabled, and one error in `OFTPRCV` keeps the whole rule member from being used (`OFTP025E`) |
 | `OFTP010W` | Console + log | for example `OFTPPTN: line 12: a word is longer than 99 characters`: such a word is refused, never cut. In `OFTPPTN` the partner entry being read is disabled; `OFTPPRM` has no partner entry. `OFTP` stops an operand that long earlier, with `OFTP003E` |
 | `OFTP011E` | Console + log | `DD OFTPPRM CANNOT BE OPENED`; OFTPD ends |
 | `OFTP012E` | Console + log | `OFTPPRM HAS NO ODETTEID`; OFTPD ends |
@@ -58,6 +58,9 @@ different messages share the number; each is listed.
 | `OFTP018I` | Console + log | `n PARTNERS KEPT BY COMMAND, n OVERRIDE OFTPPTN`: the partners added or changed by `PARTNER` commands (`docs/partners.md`), read from the spool at start |
 | `OFTP018W` | Console + log | a partner record of the spool was not taken (`HAS NO NAME`, `<reason>, IGNORED`, `IS KEPT BY COMMAND ALREADY`), two partners have one Odette ID (the second is `DISABLED`), or `THE PARTNER RECORDS OF THE SPOOL CANNOT BE READ` |
 | `OFTP019E` | Console + log | `PARTNER RECORDS OF THE SPOOL UNREADABLE, OFTPD NOT STARTED`: starting on the parmlib table alone would bring back a partner that was disabled or changed by command |
+| `OFTP024I` | Console + log | `RECEIVE RULES: n READ`: the rule member (`OFTPRCV`) was read without error, at start and after `F OFTPD,REFRESH`; n may be 0 |
+| `OFTP025E` | Console + log | `RECEIVE RULES NOT USED, n ERRORS`: the member has n lines in error (each reported with `OFTP010W`) and is not used at all. After `F OFTPD,REFRESH` the text ends with `, THE OLD RULES STAY`; at start there are no rules |
+| `OFTP026W` | Console + log | `DD OFTPRCV CANNOT BE OPENED, THE n RULES STAY`: `F OFTPD,REFRESH` only, when rules were read before and the DD cannot be opened now. A DD that is missing at start, or after a start without rules, says nothing |
 | `OFTP020E` | Console + log | `SPOOL NOT OPEN: <reason>`; OFTPD ends |
 | `OFTP021W` | Console + log | `SPOOL WAS NOT CLOSED (OPEN RC n), VERIFIED`: OFTPD did not end cleanly last time; the spool was checked |
 | `OFTP022W` | Console + log | `DD OFTPLOG CANNOT BE OPENED` or `IS NOT RECFM=F OR FB`: the messages go to the console |
@@ -107,7 +110,7 @@ These answer a command, so they stay on the console.
 | `OFTP111I` | Console + log | `n TRANSFERS IN THE SPOOL` |
 | `OFTP120E` | Console + log | `<name> IS NOT A PARTNER THAT CAN BE CALLED` / `IS NOT A PARTNER` |
 | `OFTP121I` | Console + log | `CALL OF <name> REQUESTED` |
-| `OFTP122E` | Console + log | `PURGE: DAYS MUST BE 0-9999` / `PURGE NEEDS DAYS: KEEPDAYS=0 KEEPS EVERYTHING` |
+| `OFTP122E` | Console + log | `PURGE: DAYS MUST BE 0-9999` / `PURGE NEEDS DAYS: KEEPDAYS=0 KEEPS EVERYTHING` / `<verb>: UNEXPECTED OPERAND <text>`: `PURGE`, `HOLD`, `RELEASE` and `CALL` take one operand, a second is refused |
 | `OFTP123E` | Console + log | `<verb> NEEDS A PARTNER OR ALL` |
 | `OFTP124I` | Console + log | `TRACE ON\|OFF FOR ALL SESSIONS` / `FOR PARTNER <partner>`: the answer to `F OFTPD,TRACE` |
 | `OFTP125E` | Console + log | `TRACE IS ON FOR ALL SESSIONS, TRACE OFF WITHOUT A PARTNER ENDS IT` |
@@ -153,9 +156,20 @@ The ones that report a normal transfer are `P`.
 | `OFTP221E` | Console + log | `<partner>: <data set> NOT RENAMED TO <data set>` |
 | `OFTP222P` | Log only | `<partner>: <key> <dsn> RECEIVED AS <data set>, n RECORDS` |
 | `OFTP223W` | Console + log | `<partner>: <dsn> FOR <id> REFUSED, <reason>`: not our Odette ID, no route, or it would go back |
+| `OFTP224W` | Console + log | `<partner>: <dsn> REFUSED, RULE <rule> MAKES NO VALID DATA SET NAME`: reason 01, no retry |
+| `OFTP225W` | Console + log | `<partner>: <dsn> REFUSED, <data set> EXISTS (RULE <rule>, REPLACE=N)`: reason 13, the sender tries again |
+| `OFTP226E` | Console + log | `<partner>: <dsn> NOT RECEIVED, <data set> CANNOT BE REPLACED, IT STAYS`: reason 12; in use, or not a sequential data set |
+| `OFTP227E` | Console + log | `<partner>: THE OLD <data set> IS NOW <backup>, NOT RENAMED BACK`: rename the backup to the data set name by hand |
+| `OFTP228W` | Console + log | `<partner>: THE OLD <data set> IS NOW <backup>, NOT DELETED`: the new file is in place; delete the backup |
+| `OFTP229I` | Console + log | `<partner>: <data set> REPLACED` |
+| `OFTP234W` | Console + log | `<partner>: <dsn> REFUSED, <data set> IS NOT A SEQUENTIAL DATA SET AND IS NOT REPLACED (RULE <rule>)`: `REPLACE=Y` on a PDS, VSAM or member name; reason 12, no retry |
+| `OFTP239I` | Console + log | `<partner>: THE OLD <data set> PUT BACK FROM <backup>`: at start, after a stop in the middle of a replace |
 | `OFTP240P` | Log only | `<partner>: <key> RELAY: EERP/NERP FOR <dsn> QUEUED` |
 | `OFTP241P` | Log only | `<partner>: <key> RELAY: <dsn> FROM <id> FOR <id> QUEUED FOR <partner>` |
 | `OFTP242W` | Console + log | `<partner>: <key> RELAY: <dsn> FOR <id> GIVEN UP AFTER n ATTEMPTS`: the originator gets a NERP |
+| `OFTP246P` | Log only | `<partner>: <key> SUBMITTED AS <jobid>: JOB <pds(member)> FOR <data set>`: the job of the rule's `JOB=` is on the internal reader |
+| `OFTP247W` | Console + log | `<partner>: <key> NOT SUBMITTED, <reason>: JOB <pds(member)> FOR <data set>` (the reason comes first, so a long name cuts the names and not the reason): member missing, empty or unreadable; a member that ended early or changed between the two reads (`MEMBER CHANGED DURING READ`); a record past column 80; a line too long after the symbols; `?VFILE` with a character not allowed in JCL (`?VFILE NOT ALLOWED IN JCL`); the internal reader failed. The file is kept and acknowledged |
+| `OFTP248W` | Console + log | `<partner>: <data set> EXISTS AND SO DOES THE OLD VERSION <backup>, DELETE <backup> BY HAND`: at start, after a stop in the middle of a replace |
 | `OFTP290W` | Console + log | `<partner>: <text>` for a failed identity or password check: `UNKNOWN CALLER <id>`, `WRONG PASSWORD FROM <partner>` (the engine's text, in lower case), `ANSWERED BY <id>, NOT <id>`, `PARTNER PASSWORD DOES NOT MATCH` |
 | `OFTP290P` | Log only | `<partner>: <text>`: any other line the protocol engine reports (a refusal reason, a timeout, a file sent or received, the session parameters, and the `TRACE SEND|RECV ...` lines of `F OFTPD,TRACE`) |
 
@@ -187,3 +201,21 @@ the terminal). They do not use the console or the log. Except for
 | `OFTP004E` | `PARTNER <sub> NEEDS A PARTNER NAME`: `PARTNER ADD`, `CHANGE`, `SHOW` or `DELETE` without a name (`ENABLE` and `DISABLE` are shown as `CHANGE`) |
 | `OFTP007E` | `OPERAND <n> HAS NO VALUE: WRITE KEYWORD(VALUE)`: a second word without a value after the one that names the key, the partner or the days (`SHOW`, `DELETE`, `HOLD`, `RELEASE`, `RETRY`, `CALL`, `PARTNER`, `PURGE`), for example `PARTNER CHANGE ACME OURPASS`. `SEND`, `LIST` and `PARTNERS` have no such word. `<n>` is the place of the word, counted after the verb (after `PARTNER CHANGE` for a partner command); the word is not shown, because it may be a password. `XLATE` and `HOLD` alone are taken as `Y` |
 | `OFTP010E` | the answer of OFTPD to a request that ends with return code 12, such as an unknown partner or OFTPD not reached (`docs/partners.md`, "What is refused") |
+
+## Replies to a partner command
+
+OFTPD answers a request from a utility with lines that begin with a three
+digit code. `OFTP` prints the text after the code; the code decides the RC
+of the batch step. The reply to `PARTNER ADD` and `PARTNER CHANGE` (`ENABLE`
+and `DISABLE` are a `CHANGE`) has no message id. Besides the refusals
+(`docs/partners.md`, "What is refused") it is one of these.
+
+| Code | Text | RC |
+|---|---|---|
+| `200` | `partner <name> added` / `changed` / `unchanged` | 0 |
+| `210` | `partner <name> added` / `changed`, `but it has no PASSWORD`, after a line `WARNING: without a PASSWORD every peer that knows the Odette ID of the partner can log on` (with an `ADDRESS` in the entry: `... every peer calling from the ADDRESS of the partner that knows the Odette ID can log on`) | 4 |
+
+`210` means the partner is added or changed and enabled, and has no
+`PASSWORD` (`docs/partners.md`, "A partner without a PASSWORD"). It is a
+warning, not a refusal. The console messages `OFTP243I` and `OFTP244I` are
+written as for an ordinary add or change.
