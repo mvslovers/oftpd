@@ -237,7 +237,7 @@ phase_a(const char *host, const char *port, const char *dsn)
     snprintf(req, sizeof(req),
              "PARTNER ADD PARTNER=" NAME "W ODETTEID=O0000000000TSTW "
              "HOST=%s PORT=1 CALL=N", host);
-    CHECK(answers(req, "210") && find("100 ", "no PASSWORD") != NULL,
+    CHECK(answers(req, "210") && find("100 ", "without a PASSWORD") != NULL,
           "ADD of an enabled partner without PASSWORD says so");
     CHECK(show_of(NAME "W", "PASSWORD=NONE") && show_of(NAME "W", "ENABLED=Y"),
           "and it is added: the warning is no refusal");

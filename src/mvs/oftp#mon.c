@@ -2168,8 +2168,9 @@ ctl_show_ptn(OFTP_MON *m, CTLOUT *o, const char *rest)
     n = m->busy[i];
     unlock(m, 0);
 
+    /* OURID and ADDRESS are for an administrator; the line keeps its shape */
     snprintf(out, sizeof(out), "100 PARTNER=%s ODETTEID=%s OURID=%s",
-             p.peer.name, p.peer.code, p.peer.ourcode);
+             p.peer.name, p.peer.code, o->admin ? p.peer.ourcode : "-");
     ctl_put(o, out);
     snprintf(out, sizeof(out), "100 HOST=%s PORT=%d LEVEL=%d MODE=%c",
              p.host, p.port, p.peer.level, p.peer.mode);
@@ -2179,7 +2180,7 @@ ctl_show_ptn(OFTP_MON *m, CTLOUT *o, const char *rest)
              p.sessions, p.peer.cmpr ? 'Y' : 'N', p.xlate ? 'Y' : 'N');
     ctl_put(o, out);
     snprintf(out, sizeof(out), "100 SDEB=%u CREDIT=%u ADDRESS=%s VIA=%s",
-             p.peer.sdeb, p.peer.cred, p.address, p.via);
+             p.peer.sdeb, p.peer.cred, o->admin ? p.address : "-", p.via);
     ctl_put(o, out);
     snprintf(out, sizeof(out), "100 PASSWORD=%s OURPASSWORD=%s",
              p.peer.pswd_in[0] ? "SET" : "NONE",
@@ -2201,6 +2202,7 @@ typedef struct {
     const char *rest;                   /* the keywords of the request   */
     int         slot;
     int         ovr;                    /* DELETE: OFTPPTN has the name  */
+    int         nopw;                   /* enabled, and no PASSWORD      */
     char        out[160];
 } PTNREQ;
 
@@ -2400,6 +2402,7 @@ ptn_save(OFTP_MON *m, PTNREQ *q, int adding)
         return ptn_refuse(q, "451 spool not available");
     }
     ptn_put(m, i, &n);
+    q->nopw = n.enabled && n.peer.pswd_in[0] == '\0';
     if (adding)
         ptn_slot_reset(m, i);
     else
@@ -2429,8 +2432,13 @@ ptn_report(OFTP_MON *m, CTLOUT *o, PTNREQ *q, const char *sub)
     oftp_mon_msg("OFTP24%cI PARTNER %s %s BY %s", sub[0] == 'A' ? '3' : '4',
                  q->name, sub[0] == 'A' ? "ADDED" : "CHANGED", ctl_by(o));
     ecb_post(&m->wake, 0);
-    snprintf(q->out, sizeof(q->out), "200 partner %s %s", q->name,
-             sub[0] == 'A' ? "added" : "changed");
+    snprintf(q->out, sizeof(q->out), "%s partner %s %s%s",
+             q->nopw ? "210" : "200", q->name,
+             sub[0] == 'A' ? "added" : "changed",
+             q->nopw ? ", but it has no PASSWORD" : "");
+    if (q->nopw)
+        ctl_put(o, "100 WARNING: without a PASSWORD every peer that knows "
+                "the Odette ID of the partner can log on");
 }
 
 static void
