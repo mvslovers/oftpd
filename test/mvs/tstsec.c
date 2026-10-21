@@ -16,20 +16,29 @@
 ** space is cleared for the length of one SVC and put back, in key 0, so
 ** OFTPSVC walks the same control blocks it walks for any caller and finds
 ** none. That needs authority, which is why this job -- unlike TSTSVC --
-** must run from an APF-authorized library.
+** must run authorized (SVC 244 as OFTPD does, or APF).
 **
 ** **NEVER RUN THIS ON A STAND.** With NOSEC the call clears CVTRAC of the
 ** whole system for the length of one SVC, not just of this address
-** space; if the SVC hung between the two key-0 sections, it would stay
-** cleared and every security check on the system would be off. It is for
-** a throwaway container only.
+** space. An ESTAE (TERM=YES, so a CANCEL comes here too) puts CVTRAC and
+** ASXBSENV back, in key 0, if the call abends or the job is cancelled
+** while the SVC waits. The call has no timeout of its own: a hang that
+** nobody cancels keeps CVTRAC cleared. The PARM can switch the security
+** of a system off: keep the program out of LNKLST and out of SYS2.LINKLIB
+** (test/mvs/tstsec.jcl). It is for a throwaway container only.
 **
 ** It needs a running OFTPD with SVC= and a partner, and a sequential
 ** data set the caller can read (test/mvs/tstsec.jcl). It queues held
 ** sends and deletes them again; ADMIN= in OFTPPRM must name the userid
 ** the job runs under, or the clean-up is refused.
 **
-** PARM='RUN,partner,dsn'
+** PARM='RUN,partner,dsn[,NOSEC|HANG]'
+**   NOSEC  the calls without an ACEE also run without CVTRAC
+**   HANG   one call with CVTRAC cleared that OFTPD holds for a minute
+**          (an OFTPD built with -DOFTP_DEBUG_SLOW): cancel the job while
+**          it waits, then run PARM='CHECK'
+** PARM='CHECK'
+**   fails if CVTRAC is zero, the state a cancelled HANG must not leave
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,6 +49,7 @@
 #include <mbtcheck.h>
 #include <mvs/apf.h>
 #include <mvs/racf.h>
+#include <mvs/recovery.h>
 #include <mvs/subsys.h>
 
 #include "oftpsvc.h"
@@ -61,38 +71,83 @@ senv_addr(void)
     return asxb == NULL ? NULL : (void **)(asxb + ASXBSENV);
 }
 
+/* What the ESTAE puts back. Static, not reached through the SDWA: the
+** exit must work when the system gave it none.
+*/
+static struct {
+    void **senv;
+    void  *senv_val;
+    CVT   *cvt;
+    void  *rac_val;
+    int    armed;
+} rec;
+
+/* Both values back, in key 0; harmless to run twice */
+static int
+put_back(void)
+{
+    unsigned char sk;
+
+    if (!rec.armed)
+        return 0;
+    if (__super(PSWKEY0, &sk) != 0)
+        return -1;
+    *rec.senv = rec.senv_val;
+    rec.cvt->cvtrac = rec.rac_val;
+    __prob(sk, NULL);
+    return 0;
+}
+
+static void
+recover(SDWA *sdwa)
+{
+    if (put_back() != 0)
+        fprintf(stderr, "TSTSEC: CVTRAC / ASXBSENV NOT PUT BACK\n");
+    if (sdwa != NULL)
+        sdwa->SDWARCDE = SDWACWT;
+}
+
 /* One request as a caller without an ACEE, and with `nosec` as on a
 ** system without a security product: ASXBSENV cleared, and CVTRAC too,
-** each put back as soon as the SVC returns. Nothing between the two
-** stores prints or allocates.
+** each put back as soon as the SVC returns, or by the ESTAE if the call
+** is left by an abend or a CANCEL. Nothing between the two stores prints
+** or allocates. `req` NULL: abend (S0C4) inside the window instead of
+** calling.
 */
 static int
 call_as(int nosec, const char *req, char *buf, unsigned cap, unsigned *len)
 {
     unsigned char sk;
     unsigned      next = 0;
-    CVT          *cvt = CVTPTR;
-    void        **senv = senv_addr();
-    void         *saved, *savedrac;
     int           rc;
 
-    if (senv == NULL)
+    if ((rec.senv = senv_addr()) == NULL)
         return -1;
-    if (__super(PSWKEY0, &sk) != 0)
+    rec.cvt = CVTPTR;
+    if (estae(ESTAE_CREATE, recover, NULL) != 0)
+        return -3;
+    if (__super(PSWKEY0, &sk) != 0) {
+        estae(ESTAE_DELETE, NULL, NULL);
         return -2;
-    saved = *senv;
-    savedrac = cvt->cvtrac;
-    *senv = NULL;
+    }
+    rec.senv_val = *rec.senv;
+    rec.rac_val  = rec.cvt->cvtrac;
+    rec.armed    = 1;
+    *rec.senv = NULL;
     if (nosec)
-        cvt->cvtrac = NULL;
+        rec.cvt->cvtrac = NULL;
     __prob(sk, NULL);
 
-    rc = oftp_svc_call(req, buf, cap, 0, len, &next);
+    if (req != NULL)
+        rc = oftp_svc_call(req, buf, cap, 0, len, &next);
+    else {
+        rc = 0;
+        *(volatile char *)(unsigned long)0x10 = 1;      /* key 0 PSA */
+    }
 
-    __super(PSWKEY0, &sk);
-    *senv = saved;
-    cvt->cvtrac = savedrac;
-    __prob(sk, NULL);
+    rc = put_back() == 0 ? rc : -4;
+    rec.armed = 0;
+    estae(ESTAE_DELETE, NULL, NULL);
     return rc;
 }
 
@@ -150,6 +205,12 @@ ask(int anon, int nosec, const char *req, char *out, size_t cap)
     return rc;
 }
 
+static int
+abend_call(int *nosec)
+{
+    return call_as(*nosec, NULL, NULL, 0, NULL);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -157,7 +218,8 @@ main(int argc, char **argv)
     char       key[9], key2[9];
     char       parm[120];
     char      *partner, *dsn, *mode = "", *p;
-    int        nosec, secure;
+    int        nosec, secure, hang, trc;
+    void      *senv0, *rac0;
     ACEE      *own;
     CVT       *cvt = CVTPTR;
 
@@ -178,12 +240,18 @@ main(int argc, char **argv)
             }
         }
     }
+    if (strcmp(parm, "CHECK") == 0) {
+        printf("  CVTRAC %p\n", (void *)cvt->cvtrac);
+        CHECK(cvt->cvtrac != NULL, "CVTRAC is not zero");
+        return mbt_test_summary("TSTSEC");
+    }
     if (strcmp(parm, "RUN") != 0) {
         printf("  SKIP: needs a running OFTPD with SVC=, an APF-authorized"
                " STEPLIB and PARM='RUN,partner,dsn[,NOSEC]' (test/mvs/tstsec.jcl)\n");
         return 0;
     }
-    nosec = strcmp(mode, "NOSEC") == 0;
+    hang  = strcmp(mode, "HANG") == 0;
+    nosec = strcmp(mode, "NOSEC") == 0 || hang;
     CHECK(dsn[0] != '\0', "a data set to send is given");
     /* Like OFTPD: authorized through the library, or else asked for
     ** through SVC 244 where RAKF permits it (TK5).
@@ -214,6 +282,22 @@ main(int argc, char **argv)
     printf("  own ACEE %p, userid %.*s\n", (void *)own,
            own != NULL ? own->aceeusrl : 1,
            own != NULL ? own->aceeusri : "-");
+
+    /* HANG: parked in OFTPD with CVTRAC cleared; the operator cancels the
+    ** job and PARM='CHECK' then shows what the ESTAE did.
+    */
+    if (hang) {
+        char     hbuf[OFTP_SVC_REPMAX + 1];
+        unsigned len = 0;
+        int      hrc;
+
+        printf("  HANG: LIST SLOW=60 with CVTRAC cleared; CANCEL this job now\n");
+        fflush(stdout);
+        hrc = call_as(1, "LIST SLOW=60", hbuf, OFTP_SVC_REPMAX, &len);
+        printf("  HANG: not cancelled, the call returned %d\n", hrc);
+        CHECK(cvt->cvtrac != NULL, "CVTRAC is back after the call");
+        return mbt_test_summary("TSTSEC");
+    }
 
     /* 1. The control: this job's own ACEE, which reads the data set. */
     snprintf(req, sizeof(req), "SEND PARTNER=%s DSN=%s HOLD=Y", partner, dsn);
@@ -292,6 +376,19 @@ main(int argc, char **argv)
               "no ACEE, no security product: DELETE of its transfer works");
         key2[0] = '\0';
     }
+
+    /* 5. An abend inside the window: the ESTAE puts CVTRAC and ASXBSENV
+    ** back. try() takes the abend the ESTAE percolates to it.
+    */
+    senv0 = *senv_addr();
+    rac0  = cvt->cvtrac;
+    trc   = try(abend_call, &nosec);
+    printf("    abend in the window: try() %08X, CVTRAC %p, ASXBSENV %p\n",
+           (unsigned)trc, (void *)cvt->cvtrac, *senv_addr());
+    CHECK(trc > 0, "the abend inside the window is seen (S0C4)");
+    CHECK(cvt->cvtrac == rac0, "CVTRAC is back after an abend inside the window");
+    CHECK(*senv_addr() == senv0, "ASXBSENV is back after an abend inside the window");
+    CHECK(racf_get_acee() == own, "the job's own ACEE is found again");
 
     /* Clean up with the job's own ACEE (ADMIN=) */
     snprintf(req, sizeof(req), "DELETE KEY=%s", key);

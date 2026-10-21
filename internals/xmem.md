@@ -2176,3 +2176,37 @@ an ACEE gets `200 0 transfers` for `LIST` and `506` for `SHOW` and
 held transfer answers `505` rather than `506`. The test clears `CVTRAC`
 of the whole system for one SVC: throwaway containers only, never a
 stand.
+
+### The window is closed by an ESTAE
+
+The `NOSEC` call waits in the SVC with `CVTRAC` of the whole system at
+zero, and the call has no timeout. Without more, a CANCEL, an abend in
+the call or a monitor that never answers would leave it at zero until the
+next IPL, and every later test in the container would run without
+security and say nothing. `call_as()` therefore creates an ESTAE
+(`estae()`, TERM=YES, so a CANCEL enters it) before it opens the window.
+The exit puts `ASXBSENV` and `CVTRAC` back in key 0 from a record in the
+test's own storage (it does not depend on the SDWA, which a system may
+not give) and percolates; the normal return does the same and deletes
+the ESTAE. If the ESTAE cannot be created the call is not made.
+
+Measured in a throwaway TK5 container, OFTPD built with
+`-DOFTP_DEBUG_SLOW`, the test library not in LNKLST, authorization by
+SVC 244 (RAKF):
+
+| What | Result |
+|---|---|
+| step 5, an S0C4 (a store into the PSA) inside the window, under `try()`, `NOSEC` | `try()` 000C4000, `CVTRAC` 00FF9620 and `ASXBSENV` as before, the job's own ACEE found again; 14/14 (JOB00063); without `NOSEC` 13/13 (JOB00062) |
+| the same with the exit's restore switched off (a local edit, not committed) | `CVTRAC` 0 and `ASXBSENV` 0 after the abend, 11/14, RC 1 (JOB00050): the checks do fail when the exit does nothing; the test put the values back by hand afterwards |
+| `PARM='RUN,...,HANG'`: `LIST SLOW=60` with `CVTRAC` cleared, OFTPD holding it; `PARM='CHECK'` run while it was parked | `CVTRAC 00000000`, FAIL, RC 1 (JOB00060): the window is open and visible to other jobs |
+| `C TSTHANG` at 06.37.07 | `IEF450I ... ABEND S222` the same second (JOB00059); `PARM='CHECK'` afterwards: `CVTRAC 00FF9620`, 1/1 (JOB00061) |
+
+Nothing but the ESTAE writes `CVTRAC` back after the cancel, so the last
+two rows together show that the exit ran on a CANCEL.
+
+**Not covered:** a hang that nobody cancels and that never abends keeps
+`CVTRAC` at zero; the operator's way out is to cancel the job. A
+`FORCE` of the job, which bypasses recovery, was not tried. `PARM=...,NOSEC` can switch the security of a
+system off for as long as the call waits: the program belongs in a library
+of its own in a throwaway container, never in LNKLST or `SYS2.LINKLIB`,
+and `tstsec.jcl` says so.
