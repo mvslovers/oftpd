@@ -132,7 +132,8 @@ them. Each member describes its keywords at the top.
 - `OFTPPRM0`: this system's Odette ID (`ODETTEID`, required), the OFTP
   port (`PORT`, 3305), the SVC the utilities reach OFTPD through
   (`SVC=237`; without it they find no OFTPD), the userids that may manage
-  every transfer (`ADMIN=`, one per userid), and the prefixes for received files
+  every transfer (`ADMIN=`, one per userid; without a security product
+  nobody can be one, section 8), and the prefixes for received files
   (`INPREFIX`, `TMPPREFIX`). A received file is stored as
   `INPREFIX.<virtual file name>`. `RELAY=Y` makes this system a node that
   passes files on to its partners. `KEEPDAYS` is how long finished
@@ -492,17 +493,43 @@ data set, not a member.
 product (RAKF) whether your userid may read the data set, and refuses
 with `not authorized` (RC 8) when it may not -- an administrator
 included. So a data set needs the profile that protects it; under RAKF a
-data set no profile covers may be read by everyone.
+data set no profile covers may be read by everyone. On a system with a
+security product, a caller that has no userid at all, an address space
+without a security environment, is refused the same way, with
+`not authorized: the caller has no userid` (RC 8), also for
+`DISP(DELETE)`: there is no one whose authority could be checked.
 
-A transfer belongs to the userid that queued it. That userid sees and
-changes it; so does a userid named in `ADMIN=`, which sees and changes
-every transfer, including the received ones, which belong to nobody.
-Anyone else gets `not your transfer` (RC 8). `LIST` shows an
-administrator everything, and `LIST MINE` only their own. On a system
-without a security product there is no one to tell apart, so every caller
-sees and changes every transfer. `CALL` and
-`PURGE` are for an administrator only; `PURGE DAYS(0)` deletes every
-finished transfer, however recent.
+### Who may see and change a transfer
+
+With a security product (RAKF or RACF), a transfer belongs to the userid
+that queued it. That userid sees and changes it; so does a userid named in
+`ADMIN=`, which sees and changes every transfer, including the received
+ones, which belong to nobody. Anyone else gets `not your transfer`
+(RC 8). `LIST` shows an administrator everything, and `LIST MINE` only
+their own.
+
+Without a security product (the system has neither RAKF nor RACF) there is
+no userid to tell callers apart, and OFTPD does not try: **every caller sees
+and changes every transfer**. `LIST`, `SHOW`, `HOLD`, `RELEASE`, `RETRY`
+and `DELETE` work on any transfer, whoever queued it, the received ones
+included, and `LIST MINE` lists them all. A `SEND` is not checked against
+a data set profile, since there is none. So on such a system give OFTPD
+only to people who may touch each other's transfers.
+
+`CALL`, `PURGE`, `REFRESH` and the `PARTNER` commands that change the
+partner table (`ADD`, `CHANGE`, `ENABLE`, `DISABLE`, `DELETE`) need a userid
+in `ADMIN=`. Without a security product no caller has a userid, so OFTPD
+refuses all of them with `needs ADMIN= in OFTPPRM` (RC 8). `CALL`, `PURGE`
+and the `PARTNER` commands come from the `OFTP` utility or from the ISPF
+dialog (its `C` line command on the partner list sends a `CALL`; its `M`,
+`E`, `X` and `D` send the `PARTNER` commands). `REFRESH` comes from the
+dialog only, after you edit the partner member (section 9). `PARTNER LIST`
+and `SHOW` work for anyone. So on a system without a security product
+partners are maintained in one way only: edit `OFTPPTN0` and give the
+operator command `F OFTPD,REFRESH`. The operator's `F OFTPD,CALL`,
+`F OFTPD,PURGE` and `F OFTPD,REFRESH` (section 7) are not affected.
+
+`PURGE DAYS(0)` deletes every finished transfer, however recent.
 
 > **A defect** (oftpd#101): `LIST` and `LIST MINE`, in `OFTP` and in the
 > dialog's transfer list, get slower than the number of transfers
@@ -542,7 +569,8 @@ for example as an entry in a menu panel: a line for the option in the
 body, and `O,'CMD(OFTPI) NEWAPPL(OFTP)'` in its `TRANS` (replace `O` with
 the option you choose). The dialog reaches OFTPD the way `OFTP` does,
 through the SVC and with the same rules. Reading the partner member
-again after option 4 is for an administrator. Option 3 maintains the
+again after option 4 is for an administrator; on a system without a
+security product nobody is one, and OFTPD refuses it (section 8). Option 3 maintains the
 partner table (`docs/partners.md`).
 
 ## Upgrading
