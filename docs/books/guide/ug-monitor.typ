@@ -17,13 +17,14 @@ data definitions that the monitor needs. The chapter “Configuration and the
 Partner Table” of the _OFTPD Reference_ describes each one.
 
 #screen(```
-//OFTPD    PROC M=OFTPPRM0,P=OFTPPTN0,
+//OFTPD    PROC M=OFTPPRM0,P=OFTPPTN0,R=OFTPRCV0,
 //            D='SYS2.PARMLIB',
 //            S='OFTP.SPOOL'
 //OFTPD    EXEC PGM=OFTPD,REGION=8M,TIME=1440
 //STEPLIB  DD  DISP=SHR,DSN=OFTPD.LINKLIB
 //OFTPPRM  DD  DSN=&D(&M),DISP=SHR,FREE=CLOSE
 //OFTPPTN  DD  DSN=&D(&P),DISP=SHR
+//OFTPRCV  DD  DSN=&D(&R),DISP=SHR
 //OFTPSPL  DD  DSN=&S,DISP=OLD
 //OFTPLOG  DD  SYSOUT=*,DCB=(RECFM=FB,LRECL=160,BLKSIZE=160)
 //SYSPRINT DD  SYSOUT=*
@@ -32,10 +33,16 @@ Partner Table” of the _OFTPD Reference_ describes each one.
 //SYSUDUMP DD  SYSOUT=*
 ```)
 
-The parameters name the members of the settings and the partner table, the
-library that holds them, and the spool. Give another one when you start the
-monitor, for example #cmd("S OFTPD,S='MY.SPOOL'") or
+The parameters name the members of the settings, the partner table and the
+receive rules, the library that holds them, and the spool. Give another one
+when you start the monitor, for example #cmd("S OFTPD,S='MY.SPOOL'") or
 #cmd("S OFTPD,P=OFTPPTN1").
+
+The DD #cmd("OFTPRCV") is for the receive rules (see @xfer-rules). Copy the
+sample #cmd("OFTPRCV0") to the library, or delete the DD from your copy of the
+procedure if you want no rules. If the member is not there, the monitor starts
+all the same, without rules, and says nothing\; the message #cmd("OFTP024I")
+tells how many rules it has read.
 
 The started task needs the right to update the spool, and to create data sets
 under the prefixes #cmd("INPREFIX") and #cmd("TMPPREFIX"). If the system
@@ -156,7 +163,7 @@ The operator controls the monitor with the MODIFY command, abbreviated
     [#cmd("F OFTPD,D S")], [Shows the number of sessions.],
     [#cmd("F OFTPD,D M")], [Shows the storage that is left.],
     [#cmd("F OFTPD,CALL name")], [Calls a partner now.],
-    [#cmd("F OFTPD,REFRESH")], [Reads the partner table again.],
+    [#cmd("F OFTPD,REFRESH")], [Reads the partner table and the receive rules again.],
     [#cmd("F OFTPD,HOLD name")], [Holds the sends to a partner, or to
       #cmd("ALL").],
     [#cmd("F OFTPD,RELEASE name")], [Releases them again.],

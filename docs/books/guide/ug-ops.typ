@@ -139,6 +139,9 @@ right and says so with message #cmd("OFTP040P"):
 - A receive that was not finished is discarded. The partly received data set is
   deleted and the transfer disappears from the spool. The partner has to send
   the file again, and as it has not had the receipt, it will.
+- If the receive was replacing a data set (#cmd("REPLACE=Y")) and the stop came
+  between the two renames, OFTPD puts the old data set back, or tells you to
+  delete its backup (#cmd("OFTP239I"), #cmd("OFTP248W")). The chapter “Receive Rules” of the Reference describes this.
 
 The message #cmd("OFTP021W") says that the spool was not closed properly and that
 OFTPD verified it. The messages of the previous run (#cmd("OFTP098E")) tell what
@@ -236,6 +239,14 @@ messages are in the Reference.
       #cmd("OFTP223W"))], [The data set could not be created or renamed, or the file
       is for another Odette ID. Check the space and the name, and #cmd("RELAY")
       for files in transit.],
+    [A file is refused because of a receive rule (#cmd("OFTP224W"),
+      #cmd("OFTP225W"), #cmd("OFTP234W"))], [The name that the rule makes is not
+      a valid data set name, or the data set exists and the rule has
+      #cmd("REPLACE=N"), or the data set is not a plain sequential one and the
+      rule has #cmd("REPLACE=Y"). The chapter “Receive Rules” of the Reference explains each.],
+    [A rule has no effect (#cmd("OFTP025E"))], [The member has errors and was not
+      used. #cmd("OFTP010W") names each line. After a refresh the old rules stay.
+      Correct the member and refresh again.],
     [A change to a partner does not take effect], [Partners change with
       #cmd("F OFTPD,REFRESH"). The settings change only after a restart. If the
       table is full (#cmd("OFTP015W")), restart the monitor.],
@@ -246,8 +257,10 @@ messages are in the Reference.
       was read. The file is kept and was acknowledged.
       #cmd("OFTP SHOW key") shows the same reason. Correct the member\; the next
       file uses the corrected one.],
-    [A line of the members is reported (#cmd("OFTP010W"))], [Correct the line. The
-      partner it belongs to is disabled until then.],
+    [A line of the members is reported (#cmd("OFTP010W"))], [Correct the line. In
+      #cmd("OFTPPRM") or #cmd("OFTPPTN") the partner it belongs to is disabled
+      until then\; a line in error in #cmd("OFTPRCV") stops the whole member from
+      being used.],
     [The messages are on the console only (#cmd("OFTP022W"),
       #cmd("OFTP023E"))], [The log cannot be used. See @ug-monitor.],
     [A session ends with an abend (#cmd("OFTP209E"))], [OFTPD cleans up and goes

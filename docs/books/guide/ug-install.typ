@@ -36,7 +36,7 @@ The installation puts the following on the system.
   [#cmd("OFTPD.LINKLIB")], [The load modules: the monitor #cmd("OFTPD"), the
     utility #cmd("OFTP"), and the dialog #cmd("OFTPI").],
   [#cmd("OFTPD.SAMPLIB")], [The sample procedure, the sample members
-    #cmd("OFTPPRM0") and #cmd("OFTPPTN0"), the job that defines the spool, and
+    #cmd("OFTPPRM0"), #cmd("OFTPPTN0") and #cmd("OFTPRCV0"), the job that defines the spool, and
     an example of the utility in batch.],
   [#cmd("OFTPD.ISPPLIB")], [The panels of the dialog.],
 )
@@ -46,7 +46,9 @@ After the installation you do five things.
 + Make the load library APF-authorized.
 + Define the spool with the sample job.
 + Copy the sample members to your parameter library and edit them, as shown in
-  @ug-partners.
+  @ug-partners. #cmd("OFTPRCV0") holds the receive rules and consists of
+  comments only\; the procedure needs it even if you want no rules (see
+  @xfer-rules).
 + Copy the sample procedure to your procedure library. It starts the monitor, as
   shown in @ug-monitor.
 + For the dialog, add its two libraries to the ISPF allocations.
@@ -54,3 +56,12 @@ After the installation you do five things.
 For the utility in batch and under TSO, the load library has to be in the
 STEPLIB of the job, or in the link list, or in the logon procedure. See
 @ug-transfer.
+
+== Upgrading <inst-upgrade>
+
+#idx("upgrading")
+The sample procedure of release 1.0.0 has a DD #cmd("OFTPRCV") for the receive
+rules (@xfer-rules). If you take the new procedure over your old one, copy
+#cmd("OFTPRCV0") to your parameter library first, or delete the DD from your
+copy\; otherwise the monitor starts without rules and says nothing about the
+missing member.

@@ -166,8 +166,8 @@ addressed to the Odette IDs of its partners and passes them on unchanged. Withou
 == Putting the Partners in Use <ptn-use>
 
 Put the finished members in the library that the started task reads, by
-default #cmd("SYS2.PARMLIB"), with the members #cmd("OFTPPRM0") and
-#cmd("OFTPPTN0"). The procedure picks other members through its parameters.
+default #cmd("SYS2.PARMLIB"), with the members #cmd("OFTPPRM0"),
+#cmd("OFTPPTN0") and #cmd("OFTPRCV0"). The procedure picks other members through its parameters.
 Then start the monitor (see @ug-monitor).
 
 A change to the partner table does not need a restart. Edit #cmd("OFTPPTN"),
@@ -181,7 +181,8 @@ at the console, or, as an administrator, choose the option to configure in the I
 which reads the member again when the edit ends. OFTPD adds new partners, replaces the
 entries that have changed, and disables the partners that are no longer in the
 member. It answers with message #cmd("OFTP016I"), which gives the number of
-partners enabled, new and disabled.
+partners enabled, new and disabled. The command reads the receive rules again
+too (see @xfer-rules).
 
 Two limits apply to this. A partner that you removed keeps its place in the
 table, disabled, until the monitor is started again. The table has 32 places, so
