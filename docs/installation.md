@@ -25,7 +25,7 @@ This package installs it through SMP 4, the SMP that comes with MVS 3.8j.
 
 | File | What it is |
 |---|---|
-| `oftpd-<v>-load.xmit` | the load modules `OFTPD`, `OFTP` and `OFTPI` |
+| `oftpd-<v>-load.xmit` | the load modules `OFTPD`, `OFTP`, `OFTPI` and `OFTPSVC` |
 | `oftpd-<v>-samplib.xmit` | `OFTPD.SAMPLIB`: the procedure, sample settings and jobs |
 | `oftpd-<v>-ispplib.xmit` | `OFTPD.ISPPLIB`: the dialog's panels |
 | `oftpd-<v>-alloc.jcl` | allocates the SMP target and distribution libraries, once |
@@ -85,8 +85,8 @@ of `APPLY`, look for
 HMA2380 COPY SUCCESSFUL - MOD=OFTPD ...
 ```
 
-for each of `OFTP`, `OFTPD` and `OFTPI`, and list the members of
-`OFTPD.LINKLIB`: all three must be there.
+for each of `OFTP`, `OFTPD`, `OFTPI` and `OFTPSVC`, and list the members of
+`OFTPD.LINKLIB`: all four must be there.
 
 ## 4. Authorization
 
