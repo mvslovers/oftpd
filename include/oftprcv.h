@@ -32,7 +32,7 @@
 ** virtual file name decides; none matching, the file is treated as it was
 ** before rules existed.
 **
-** Symbols in DSN= (longest name wins; the rvs names are not supported):
+** Symbols in DSN= (longest name wins; the other's names are not supported):
 **   %VFN the virtual file name   %Q1..%Q9 its qualifiers   %ID the partner
 **   %YYYY %MM %DD %HH %MI %SS    the time of arrival
 **   %CTR the 4-digit counter of the file's time field

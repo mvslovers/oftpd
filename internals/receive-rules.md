@@ -4,8 +4,8 @@ Status: **decided** 2026-10-20 (section 6); **names, `REPLACE` and the
 allocation are built** (#44, sections 1 to 3 and 7), **so is the job after
 receipt** (#45, section 4 and 8). It turns `design.md` 5.2
 ("receive rules ... *later*") and 5.3 (post-processing) into something
-that can be implemented, after rvsMVS's *Resident Receive Entries* (User
-Manual 4.3 and appendix A.3), studied for concepts only. Where sections 1
+that can be implemented, after The Other's resident receive entries, studied
+for concepts only. Where sections 1
 to 5 still read "proposed", section 6 says what was decided and section 7
 what was built and measured; they win.
 
@@ -14,7 +14,7 @@ what was built and measured; they win.
 When a file arrives, OFTPD looks for the first rule that matches the
 partner and the virtual file name, and the rule decides:
 
-| What | rvs keyword | Proposed | Today |
+| What | Other keyword | Proposed | Today |
 |---|---|---|---|
 | the data set name | `DSNNEW=`, `TSTAMP=`, `COUNTER=` | `DSN=` pattern with symbols (section 3) | `INPREFIX.<vfn>` |
 | an existing data set | `REPLACE=` | `REPLACE=N\|Y` | always refused (SFNA 13) |
@@ -31,7 +31,7 @@ no job. So an installation without rules sees no change.
 
 **In a parmlib member**, `OFTPRCV0` behind DD `OFTPRCV`, read at start and
 on `REFRESH` together with the partner member. This is the way the partner
-table went (design Q2); rvs kept its entries in the control data set,
+table went (design Q2); The Other kept its entries in the control data set,
 maintained by a batch program and ISPF, and OFTPD can add a command for
 that later without changing the format. A missing DD means no rules.
 
@@ -47,12 +47,12 @@ RULE=INVOICE  FROM=*         VFN=INV?????.DATA
               DSN=ACCT.IN.%VFN  REPLACE=Y  VOLSER=WORK01
 ```
 
-- `FROM=` a partner name or `*` (rvs `SID=ANY`); the partner must exist
+- `FROM=` a partner name or `*` (the other's `SID=ANY`); the partner must exist
   when the member is read, or the rule is refused with a message, as a
   bad partner entry is today.
 - `VFN=` the virtual file name, `*` for any number of characters, `?`
-  for exactly one (rvs's wildcards since 1.2.06).
-- **First match wins**, in member order. rvs matched by station and
+  for exactly one (the other's wildcards since 1.2.06).
+- **First match wins**, in member order. The Other matched by station and
   name and does not say how two wildcard entries rank; member order is
   what an operator can see and test. (Decision 6.1.)
 - A relayed file (`RELAY=Y`, not for us) never meets a rule: rules are
@@ -65,24 +65,24 @@ set name (qualifiers of 1-8, starting with a letter or national, at most
 44) **when the file arrives**: a name that comes out invalid refuses the
 file with SFNA 01, retry N, and the console says which rule made it.
 
-Proposed symbols, a superset of rvs's `DSNNEW` placeholders:
+Proposed symbols, a superset of the other's `DSNNEW` placeholders:
 
 | Symbol | Value |
 |---|---|
 | `%VFN` | the virtual file name (SFIDDSN) |
 | `%Q1`..`%Q9` | its first, second, ... qualifier |
-| `%ID` | the partner's name (rvs `?ID`) |
+| `%ID` | the partner's name (the other's `?ID`) |
 | `%YYYY` `%MM` `%DD` | date of arrival |
 | `%HH` `%MI` `%SS` | time of arrival |
-| `%CTR` | the OFTP counter of the file's time field, 4 digits (rvs `COUNTER=YES`); a file whose SFID time field is not the full `HHMMSScccc` with digits in the counter has no value, so the name does not come out and the file is refused like any invalid name |
+| `%CTR` | the OFTP counter of the file's time field, 4 digits (the other's `COUNTER=YES`); a file whose SFID time field is not the full `HHMMSScccc` with digits in the counter has no value, so the name does not come out and the file is refused like any invalid name |
 | `%KEY` | the spool key, `T` + 7 digits: unique on this system |
 
 A date or time can never start a qualifier, and a qualifier has at most
 eight characters: `Y%YYYY` (5), `D%MM%DD` (5) and `T%HH%MI%SS` (7) fit,
 `D%YYYY%MM%DD` (9) does not. That is the reason for the check, not a rule
 of its own; the first draft of this section had the nine-character form
-as its example. rvs wrote `%J` for the two-digit year and `%N` for the month; the
-two-letter forms above are proposed because `%M` (minute in rvs) and
+as its example. The Other wrote `%J` for the two-digit year and `%N` for the month; the
+two-letter forms above are proposed because `%M` (minute in the other) and
 month are easy to confuse. (Decision 6.2.)
 
 `REPLACE=Y`: the old data set is deleted only once the new one has been
@@ -115,20 +115,20 @@ this proposal is in section 8, which wins.*
 
 `JOB=pds(member)`: once the file is under its final name and before the
 EERP is queued, OFTPD reads the member, substitutes, and writes it to the
-internal reader. rvs's symbols, which rvs users will know, all with `?`:
+internal reader. The Other's symbols, which its users will know, all with `?`:
 
 | Symbol | Value |
 |---|---|
 | `?PFILE` | the data set name the file was received as |
 | `?VFILE` | the virtual file name |
 | `?ID` | the partner |
-| `?QDATE` `?QTIME` | the sender's date and time from the SFID (`Dyyddd`, `Thhmmsst` as rvs) |
-| `?YYY` `?J` `?N` `?D` `?H` `?M` `?S` | now (rvs's set) |
+| `?QDATE` `?QTIME` | the sender's date and time from the SFID (`Dyyddd`, `Thhmmsst` as the other) |
+| `?YYY` `?J` `?N` `?D` `?H` `?M` `?S` | now (the other's set) |
 | `?KEY` | the spool key |
 
 - A line that would grow past column 71 (`//` lines) or 80 refuses the
   submit, not the file: the file stays received, the transfer records
-  "job not submitted: line n too long", `OFTP2nnW` on the console. rvs
+  "job not submitted: line n too long", `OFTP2nnW` on the console. The Other
   marks it as an error the same way.
 - The spool record has `ppstate` and `pprc` since the MVP for this:
   `S` submitted, `E` not submitted, and the reason. SHOW prints it.
@@ -138,10 +138,10 @@ internal reader. rvs's symbols, which rvs users will know, all with `?`:
   so whoever may change parmlib already decides what runs; OFTPD checks
   nothing more. (Decision 6.3.)
 - The EERP does not wait for the job: it says the file arrived, not
-  that it was processed. Proposed so; that rvs did the same is inferred,
-  the User Manual does not tie the two together.
+  that it was processed. Proposed so; that The Other did the same is inferred,
+  its documentation does not tie the two together.
 
-*Later*, from rvs: `JOB=` after a send (A.2 #31), `ERRJOB=` when a send
+*Later*, from The Other: `JOB=` after a send, `ERRJOB=` when a send
 fails for good, and a job when the submit itself fails.
 
 ## 5. Not proposed
@@ -152,14 +152,14 @@ fails for good, and a job when the submit itself fails.
   and `(+1)` allocation through `__dsalcf()`, not measured. Later.
 - **DEVICE=TAPE**, the SMS classes, `JSSEVENT`, `ACCOUNT`: not on a
   hobbyist 3.8j system.
-- **The ISPF maintenance of rules** (rvs options 4 and 5): the member is
+- **The ISPF maintenance of rules** (the other's options 4 and 5): the member is
   edited with ISPF EDIT, `REFRESH` makes it active.
 
 ## 6. Decisions (2026-10-20, the maintainer, on #44)
 
 1. **Matching**: the first matching rule in member order wins. No
    ranking by specificity; the operator reads the order off the member.
-2. **Symbols**: only `%YYYY %MM %DD %HH %MI %SS`, as proposed. The rvs
+2. **Symbols**: only `%YYYY %MM %DD %HH %MI %SS`, as proposed. The other's
    names (`%YYY %J %N %D %H %M %S`) are not supported, and neither are
    `%YY` and `%JJJ`, which the proposal listed but nobody asked for.
 3. **The job's identity** is deferred to MVS-42 (the job after receipt).
@@ -328,7 +328,7 @@ so they get no job.
 
 **What differs from section 4.**
 
-- Only `?PFILE ?VFILE ?ID ?KEY` are implemented. The rvs date and time
+- Only `?PFILE ?VFILE ?ID ?KEY` are implemented. The other's date and time
   symbols (`?QDATE ?QTIME ?YYY ?J ?N ?D ?H ?M ?S`) are not: their formats
   are not verified and nobody asked for them (the issue says "at least"
   the four). A `?` that starts any other name stays as it is, so a member

@@ -4,4 +4,4 @@ dist/
 compile_commands.json
 .cache/
 .DS_Store
-internals/rvs/
+internals/other/
