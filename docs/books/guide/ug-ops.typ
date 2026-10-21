@@ -1,21 +1,39 @@
 #import "../bookmaster/bookmaster.typ": *
 
-= Operating and Troubleshooting <ug-ops>
+= Operating OFTPD <ug-ops>
 
 #idx("operation")
-This chapter is for the people who keep OFTPD running. It follows a transfer
-from start to end, says what OFTPD does when something goes wrong, how it
-cleans up after itself, and what to look at when a transfer does not arrive.
-The commands themselves are in the _OFTPD Reference_, the chapters “The OFTP
-Command” and “Operator Commands”, and the messages in its appendix
+This chapter is for the people who keep OFTPD running: the operator at the
+console and the administrator named in the settings. It starts from what you
+want to do: stop the files to a partner for a while, find out why a file does not
+go, make a file go again, clean up the spool, read the log, get through a
+restart. Every task has a session from the examples of @intro-examples. The
+sessions of this chapter use the partner MAC1 that @ug-partners set up, and the
+monitor that sends is the one on MVS1.
+
+Three kinds of people give commands, and what they may do differs.
+
+- An *ordinary user* sees and changes his own transfers with #cmd("OFTP") (see
+  @ug-transfer).
+- An *administrator* is a user named with #cmd("ADMIN") in the settings. He may
+  see and change the transfers of everybody, call a partner, clean the spool and
+  maintain the partner table (see @ops-admin).
+- The *operator* uses the console, #cmd("F OFTPD,…"), and needs no entry
+  anywhere. A command from the console is the operator's own, so it acts on
+  all transfers.
+
+The commands are described in full in the _OFTPD Reference_, in the chapters
+“The OFTP Command” and “Operator Commands”, and the messages in its appendix
 “Messages”.
 
-== The Life of a Transfer <ops-life>
+== Where a Transfer Stands <ops-life>
 
 #idx("transfer", "states")
 The spool holds one record for each transfer, and the state in that record tells
-where the transfer stands. @ops-life-fig shows the ways a transfer can go. A
-send is a file that is sent to a partner, a receive a file that a partner sent.
+where the transfer stands. #cmd("OFTP LIST") shows it in the fourth column, and
+#cmd("OFTP SHOW") adds a line in words. @ops-life-fig shows the ways a transfer
+can go. A send is a file that is sent to a partner, a receive a file that a
+partner sent.
 
 #fig(caption: [The states of a transfer])[
   #screen(```
@@ -24,7 +42,9 @@ Send:     QUEUED --> ACTIVE --> SENT --> DELIVERED
           ACTIVE --> WAITING    an attempt failed
           WAITING --> ACTIVE    the next attempt, after the wait
           WAITING --> HELD      the attempts are used up
+          QUEUED, WAITING --> HELD   HOLD
           HELD --> QUEUED       RELEASE
+          any but QUEUED --> QUEUED  RETRY
           ACTIVE --> REJECTED   the partner refused the file
           SENT --> REJECTED     negative receipt
           ACTIVE --> FAILED     the data set cannot be opened
@@ -33,17 +53,81 @@ Receive:  ACTIVE --> RECEIVED --> CONFIRMED
   ```)
 ] <ops-life-fig>
 
-The states are explained in the chapter “The OFTP Command” of the Reference.
-Three of them need an operator's attention: #cmd("HELD") needs somebody to
-decide, #cmd("REJECTED") needs an answer from the partner, and #cmd("FAILED")
-needs the data set to be put right. A transfer in the state #cmd("QUEUED") or
-#cmd("WAITING") is dealt with by OFTPD itself.
+Three of the states need somebody: #cmd("HELD") needs somebody to decide,
+#cmd("REJECTED") needs an answer from the partner, and #cmd("FAILED") needs the
+data set to be put right. A transfer in the state #cmd("QUEUED") or
+#cmd("WAITING") is dealt with by OFTPD itself. A transfer that is
+#cmd("ACTIVE") is in a session now, and cannot be changed until the session is over.
 
 The finished states are #cmd("DELIVERED"), #cmd("CONFIRMED"), #cmd("REJECTED")
 and #cmd("FAILED"). Only these are ever removed from the spool (see
 @ops-keep).
 
-== Retries <ops-retry>
+== Stopping the Files to a Partner <ops-hold>
+
+#idx("HOLD")#idx("RELEASE")
+To stop the sends to a partner for a while, for instance when its system is
+down for maintenance, hold them. A user holds his own sends to the partner, and
+an administrator or the operator those of everybody. This is the user's view: a
+file is queued, held, and listed.
+
+#screen(raw(read("../ex/ug-ops/hold3.txt")))
+
+#cmd("HOLD") changes the sends of the partner that are queued or waiting to the
+state #cmd("HELD"), so that OFTPD does not call for them, and says how many it
+changed. A send that is already in a session is not stopped. To hold one file
+only, give its key instead of the partner, as in #cmd("OFTP HOLD T0000015"),
+or narrow the hold with #cmd("VFN") to one virtual file name or to the names
+that begin with a prefix, as in #cmd("OFTP HOLD PARTNER(MAC1) VFN(REPORT*)").
+
+A hold covers the files that exist now. A file queued afterwards is queued as
+usual, so hold again, or hold the files one by one. Here the hold finds nothing,
+and the next send goes on its way.
+
+#screen(raw(read("../ex/ug-ops/hold.txt")))
+
+#cmd("RELEASE") queues the held files again, and counts their attempts from 0.
+
+#screen(raw(read("../ex/ug-ops/release3.txt")))
+
+The operator does the same at the console, and sees the answer there. The
+operator may name #cmd("ALL") in place of the partner, which means every
+partner. A partner that does not exist is refused. The same session shows the
+housekeeping of @ops-keep.
+
+#screen(raw(read("../ex/ug-ops/console-cmds.txt")))
+
+The log of the monitor has the lines #cmd("OFTP233P") for what the utility did,
+and the console shows #cmd("OFTP233I") for the operator's.
+
+== A Partner That Is Not There <ops-down>
+
+#idx("partner not reached")
+A file for a partner whose system is down is not lost. This is the file of
+@ug-transfer sent to MAC1 while the monitor on MAC1 is stopped. The send
+works, since it only queues the file.
+
+#screen(raw(read("../ex/ug-ops/down-send.txt")))
+
+OFTPD calls MAC1, and the call fails. The list shows that the file is waiting,
+and #cmd("SHOW") says why.
+
+#screen(raw(read("../ex/ug-ops/down-list.txt")))
+
+The other files in the list are those that were delivered earlier. The log has the
+story, with the date and time of each line. The call at 17:23:18 failed after five
+seconds. HERC01 then held the file, and a little later asked for it to be sent
+at once.
+
+#screen(raw(read("../ex/ug-ops/notreached-log.txt")))
+
+Nothing needs to be done while a file is #cmd("WAITING"): OFTPD calls again after
+a wait that grows with every attempt, and the file goes as soon as the partner
+answers. @ops-retry says how long it tries. If you know that the partner will not
+be back for some time, hold its files (@ops-hold) so that OFTPD does not call
+in vain.
+
+== Trying Again <ops-retry>
 
 #idx("RETRY")#idx("MAXRETRY")
 When a call or a transfer fails, OFTPD does not give up at once. The transfer
@@ -57,10 +141,22 @@ After #cmd("MAXRETRY") attempts (10 by default) OFTPD stops trying, and writes
 #cmd("OFTP215W"). The transfer is then #cmd("HELD"). It stays in the spool until
 somebody decides, with one of the following.
 
-- #cmd("OFTP RELEASE key") or #cmd("F OFTPD,RELEASE partner") queues it again, and
+- #cmd("OFTP RELEASE key"), #cmd("OFTP RELEASE PARTNER(name)") or
+  #cmd("F OFTPD,RELEASE partner") queues it again, and
   counts its attempts from 0. Do this when the cause is removed, for instance when
   the partner is back.
+- #cmd("OFTP RETRY key") does the same for one transfer, whatever state it is
+  in, except that it is already queued or in a session. It also sends a file
+  again that has been sent or delivered, so the partner sees it twice, and a
+  file that was rejected or failed once the cause is put right.
 - #cmd("OFTP DELETE key") removes it.
+
+This is #cmd("RETRY") on the file of @ops-down.
+
+#screen(raw(read("../ex/ug-ops/release2.txt")))
+
+The transfer is queued again with no attempts, and the state line says
+#cmd("queued again"). #cmd("RELEASE") has nothing to do after that.
 
 A partner that refuses a call because it has no free session (reason 08) is a
 different case, as it says only that the partner is busy. OFTPD calls it again
@@ -70,28 +166,31 @@ other can meet this way, and it sorts itself out.
 
 If you have set #cmd("MAXRETRY=0"), OFTPD never gives up and never holds a file.
 
-== Holding Files <ops-hold>
+== Tasks for an Administrator <ops-admin>
 
-#idx("HOLD")#idx("RELEASE")
-To stop the sends to a partner for a while, for instance when its system is
-down for maintenance, hold them.
+#idx("administrator")
+A user named with #cmd("ADMIN") in the settings may also use the following.
+A user who is not named there gets the answer #cmd("needs ADMIN= in OFTPPRM").
 
-#screen(```
-F OFTPD,HOLD MAC1
-F OFTPD,RELEASE MAC1
-```)
+- #cmd("OFTP CALL partner") calls a partner at once, as the operator command
+  does. The log shows what comes of it.
 
-#cmd("HOLD") changes the transfers that are queued or waiting to the state held,
-so that OFTPD does not call for them. A send that is already in a session is not
-stopped. Files queued after the hold are queued as usual, so hold again, or hold
-them one by one. #cmd("RELEASE") queues the held files again. #cmd("ALL") in
-place of the partner means every partner. OFTPD answers with the number of
-transfers it changed (#cmd("OFTP233I")).
+  #screen(raw(read("../ex/ug-ops/call-log.txt")))
 
-A user does the same for a single transfer or for his own sends with
-#cmd("OFTP HOLD") and #cmd("OFTP RELEASE").
+  Here the partner had no file to send and nothing was queued, so the session
+  ended with no files in either direction.
+- #cmd("OFTP PURGE DAYS(n)") deletes the finished transfers older than n days from
+  the spool. Without #cmd("DAYS") it uses the #cmd("KEEPDAYS") of the settings.
+  Only the spool is cleaned\; no data set is deleted (see @ops-keep).
+- #cmd("OFTP LIST") shows all transfers, including the files received (see
+  @recv-list).
+- #cmd("OFTP PARTNER ADD"), #cmd("CHANGE"), #cmd("ENABLE"), #cmd("DISABLE") and
+  #cmd("DELETE") maintain the partner table without an edit of the member (see
+  @ptn-cmd), and the ISPF dialog does the same from panels (see @ug-dialog).
+- #cmd("OFTP HOLD"), #cmd("RELEASE"), #cmd("RETRY") and #cmd("DELETE") act on
+  the transfers of everybody, not only on his own.
 
-== Housekeeping <ops-keep>
+== Cleaning Up <ops-keep>
 
 #idx("KEEPDAYS")#idx("housekeeping")#idx("PURGE")
 A transfer stays in the spool when it is finished, so that you can see what
@@ -101,7 +200,9 @@ started. The message #cmd("OFTP235I") says how many transfers it deleted, and it
 is written only when there were some. #cmd("KEEPDAYS=0") keeps the transfers for
 ever.
 
-You can do it by hand at any time.
+You can do it by hand at any time, as the console session of @ops-hold has
+shown\; the first #cmd("PURGE") there found nothing older than 30 days, and the
+second, with 0, deleted all five finished transfers.
 
 #screen(```
 F OFTPD,PURGE 30
@@ -122,7 +223,55 @@ coming stays until somebody deletes it, so look at the old ones now and then.
 
 Size the spool for what arrives and leaves in the days you keep it. A spool that
 is full makes requests fail with a spool error. #cmd("F OFTPD,D Q") lists the
-spool, and #cmd("OFTP LIST") does it for a user.
+spool, and #cmd("OFTP LIST") does it for a user. In #cmd("OFTP110I") the second
+column says whether it is a send (S) or a receive (R), and the third is the
+state by its first letter, except that J is #cmd("REJECTED"): Q queued, A active,
+W waiting, H held, S sent, D delivered, F failed, R received, C confirmed.
+
+== Reading the Log <ops-log>
+
+#idx("log")
+The log tells the story of every transfer. @xfer-follow shows the log of a file
+that is sent, and @recv-log that of a file that is received. When something goes
+wrong, the line before the failure is usually the best clue. The lines of the
+class P are in the log only\; a message with the class I, W or E is on the
+console too.
+
+For a closer look, switch the trace on. #cmd("TRACE ON") with a partner traces
+the sessions of that partner, without one all sessions, and #cmd("TRACE OFF") ends
+it. #cmd("F OFTPD,D P") shows which partners are traced.
+
+#screen(raw(read("../ex/ug-ops/trace-on.txt")))
+
+The next send to MAC1 then writes every command of the protocol to the log, in
+the order it went. Read this session from the top. Lines with #cmd("SEND") are
+what OFTPD sent, lines with #cmd("RECV") what the partner sent, and the number
+after the name of the command is its length in octets.
+
+#screen(raw(read("../ex/ug-ops/trace-log.txt")))
+
+- #cmd("SSID") is the log-on, one from each side, with the Odette ID, the level
+  of the protocol, the size of the buffer and the credit that each side offers.
+  The line #cmd("session with MAC1") that follows is what the two sides agreed
+  on.
+- #cmd("SFID") offers the file to the partner, with its virtual file name and the
+  format of the records. #cmd("SFPA") is the partner's yes, with the point at
+  which to begin (0 for a new file).
+- #cmd("DATA") is the file itself. The trace shows only how many buffers and
+  octets went, never the data. #cmd("EFID") ends the file, with the number of
+  records and octets, and #cmd("EFPA") is the partner's yes.
+- #cmd("EERP") is the receipt, the partner's proof that the file is in its hands.
+  It is why the file turns #cmd("DELIVERED") in the line #cmd("OFTP213P").
+- #cmd("RTR"), #cmd("CD") and #cmd("ESID") end the session. #cmd("ESID") carries
+  the reason, 00 for a normal end.
+
+The Reference has a table of these protocol commands and what each is for.
+
+The trace shows no password and no data, so a log with the trace on may be sent to the partner
+or to the maintainers. Switch it off when you have seen what you wanted
+to see\; it makes the log long.
+
+#screen(raw(read("../ex/ug-ops/trace-off.txt")))
 
 == Stopping and Starting; Recovery <ops-recover>
 
@@ -153,37 +302,6 @@ next IPL. The next start then does not take the entry again (#cmd("OFTP033E"))
 and runs without the cross-memory service. In that case, set another #cmd("SVC")
 in the settings, or IPL.
 
-== Reading the Log <ops-log>
-
-#idx("log")
-The log tells the story of every transfer. The lines below, shown without the
-date and time that start each line, follow a file that is
-queued and sent. The first line is the user's request, the others the call, the
-session, and the two results: the partner has the file (#cmd("SENT")), and later
-the receipt arrives (#cmd("DELIVERED")).
-
-#screen(```
-OFTP230P T0000012 QUEUED FOR MAC1: IBMUSER.REPORT.TEXT AS REPORT.TXT
-OFTP206P MAC1: CALLING AT 192.0.2.10 PORT 3305
-OFTP290P MAC1: session with MAC1: level 5, buffer 4096, credit 99, mode B
-OFTP211P MAC1: T0000012 REPORT.TXT SENT, 120 RECORDS
-OFTP213P MAC1: T0000012 REPORT.TXT DELIVERED
-OFTP203P MAC1: SESSION ENDED, ESID 00 (PARTNER), FILES 1 OUT 0 IN
-```)
-
-A file that arrives leaves a shorter story.
-
-#screen(```
-OFTP205P 192.0.2.10: CALL RECEIVED
-OFTP290P MAC1: session with MAC1: level 5, buffer 4096, credit 99, mode B
-OFTP222P MAC1: T0000013 DAILY RECEIVED AS OFTP.IN.DAILY, 40 RECORDS
-OFTP203P MAC1: SESSION ENDED, ESID 00 (PARTNER), FILES 0 OUT 1 IN
-```)
-
-The receipt for the file is sent in this session or the next one. The line
-#cmd("OFTP203P") counts the files and responses of the session. When something
-goes wrong, the line before the failure is usually the best clue. For a closer
-look, switch the trace on for the partner with #cmd("F OFTPD,TRACE ON name").
 
 == Troubleshooting <ops-trouble>
 

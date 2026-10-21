@@ -1,0 +1,14 @@
+ -------------------------------- OFTPD - Monitor ------------------------------
+
+   OFTPD
+
+     Odette ID O0000000000MVS1, OFTP port 3305, SVC 237
+     sessions 0 of 4, partners 1 of 1 enabled
+     spool 5: queued 0, waiting 0, held 0, active 0, sent 0
+     delivered 3, rejected 0, failed 0, received 0, confirmed 2
+     received files go to OFTP.IN, oftpd 1.0.0-dev (b45dbac)
+
+
+
+
+   Enter looks again, END returns.

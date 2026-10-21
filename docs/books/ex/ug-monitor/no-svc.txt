@@ -1,0 +1,2 @@
+OFTP LIST
+OFTP010E OFTPD not reached: not running, or without SVC=

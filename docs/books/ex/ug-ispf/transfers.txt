@@ -1,0 +1,21 @@
+ ------------------------------- OFTPD - Transfers -----------------------------
+ Command ===>                                                  Scroll ===> PAGE
+ ROW 1 OF 5
+   Partner ===>             Status ===>               Mine only ===> N   Y or N
+ 5 transfers
+
+   S show   H hold   R release   T retry   D delete
+
+   Key      D Status    Partner  Virtual file name
+               Data set
+   T0000008 S DELIVERED MAC1     REPORT.TSO
+               HERC01.REPORT.TEXT
+   T0000009 S DELIVERED MAC1     PAYROLL.TRACE
+               HERC01.PAYROLL.DATA
+   T0000010 S DELIVERED MAC1     PAYROLL.TRACE2
+               HERC01.PAYROLL.DATA
+   T0000011 R CONFIRMED MAC1     REPORT.FROM.MAC1
+               OFTP.IN.REPORT.FROM.MAC1
+   T0000012 R CONFIRMED MAC1     PAYROLL.FROM.MAC1
+               OFTP.IN.PAYROLL.FROM.MAC1
+ ******************************* BOTTOM OF DATA *******************************

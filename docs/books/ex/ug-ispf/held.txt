@@ -1,0 +1,13 @@
+ ------------------------------- OFTPD - Transfers -----------------------------
+ Command ===>                                                  Scroll ===> PAGE
+ ROW 1 OF 1
+   Partner ===>             Status ===> HELD          Mine only ===> N   Y or N
+ 1 transfers
+
+   S show   H hold   R release   T retry   D delete
+
+   Key      D Status    Partner  Virtual file name
+               Data set
+   T0000013 S HELD      MAC1     ISPF.TEST
+               HERC01.OFTPD.SAMPLE
+ ******************************* BOTTOM OF DATA *******************************

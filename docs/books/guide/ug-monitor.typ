@@ -36,9 +36,11 @@ Partner Table” of the _OFTPD Reference_ describes each one.
 The parameters name the members of the settings, the partner table and the
 receive rules, the library that holds them, and the spool. Give another one
 when you start the monitor, for example #cmd("S OFTPD,S='MY.SPOOL'") or
-#cmd("S OFTPD,P=OFTPPTN1").
+#cmd("S OFTPD,P=OFTPPTN1"). The system of the examples is TK5, which has no
+#cmd("SYS2.PARMLIB"), so its copy of the procedure has
+#cmd("D='SYS1.PARMLIB'") and #cmd("S='HERC01.OFTPD.SPOOL'") (see @ug-install).
 
-The DD #cmd("OFTPRCV") is for the receive rules (see @xfer-rules). Copy the
+The DD #cmd("OFTPRCV") is for the receive rules (see @ug-rules). Copy the
 sample #cmd("OFTPRCV0") to the library, or delete the DD from your copy of the
 procedure if you want no rules. If the member is not there, the monitor starts
 all the same, without rules, and says nothing\; the message #cmd("OFTP024I")
@@ -75,15 +77,44 @@ S OFTPD
 During the start the monitor reads the settings and the partner table, opens
 the log and the spool, reads the partners kept by command from the spool, sets
 right what the previous run left in the spool,
-starts the cross-memory service and begins to listen. The console shows
-#cmd("OFTP000I") with the version, and when the start is done,
-#cmd("OFTP001I OFTPD READY"). A partner entry with an error is reported with
-#cmd("OFTP010W") and disabled, and the others work. The rest of the start is in
-the log only: whether the monitor is authorized (#cmd("OFTP004P")), how many
-partners of the member are enabled (#cmd("OFTP014P")), how many partners are
-kept by command (#cmd("OFTP018I")), the port it listens on
-(#cmd("OFTP051P")), and the cross-memory service with its SVC number and its
-subsystem name (#cmd("OFTP039P")).
+starts the cross-memory service and begins to listen. The console shows what an
+operator needs to see: the version, the partners that are kept by command, the
+receive rules, and at the end #cmd("OFTP001I OFTPD READY").
+
+#screen(raw(read("../ex/ug-monitor/console-start.txt")))
+
+The first line after #cmd("OFTP000I") counts the partners that are kept by
+command\; there are none yet in this run (@ug-partners shows how to add them).
+A partner entry with an error is reported with #cmd("OFTP010W") and disabled,
+and the others work. The rest of the start is in the log only. This is the log
+of the same start, with the date and the time in front of each line.
+
+#screen(raw(read("../ex/ug-monitor/start-log.txt")))
+
+Read the log for these lines.
+
+- #cmd("OFTP004P") says whether the monitor is authorized, and how (see
+  @inst-apf).
+- #cmd("OFTP014P") gives the Odette ID of this system and the number of partners
+  of the member that are enabled, here 1 of 1.
+- #cmd("OFTP051P") names the port on which the monitor listens.
+- #cmd("OFTP031P") to #cmd("OFTP039P") are the start of the cross-memory service.
+  #cmd("OFTP039P CROSS MEMORY ACTIVE") with the SVC number and the subsystem name
+  #cmd("OFT1") says that the utility and the dialog can reach the monitor. The
+  number of the SVC comes from #cmd("SVC=") in the settings, and only one monitor
+  at a time can hold it.
+
+If the settings have no #cmd("SVC="), the monitor starts and listens, and the
+partners can call, but the utility and the dialog cannot reach it. The log
+says so with #cmd("OFTP038P").
+
+#screen(raw(read("../ex/ug-monitor/start-nosvc-log.txt")))
+
+A user who then enters an #cmd("OFTP") command gets the same answer as when the
+monitor is not running at all. The text does not tell the causes apart, so look
+at the log of the monitor when you see it.
+
+#screen(raw(read("../ex/ug-monitor/no-svc.txt")))
 
 If the monitor cannot start, it ends with a message that names the cause.
 
@@ -121,11 +152,11 @@ another attempt and how many incomplete receives were discarded. See
 
 #idx("log")#idx("OFTPLOG")
 The monitor writes every message to the log, the data set of the DD
-#cmd("OFTPLOG"). Each line has the date and the time in front.
+#cmd("OFTPLOG"). Each line has the date and the time in front. This is the log
+of one send to the partner MAC1, from the queueing to the end of the session
+(@ug-transfer follows it step by step).
 
-#screen(```
-2026-10-20 14:03:51 OFTP211P MAC1: T0000012 BATCH.TEST2 SENT, 120 RECORDS
-```)
+#screen(raw(read("../ex/ug-transfer/send-log.txt")))
 
 The console gets only the messages an operator has to act on. Messages of the
 classes I, W and E go to the console and the log. The messages of class P, the
@@ -183,7 +214,7 @@ The operator controls the monitor with the MODIFY command, abbreviated
 
 The chapter “Operator Commands” of the Reference describes them, and the
 answers they give. Users and administrators who work from TSO or batch use the
-#cmd("OFTP") utility instead, see @ug-transfer.
+#cmd("OFTP") utility instead, see @ug-transfer and @ug-ops.
 
 == Stopping the Monitor <mon-stop>
 
@@ -194,11 +225,20 @@ Stop the monitor with
 P OFTPD
 ```)
 
-The monitor writes #cmd("OFTP002I"), stops accepting calls and the cross-memory
-service, and waits for the running sessions to end. While it waits it writes
-#cmd("OFTP095I") with the number of sessions left. A transfer that is not
-finished stays in the spool, and goes on at the next start. When all is closed
-it writes #cmd("OFTP003I") and ends with return code 0.
+The console shows #cmd("OFTP002I") at once.
+
+#screen(raw(read("../ex/ug-monitor/console-stop.txt")))
+
+The monitor stops accepting calls and stops the cross-memory service, and
+waits for the running sessions to end. While it waits it writes #cmd("OFTP095I")
+with the number of sessions left. A transfer that is not finished stays in the
+spool, and goes on at the next start. The log has the rest of the stop.
+
+#screen(raw(read("../ex/ug-monitor/stop-log.txt")))
+
+#cmd("OFTP032P") says that the monitor gave the SVC entry back as it found it.
+When all is closed the monitor writes #cmd("OFTP003I") and ends with return code
+0.
 
 If a session does not end, the monitor writes #cmd("OFTP096W") every minute and
 keeps waiting. As a last resort, CANCEL the started task. Its abend recovery

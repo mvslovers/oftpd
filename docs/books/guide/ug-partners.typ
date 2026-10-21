@@ -1,14 +1,18 @@
 #import "../bookmaster/bookmaster.typ": *
 
-= Partners and Configuration <ug-partners>
+= Setting Up a Partner <ug-partners>
 
 #idx("partner")#idx("configuration")
 OFTPD sends files to partners and receives files from them. A partner is a
 system that speaks OFTP, and OFTPD only talks to partners it knows. This
 chapter shows how to describe your own system and its partners, with examples
 for the cases that come up most, and how to check that the partner is set up
-right. Every keyword is described in full in the chapter “Configuration and
-the Partner Table” of the _OFTPD Reference_.
+right, by a call. Every keyword is described in full in the chapter
+“Configuration and the Partner Table” of the _OFTPD Reference_.
+
+The examples use the two monitors of @intro-examples. The monitor MVS1 is
+the system you work on, and the partner MAC1 is the second monitor. Entries
+for partners that exist on paper only have the address #cmd("192.0.2.20").
 
 == What You Agree With a Partner <ptn-agree>
 
@@ -51,13 +55,7 @@ other side is refused with the reason 08, and made again after a short pause.
 The member #cmd("OFTPPRM") describes your own system. A first version needs
 very little. The sample that comes with OFTPD, #cmd("OFTPPRM0"), is a good start.
 
-#screen(```
-* OFTPPRM0 - settings of the monitor
-ODETTEID=O0000000000MYMVS
-PORT=3305 SVC=237
-ADMIN=IBMUSER
-INPREFIX=OFTP.IN TMPPREFIX=OFTP.TMP
-```)
+#screen(raw(read("../ex/ug-monitor/settings-a.txt")))
 
 - #cmd("ODETTEID") is the only keyword that must be there. The monitor does not
   start without it.
@@ -82,16 +80,14 @@ This is the most common case, and the sample #cmd("OFTPPTN0") shows it. An entry
 is a list of keywords. It starts with #cmd("PARTNER="), the name by which you and
 your operators know the partner. The name has up to 8 characters.
 
-#screen(```
-PARTNER=MAC1 ODETTEID=O0000000000MAC1
-  PASSWORD=SECRET1 OURPASSWORD=SECRET2
-  HOST=192.0.2.10 PORT=3305 LEVEL=5
-```)
+#screen(raw(read("../ex/ug-partners/ptn-mac1.txt")))
 
-The entry says: the partner is called MAC1 and is known to the protocol as
+This is the entry of the partner that the examples of this guide use. It says:
+the partner is called MAC1 and is known to the protocol as
 #cmd("O0000000000MAC1"). When it calls, it must give the password
 #cmd("SECRET1"). When you call it, at the host and the port given, you give the
-password #cmd("SECRET2"). The #cmd("HOST") may be a dotted address or a name\;
+password #cmd("SECRET2"). The port 3315 is that of the second monitor, which
+runs on the same host as the first. The #cmd("HOST") may be a dotted address or a name\;
 OFTPD looks a name up.
 
 The entry can run over several lines, as long as the lines are within columns 1
@@ -116,7 +112,7 @@ and go out in the session when the partner calls.
 #screen(```
 PARTNER=HOME1 ODETTEID=O0000000000HOME1
   PASSWORD=SECRET3 OURPASSWORD=SECRET4
-  ADDRESS=198.51.100.7
+  ADDRESS=192.0.2.20
 ```)
 
 #cmd("ADDRESS") makes OFTPD accept the partner only from that address. A caller
@@ -135,7 +131,7 @@ The keyword #cmd("MODE") limits what a partner may do, seen from your side.
 #screen(```
 PARTNER=ARCHIVE ODETTEID=O0000000000ARCH
   PASSWORD=SECRET5 OURPASSWORD=SECRET6
-  HOST=archive.example.org MODE=S
+  HOST=192.0.2.20 MODE=S
 ```)
 
 == A Partner Behind a Clearing Centre <ptn-via>
@@ -149,7 +145,7 @@ centre. The final partner needs no host and no passwords of its own.
 #screen(```
 PARTNER=CENTRE ODETTEID=O0000000000CENT
   PASSWORD=SECRET7 OURPASSWORD=SECRET8
-  HOST=centre.example.org
+  HOST=192.0.2.20
 PARTNER=FARAWAY ODETTEID=O0000000000FARA VIA=CENTRE
 ```)
 
@@ -166,9 +162,10 @@ addressed to the Odette IDs of its partners and passes them on unchanged. Withou
 == Putting the Partners in Use <ptn-use>
 
 Put the finished members in the library that the started task reads, by
-default #cmd("SYS2.PARMLIB"), with the members #cmd("OFTPPRM0"),
-#cmd("OFTPPTN0") and #cmd("OFTPRCV0"). The procedure picks other members through its parameters.
-Then start the monitor (see @ug-monitor).
+default #cmd("SYS2.PARMLIB") (on TK5, #cmd("SYS1.PARMLIB")), with the members
+#cmd("OFTPPRM0"), #cmd("OFTPPTN0") and #cmd("OFTPRCV0"). The procedure picks
+other members through its parameters. Then start the monitor (see
+@ug-monitor).
 
 A change to the member does not need a restart. Edit #cmd("OFTPPTN"), and
 enter
@@ -185,7 +182,9 @@ which gives the number of partners enabled, new, disabled and removed. A
 partner that is no longer in the member, but has a session, is being called, or
 has transfers in the spool, is not taken out at once. It is disabled, and a
 later refresh takes it out when it is free of these. The command reads the
-receive rules again too (see @xfer-rules).
+receive rules again too (see @ug-rules).
+
+#screen(raw(read("../ex/ug-partners/refresh.txt")))
 
 A refresh reads the member and nothing else. The partners that you keep by
 command (see @ptn-cmd) stay as they are, even if the member has an entry of the
@@ -212,20 +211,36 @@ partners kept by command are added to them, and when both have a partner of one
 name, the one kept by command wins. The chapter “Configuration and the Partner
 Table” of the _OFTPD Reference_ describes how the two live together.
 
-Only an administrator (see @xfer-admin) may add, change, enable, disable or
+Only an administrator (see @ops-admin) may add, change, enable, disable or
 delete a partner. Every user may look at the table. In batch the commands go
 into the SYSIN of the utility, and under TSO they follow #cmd("OFTP").
 
-#screen(```
-PARTNER LIST
-PARTNER SHOW MAC2
-PARTNER ADD MAC2 ODETTEID(O0000000000MAC2) PASSWORD(SECRET3) -
-        OURPASSWORD(SECRET4) HOST(192.0.2.20) PORT(3305)
-PARTNER CHANGE MAC2 PORT(3306) SESSIONS(2)
-PARTNER DISABLE MAC2
-PARTNER ENABLE MAC2
-PARTNER DELETE MAC2
-```)
+This is a session in batch, with the commands in the SYSIN of the utility. It
+adds a partner, looks at it, changes it, disables and enables it, and deletes
+it. The utility echoes each command, and masks the passwords in the echo.
+
+#screen(raw(read("../ex/ug-partners/cmd-session.txt")))
+
+Read the session from the top.
+
+- #cmd("PARTNER ADD") needs the Odette ID. The partner PC1 has both passwords
+  and a host. The answer is #cmd("partner PC1 added").
+- #cmd("PARTNER SHOW") tells that the partner is kept by command
+  (#cmd("source: kept by command")), that the passwords are set, and what the
+  defaults are for the keywords left out. A partner of the member says
+  #cmd("source: OFTPPTN") there (see the listing in @ptn-check).
+- #cmd("PARTNER CHANGE") changes the port and the number of sessions, and
+  leaves the rest.
+- #cmd("PARTNER LIST") shows that PC1 is disabled after #cmd("DISABLE").
+- #cmd("PARTNER ADD PC2") without a password works, but the answer warns you
+  and ends with #cmd("but it has no PASSWORD"), and the return code is 4.
+- Adding a name that exists is refused: use #cmd("CHANGE"). Showing a partner
+  that does not exist gives #cmd("OFTP010E no such partner").
+
+OFTPD writes a line for each change to the log, with the name of the user.
+These are the lines of the session above.
+
+#screen(raw(read("../ex/ug-partners/partner-log.txt")))
 
 #cmd("ADD") and #cmd("CHANGE") take the keywords of an entry of the member.
 #cmd("ADD") needs the #cmd("ODETTEID")\; for a keyword that is left out, the
@@ -268,7 +283,7 @@ Five points matter in daily use.
   it, and none is running. The transfers that count are all of them, finished
   ones too. If there are transfers, #cmd("DELETE") first disables the partner,
   so that nothing new is queued for it, and tells you how many there are. Delete
-  or purge these (see @xfer-admin), and delete the partner again. If the
+  or purge these (see @ops-admin), and delete the partner again. If the
   answer is #cmd("the partner was changed meanwhile, try again"), the partner
   changed while OFTPD looked through the spool\; repeat the command. A partner that
   is only in the member cannot be deleted by command\; take its entry out of the
@@ -278,9 +293,8 @@ If a partner of the member is changed by command, the change is kept in the
 spool and the entry in the member is not used. To go back to the entry of the
 member, delete the partner kept by command\; the entry is in use again at once.
 
-OFTPD writes #cmd("OFTP243I"), #cmd("OFTP244I") or #cmd("OFTP245I") to the
-console and the log for each partner that is added, changed or deleted, with
-the name of the user.
+The messages #cmd("OFTP243I"), #cmd("OFTP244I") and #cmd("OFTP245I") go to the
+console and the log for each partner that is added, changed or deleted.
 
 #note[*Passwords are stored in clear text.* The spool holds the passwords of the
 partners kept by command in clear text, as the member does. Protect the spool
@@ -303,25 +317,37 @@ After the start or a refresh, check the following.
 + *The partners.* Enter #cmd("F OFTPD,D P"). OFTPD writes a line
   (#cmd("OFTP100I")) for every partner, with its Odette ID, whether it is
   enabled, the protocol level and the host and port, then the number of
-  partners. The message #cmd("OFTP014P") in the log, written at the start, says
-  how many of the partners in the member are enabled. The #cmd("OFTP") command
-  #cmd("PARTNERS") shows the same table to a user.
+  partners.
+
+  #screen(raw(read("../ex/ug-partners/dp.txt")))
+
+  The message #cmd("OFTP014P") in the log, written at the start, says how many
+  of the partners in the member are enabled. A user sees the same table, and one
+  partner in full, with the #cmd("OFTP") commands #cmd("PARTNERS") and
+  #cmd("PARTNER SHOW").
+
+  #screen(raw(read("../ex/ug-partners/list-show.txt")))
 + *A call.* Enter #cmd("F OFTPD,CALL name"), or, as an administrator, the
   utility command #cmd("OFTP CALL name"). OFTPD calls the partner at once,
   although no file waits. Look at the log for what follows.
 
-A call that works leaves lines like these in the log.
+A call that works leaves these lines in the log of the monitor that called.
 
-#screen(```
-OFTP206P MAC1: CALLING AT 192.0.2.10 PORT 3305
-OFTP290P MAC1: session with MAC1: level 5, buffer 4096, credit 99, mode B
-OFTP203P MAC1: SESSION ENDED, ESID 00 (PARTNER), FILES 0 OUT 0 IN
-```)
+#screen(raw(read("../ex/ug-ops/call-log.txt")))
 
-The level, the buffer and the credit are what the two sides agreed on. The
-ESID 00 is a normal end\; the word after it, #cmd("OURS") or #cmd("PARTNER"),
-says which side ended the session. @ptn-trouble-tab lists what you see when a call does not
-work, and what it means.
+#cmd("OFTP121I") is the request, #cmd("OFTP206P") the call at the address of
+the entry, and the #cmd("OFTP290P") line what the two sides agreed on: the
+level, the buffer size and the credit. The ESID 00 is a normal end\; the word
+after it, #cmd("OURS") or #cmd("PARTNER"), says which side ended the session. Here
+the partner ended it, because no file waited on either side.
+
+A call that does not work leaves #cmd("OFTP207P"). This is the call of a
+partner whose monitor is not running.
+
+#screen(raw(read("../ex/ug-partners/notreached.txt")))
+
+The call waited about five seconds. @ptn-trouble-tab lists what you see when a
+call does not work, and what it means.
 
 #tab(caption: [What a failed call tells you])[
   #table(columns: (1.9in, 1fr),

@@ -41,13 +41,23 @@ Reference_.
 == How This Book Is Organized
 
 #deflist(width: 1.35in,
-  [Chapter 1], [“Introducing OFTPD”.],
-  [Chapter 2], [“Installing OFTPD”.],
-  [Chapter 3], [“The Monitor”.],
-  [Chapter 4], [“Partners and Configuration”.],
-  [Chapter 5], [“Sending and Receiving Files”.],
-  [Chapter 6], [“Operating and Troubleshooting”.],
-  [Chapter 7], [“Removing OFTPD”.],
+  [Chapter 1], [“Introducing OFTPD”: what OFTPD is for, who does what, and the
+    examples of this book.],
+  [Chapter 2], [“Installing OFTPD”: from the installation tape to a working
+    system.],
+  [Chapter 3], [“The Monitor”: starting, stopping and watching the started
+    task.],
+  [Chapter 4], [“Setting Up a Partner”: agreeing with a partner, and the
+    table.],
+  [Chapter 5], [“Sending Files”: sending a file and following it to the
+    receipt.],
+  [Chapter 6], [“Receiving Files”: what happens when a partner sends, and where
+    the file goes.],
+  [Chapter 7], [“Naming the Files You Receive”: receive rules.],
+  [Chapter 8], [“The ISPF Dialog”: the same tasks from panels.],
+  [Chapter 9], [“Operating OFTPD”: holding, retrying, cleaning up, the log, the
+    trace, recovery and troubleshooting.],
+  [Chapter 10], [“Removing OFTPD”.],
   [Appendix A], [“Glossary”.],
 )
 
@@ -68,6 +78,9 @@ Reference_.
 #part("ug-monitor.html", include "guide/ug-monitor.typ")
 #part("ug-partners.html", include "guide/ug-partners.typ")
 #part("ug-transfer.html", include "guide/ug-transfer.typ")
+#part("ug-receive.html", include "guide/ug-receive.typ")
+#part("ug-rules.html", include "guide/ug-rules.typ")
+#part("ug-dialog.html", include "guide/ug-dialog.typ")
 #part("ug-ops.html", include "guide/ug-ops.typ")
 #part("ug-remove.html", include "guide/ug-remove.typ")
 

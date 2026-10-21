@@ -1,0 +1,11 @@
+ ------------------------------- OFTPD - Transfers -----------------------------
+ Command ===>                                                  Scroll ===> PAGE
+ ROW 0 OF 0
+   Partner ===>             Status ===> HELD          Mine only ===> N   Y or N
+ T0000013 deleted
+
+   S show   H hold   R release   T retry   D delete
+
+   Key      D Status    Partner  Virtual file name
+               Data set
+ ******************************* BOTTOM OF DATA *******************************

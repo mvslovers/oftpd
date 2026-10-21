@@ -86,8 +86,42 @@ In both directions either side can make the call. In a session each side
 speaks in turn, so a call from a partner also collects the files that wait for
 that partner.
 
-@ug-partners shows how to set up a partner, @ug-transfer how users send and
-receive, and @ug-monitor and @ug-ops how an operator runs the monitor.
+== What Do You Want to Do? <intro-tasks>
+
+#tab(caption: [Where to find what you want to do])[
+  #table(columns: (2.6in, 1fr),
+    [You want to], [Read],
+    [Install OFTPD on a system], [@ug-install],
+    [Start and stop the monitor, read its log], [@ug-monitor],
+    [Set up a partner and check that it answers], [@ug-partners],
+    [Send a data set to a partner and see that it arrived], [@ug-transfer],
+    [See what a partner sent, and where it went], [@ug-receive],
+    [Name the data sets of received files, or start a job when a file has
+      arrived], [@ug-rules],
+    [Do all this from panels], [@ug-dialog],
+    [Hold sends, retry them, clean up the spool, find out why a transfer does
+      not move], [@ug-ops],
+    [Take OFTPD off the system], [@ug-remove],
+  )
+]
+
+== The Examples in This Book <intro-examples>
+
+Every session in this book was run on a system of its own and is shown as it
+came out. Two monitors ran on one MVS 3.8j system (TK5), so that OFTPD had a
+partner to talk to: the first is the system of the examples, with the Odette ID
+#cmd("O0000000000MVS1") and the port 3305. The second plays the partner, called
+#cmd("MAC1"), with the Odette ID #cmd("O0000000000MAC1") and the port 3315.
+The user is #cmd("HERC01"), who is the administrator of both. Both monitors
+reach the other at #cmd("127.0.0.1"), the machine on which Hercules runs. A
+partner of your own has another host and port\; where the book shows a partner
+at another address, it uses #cmd("192.0.2.20"), an address that is set aside
+for examples.
+
+The log lines show the version of the build, #cmd("1.0.0-dev"), in the
+message #cmd("OFTP000I"). Yours shows the version you installed. The lines of
+the log begin with the date and the time\; the lines of one run are cut out of
+the whole log with nothing changed in them.
 
 == Terms Used in This Book <intro-names>
 

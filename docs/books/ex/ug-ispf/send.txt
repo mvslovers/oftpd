@@ -1,0 +1,28 @@
+ -------------------------- OFTPD - Send a Data Set ----------------------------
+
+   To
+
+     Partner   ===> MAC1        ? shows the partners to pick one from
+
+   What
+
+     Data set  ===> HERC01.OFTPD.SAMPLE
+                   fully qualified, without quotes;
+                   a member in parentheses
+
+     Virtual   ===> ISPF.TEST
+     file name     the name the partner sees, at most 26 characters;
+                   blank takes the data set or member name
+
+   How
+
+     Text      ===> Y    Y: format T, EBCDIC to ASCII, CR-LF after each record
+     Translate ===> N    Y: F, V and U data translated as well
+     Hold      ===> Y    Y: queued held, released later from the transfer list
+
+     User data ===>             the SFID user field, at most 8 characters
+
+
+ T0000013 queued and held for MAC1 as ISPF.TEST
+
+   Enter queues the file, END leaves.
