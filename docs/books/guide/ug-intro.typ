@@ -22,11 +22,14 @@ OFTPD has four parts that you meet.
     starts and stops it, and controls it from the console with the
     #cmd("F OFTPD") and #cmd("P OFTPD") commands.],
   [The spool], [A VSAM data set that holds one record for each transfer, with
-    its state and what is needed to resume it. Only the monitor uses it. The
-    other parts ask the monitor.],
-  [The partner table], [The member #cmd("OFTPPTN"), a list of the partners:
-    their Odette IDs, their passwords, and where to call them. The monitor
-    reads it when it starts, and again on request.],
+    its state and what is needed to resume it, and one for each partner that an
+    administrator keeps by command. Only the monitor uses it. The other parts
+    ask the monitor.],
+  [The partner table], [A list of the partners: their Odette IDs, their
+    passwords, and where to call them. It has two sources, the member
+    #cmd("OFTPPTN"), which the monitor reads when it starts and again on
+    request, and the partners that an administrator adds and changes with the
+    #cmd("OFTP") utility or in the dialog.],
   [The utility and the dialog], [The command #cmd("OFTP") for TSO and batch,
     and the ISPF dialog #cmd("OFTPI"). Users queue files for sending and look
     at their transfers with them. They do not send anything themselves\; they

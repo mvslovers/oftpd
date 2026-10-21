@@ -398,6 +398,12 @@ starts ISPF.
 - #cmd("OFTPD.ISPPLIB") to the #cmd("ISPPLIB") allocation,
 - #cmd("OFTPD.LINKLIB") to the #cmd("ISPLLIB") allocation.
 
+Put #cmd("OFTPD.ISPPLIB") last in the #cmd("ISPPLIB") concatenation. It is
+received with the block size 3120, which is smaller than that of the panel
+libraries of ISPF. In a test, ISPF with #cmd("OFTPD.ISPPLIB") in front of a
+library of the block size 19040 ended at READY without a screen\; with the
+library behind the large one it worked.
+
 Start the dialog with
 
 #screen(```
@@ -419,14 +425,52 @@ The main panel has these options.
   [2 Transfers], [Lists the transfers, which you can limit to a partner, a
     state, or your own. Type a letter in front of a line: S to show it, H to
     hold, R to release, T to retry, D to delete.],
-  [3 Partners], [Shows the partner table. C in front of a partner calls it now,
-    which an administrator may do.],
+  [3 Partners], [Shows the partner table as OFTPD has it, with the name, the
+    Odette ID, the state, the busy sessions, the level and where the partner is
+    reached. An administrator can also maintain the table here (see below).],
   [4 Configure], [Lets an administrator edit the member of the partner table.
-    When the edit ends, OFTPD reads the member again.],
+    When the edit ends, OFTPD reads the member again. The partners kept by
+    command are not read again.],
   [5 Monitor], [Shows the Odette ID, the port, the SVC, the sessions and the
     spool of the monitor.],
   [X Exit], [Leaves the dialog.],
 )
+
+=== Maintaining the Partners in the Dialog <xfer-dialog-ptn>
+
+#idx("ISPF dialog", "partners")
+Option 3 does with panels what the command #cmd("PARTNER") does (see
+@ptn-cmd). Every change goes to OFTPD as a request, and the answer of OFTPD is
+shown as the message of the panel. A user who is not an administrator can look
+at the table, but OFTPD refuses a change.
+
+- To add a partner, type its name into the field *New partner* and press Enter.
+  If the partner is in the table already, the message says so\; use M to change
+  it. Otherwise the entry panel follows.
+- In front of a partner, type one of these letters\: *M* to modify it, *E* to
+  enable it, *X* to disable it, *D* to delete it, *C* to call it now.
+
+The entry panel has the keywords of an entry of the member: the Odette ID, the
+two passwords, our own ID, the host, the port, the address, the level, the
+mode, compression, call, sessions, translation, via and enabled. A new partner
+starts with level 5, mode B, no compression, call and enabled, one session and
+no translation. For a partner that is there, the panel shows its values. It shows
+the passwords as *(set)* or *(none)*, never as text. A blank password keeps the
+password as it is\; type a new one to replace it. Another field that you leave
+as it is stays as it is, and a blank Host, Address or Via is cleared. Enter
+saves, and END leaves the panel without saving. If OFTPD refuses the change, the
+reason is on the panel, and you can correct the entry. If OFTPD takes the entry
+but the partner is enabled and has no password, the panel ends as for any
+other entry that is taken, and the message ends with #cmd("but it has no PASSWORD").
+The dialog does not show the longer warning that the utility writes. On an 80-column screen
+the message line has 80 columns, and a longer answer is cut\; the answer of a refused
+#cmd("DELETE") is one of these. The command #cmd("OFTP PARTNER DELETE") gives
+the whole answer.
+
+The letter *D* shows a panel that asks you to confirm. Enter deletes the
+partner, and END leaves it. OFTPD refuses it under the same rules as the
+command: no session, no transfer in the spool, and no partner reached through
+it. The deleted definition, with its passwords, cannot be got back.
 
 == Tasks for an Administrator <xfer-admin>
 
@@ -438,4 +482,7 @@ A user named with #cmd("ADMIN") in the settings may also use the following.
   the spool. Without #cmd("DAYS") it uses the #cmd("KEEPDAYS") of the settings.
   Only the spool is cleaned\; no data set is deleted.
 - #cmd("OFTP LIST") shows all transfers, including the files received.
+- #cmd("OFTP PARTNER ADD"), #cmd("CHANGE"), #cmd("ENABLE"), #cmd("DISABLE") and
+  #cmd("DELETE") maintain the partner table without an edit of the member (see
+  @ptn-cmd).
 - Changes to all transfers, whoever queued them.

@@ -522,7 +522,8 @@ its module in the `ISPLLIB` concatenation, because it loads `ISPLINK` from
 there. This ISPF has no `LIBDEF`, so add the libraries where your system
 allocates them, usually in the CLIST that starts ISPF:
 
-- `OFTPD.ISPPLIB` to the `ISPPLIB` allocation,
+- `OFTPD.ISPPLIB` to the `ISPPLIB` allocation, as the **last** library of the
+  concatenation,
 - `OFTPD.LINKLIB` to the `ISPLLIB` allocation.
 
 Add both at the end of the concatenation. Measured on TK5: with
