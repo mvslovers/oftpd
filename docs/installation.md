@@ -373,7 +373,8 @@ stop, errors, a partner that is not authorized, a transfer held or given
 up. A message of class `P` (as in `OFTP211P`) goes to the log and never to
 the console; classes `I`, `W` and `E` go to both. Every session message
 begins with the partner's name, so a partner's lines can be picked out of
-the log. `docs/messages.md` lists every message with its destination.
+the log. Appendix A of the OFTPD Reference (ML09-0002) lists every message
+with its destination.
 
 - Give the DD `RECFM=F` or `FB` and say so in a `DCB=`, as the procedure
   does (`DCB=(RECFM=FB,LRECL=160,BLKSIZE=160)`). A SYSOUT DD without a DCB

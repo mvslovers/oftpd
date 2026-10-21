@@ -2516,6 +2516,7 @@ ptn_report(OFTP_MON *m, CTLOUT *o, PTNREQ *q, const char *sub)
                      "OFTPPTN entry is back", q->name);
         return;
     }
+    /* OFTP243I (added) and OFTP244I (changed): the id is built here */
     oftp_mon_msg("OFTP24%cI PARTNER %s %s BY %s", sub[0] == 'A' ? '3' : '4',
                  q->name, sub[0] == 'A' ? "ADDED" : "CHANGED", ctl_by(o));
     ecb_post(&m->wake, 0);
