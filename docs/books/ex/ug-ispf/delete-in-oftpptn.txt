@@ -1,0 +1,13 @@
+ -------------------------------- OFTPD - Partners -----------------------------
+ Command ===>                                                  Scroll ===> PAGE
+ ROW 1 OF 2
+ the partner is in OFTPPTN: remove it there, then REFRESH
+
+   New partner ===>            adds a partner: its entry panel follows
+
+   C call now   M modify   E enable   X disable   D delete   S select for Send
+
+   Name     Odette ID                 State    Busy Lvl Reached at
+   MAC1     O0000000000MAC1           ENABLED  IDLE 5   127.0.0.1
+   DLGPTN   O0000DLGPTN               ENABLED  IDLE 5   (not called)
+ ******************************* BOTTOM OF DATA *******************************

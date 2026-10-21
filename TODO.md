@@ -402,6 +402,12 @@ is not running.
   `OURID` default, entry panel~~ -- #163 (PR #178). ~~Whether `docs/messages.md`
   goes~~ -- it went; the books replace it, and `tools/check-messages.py`
   checks `docs/books/ref/msg-*.typ`.
+- Books by tasks (#180, MVS-288): the Guide is organised by what a user or an
+  operator does, with sessions from a run on a throwaway TK5 container
+  (`docs/books/ex/ug-*`); protocol and record tables are in the Reference
+  (`ref/ref-proto.typ`). The captures show the version `1.0.0-dev (b45dbac)`:
+  run them again against the 1.0.0 release. Not shown for want of a run: APF
+  and IPL, a PC peer, a refused log-on.
 - ~~GitHub repository, CI~~ — `mvslovers/oftpd` (2026-10-13).
 
 - ~~#13: about 520 bytes per session abend~~ -- libc370's `try()`

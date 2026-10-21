@@ -1,0 +1,28 @@
+ ------------------------------ OFTPD - Partner ------  VER VALUE IS BLANK
+
+   Function    ===> Add
+   Partner     ===> DLGPTN
+
+   Identity
+     Odette ID   ===>                            up to 25 characters
+     Password    ===>           (none)   the partner's to us; blank keeps
+     Our passwd  ===>           (none)   ours to the partner; blank keeps
+     Our ID      ===>                            default: the ODETTEID of OFTPD
+
+   Where
+     Host        ===>
+                     blank: the partner calls us, OFTPD does not call it
+     Port        ===>        default 3305   Address ===>
+                                                   calls only from here
+   How
+     Level       ===> 5  5, 4, 2, 1       Mode ===> B  S, R or B
+     Compress    ===> N  Y or N           Call ===> Y  Y: OFTPD calls it
+     Sessions    ===> 1   default 1        Translate ===> N  Y or N
+     Via         ===>           reached through this partner
+     Enabled     ===> Y  Y or N
+
+
+
+   Enter saves, END leaves without saving. Add: a blank field takes its
+   default. Change: a blank field keeps its value, only Host, Address and
+   Via are cleared by it.

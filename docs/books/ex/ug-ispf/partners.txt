@@ -1,0 +1,12 @@
+ -------------------------------- OFTPD - Partners -----------------------------
+ Command ===>                                                  Scroll ===> PAGE
+ ROW 1 OF 1
+ 1 partners
+
+   New partner ===>            adds a partner: its entry panel follows
+
+   C call now   M modify   E enable   X disable   D delete   S select for Send
+
+   Name     Odette ID                 State    Busy Lvl Reached at
+   MAC1     O0000000000MAC1           ENABLED  IDLE 5   127.0.0.1
+ ******************************* BOTTOM OF DATA *******************************

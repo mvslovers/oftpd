@@ -1,0 +1,16 @@
+ -------------------------------- OFTPD - Transfer -----------------------------
+
+
+     T0000013 SEND HELD, partner MAC1, owner HERC01
+
+     virtual file ISPF.TEST 20261021 1735520001, format T, LRECL 0
+     data set HERC01.OFTPD.SAMPLE
+
+     from O0000000000MVS1 to O0000000000MAC1, 0 records, 0 attempts
+     queued and held
+
+
+
+
+
+   Enter or END returns to the list.

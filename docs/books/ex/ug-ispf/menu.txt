@@ -1,0 +1,25 @@
+ ------------------------- OFTPD - Odette File Transfer ------------------------
+ Option ===>                                                 User      HERC01
+                                                             Time      17:35:49
+   1   Send        Queue a data set for a partner            Terminal  3277
+                   partner, data set, virtual file name      Panel     OFTP@PRI
+
+   2   Transfers   What is queued, sent and received
+                   S show, H hold, R release, T retry, D delete
+
+   3   Partners    The partner table as OFTPD has it: add, modify,
+                   enable, disable, delete; C calls a partner now
+
+   4   Configure   Edit the partner member; OFTPD reads it again (REFRESH)
+                   Removed partners leave the table, or are disabled if in use
+
+   5   Monitor     OFTPD: Odette ID, port, SVC, sessions
+                   and the spool
+
+   X   Exit
+
+
+
+
+
+   Enter an option, END or X to leave.

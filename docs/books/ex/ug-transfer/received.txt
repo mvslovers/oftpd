@@ -1,0 +1,13 @@
+  LISTDS 'OFTPB.IN.REPORT.TXT'
+OFTPB.IN.REPORT.TXT
+--RECFM-LRECL-BLKSIZE-DSORG
+  VB    255   6144    PS
+--VOLUMES--
+  TSO003
+END
+
+Monthly report, October 2026
+Orders received      : 128
+Orders shipped       : 121
+Open at month end    :   7
+End of report

@@ -35,7 +35,7 @@
 This book describes OFTPD (oftpd), the OFTP server for MVS 3.8j, in full:
 the commands of the #cmd("OFTP") utility, the operator commands of the
 monitor, the configuration parameters and the partner table, the receive
-rules, and the messages. How to use them together is the subject of the companion volume, the _OFTPD User's Guide_.
+rules, the protocol tables, and the messages. How to use them together is the subject of the companion volume, the _OFTPD User's Guide_.
 
 == How This Book Is Organized
 
@@ -44,6 +44,8 @@ rules, and the messages. How to use them together is the subject of the companio
   [Chapter 2], [“Operator Commands”.],
   [Chapter 3], [“Configuration and the Partner Table”.],
   [Chapter 4], [“Receive Rules”.],
+  [Chapter 5], [“The Protocol and the Data”: the protocol commands, the
+    levels, the formats of a file, the reason codes and the return codes.],
   [Appendix A], [“Messages”.],
 )
 
@@ -62,6 +64,7 @@ rules, and the messages. How to use them together is the subject of the companio
 #part("ref-op.html", include "ref/ref-op.typ")
 #part("ref-cfg.html", include "ref/ref-cfg.typ")
 #part("ref-rcv.html", include "ref/ref-rcv.typ")
+#part("ref-proto.html", include "ref/ref-proto.typ")
 
 #show: appendices
 #part("apx-messages.html", include "ref/apx-messages.typ")

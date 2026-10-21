@@ -1,0 +1,16 @@
+                             Additional applications
+ Option ===>
+
+    1  RFE           ISPF/PDF like productivity system (Greg Price)
+    2  RPF           ISPF/PDF like productivity system (Rob Prins)
+    3  IM            IMON/370 system monitor
+    4  HELP          General TSO Help
+    5  QUEUE         SPOOL browser
+    6  UTILS         Information on utilities and commands available
+    7  TERMTEST      Verify 3270 terminal capabilities
+    R  RECEIVE       Receive XMIT file
+   XM  XMIT          Transmit XMIT file
+   PC  RCQCAL        Perpetual calendar
+    O  OFTPD         Odette file transfer
+
+ Enter END command to return.
