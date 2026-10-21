@@ -144,7 +144,7 @@ timed(const char *req, char *fin, int cap)
 
     rows = 0;
     t0 = now_us();
-    rc = oftp_cli_request(req, count_row, NULL, fin, cap);
+    rc = oftp_cli_request(req, count_row, NULL, fin, cap, NULL);
     t1 = now_us();
     lastus = t1 - t0;
     return rc;
