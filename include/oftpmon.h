@@ -12,12 +12,15 @@
 
 #include "oftpcfg.h"
 #include "oftplog.h"
+#include "oftprcv.h"
 #include "oftpspl.h"
 #include "oftpsvc.h"
 
 typedef struct oftp_mon {
     char        eye[8];
     OFTP_CONFIG cfg;
+    OFTP_RULES  rules;                  /* OFTPRCV0; replaced as a whole
+                                        ** under lock(m, 0)              */
     OFTP_SPOOL *spool;
     OFTP_LOG    log;                    /* DD OFTPLOG (oftplog.h)        */
     volatile int stop;                  /* 1: P OFTPD received           */
@@ -202,6 +205,14 @@ extern void oftp_mon_svc_stop(OFTP_MON *m)              asm("OFTPMSVP");
 */
 extern int  oftp_mon_load(OFTP_CONFIG *c, const char *dd, int partner)
                                                         asm("OFTPMLOD");
+
+/* Reads DD OFTPRCV (receive rules, include/oftprcv.h) into m->rules, as a
+** whole: a member with any error is not used and the rules stay as they
+** were (none, at start). Needs the partners loaded. refresh 0 at start,
+** 1 from REFRESH, which only changes what the console says. 0, or -1 when
+** nothing was replaced.
+*/
+extern int  oftp_mon_rules(OFTP_MON *m, int refresh)    asm("OFTPMRUL");
 
 /* Reads DD OFTPPTN again and merges it (internals/design.md section 4).
 ** Only the parmlib layer moves: a partner kept by command is not touched,

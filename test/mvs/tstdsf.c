@@ -18,7 +18,7 @@ static char prefix[40] = "IBMUSER.OFTPD.TDSF";
 static unsigned char got[16384];
 static unsigned char want[16384];
 
-static OFTP_DSOPT opt = { 255, 4096, "", "" };
+static OFTP_DSOPT opt = { 255, 4096, "", "", 0 };
 
 static void
 dsname(char *buf, const char *last)
@@ -173,7 +173,7 @@ t_text(void)
 {
     OFTP_SFIDCMD sf;
     OFTP_DSF *f;
-    OFTP_DSOPT small = { 20, 4096, "", "" };
+    OFTP_DSOPT small = { 20, 4096, "", "", 0 };
     unsigned char in[200];
     char dsn[60], fmt;
     unsigned n, wl, len, lrecl, calls;

@@ -81,6 +81,10 @@ host = false
 sources = ["test/mvs/tstdsf.c"]
 host = false
 
+[test.TSTRCVR]           # REPLACE=Y recovery and oftp_dsf_kind; runs for real only from test/mvs/tstrcvr.jcl
+sources = ["test/mvs/tstrcvr.c"]
+host = false
+
 [test.TSTSPL]            # the spool; runs for real only from test/mvs/tstspl.jcl
 sources = ["test/mvs/tstspl.c"]
 host = false
@@ -125,6 +129,12 @@ host = false
 # real only from test/mvs/tstsvc.jcl (PARM='RUN').
 [test.TSTSVC]
 sources = ["test/mvs/tstsvc.c"]
+host = false
+
+# Receive rules (#44) against two RUNNING OFTPDs; runs for real only from
+# test/mvs/tstrcvm.jcl (PARM='RUN n').
+[test.TSTRCVM]
+sources = ["test/mvs/tstrcvm.c"]
 host = false
 
 # The SMP installation package (mbt package): the load modules go to

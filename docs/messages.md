@@ -46,7 +46,7 @@ different messages share the number; each is listed.
 | `OFTP004P` | Log only | `AUTHORIZED BY LIBRARY` or `BY SVC`: how OFTPD got authorization |
 | `OFTP005W` | Console + log | `NOT AUTHORIZED, RC=n, CONTINUING` |
 | `OFTP006W` | Console + log | `NO ABEND RECOVERY (ESTAE FAILED)`: an abend of OFTPD will not close its sockets |
-| `OFTP010W` | Console + log | `<member>: <line>`: a line of `OFTPPRM` or `OFTPPTN` that was not understood; the entry is skipped or disabled |
+| `OFTP010W` | Console + log | `<member>: <line>`: a line of `OFTPPRM`, `OFTPPTN` or `OFTPRCV` that was not understood; the entry is skipped or disabled, and one error in `OFTPRCV` keeps the whole rule member from being used (`OFTP025E`) |
 | `OFTP011E` | Console + log | `DD OFTPPRM CANNOT BE OPENED`; OFTPD ends |
 | `OFTP012E` | Console + log | `OFTPPRM HAS NO ODETTEID`; OFTPD ends |
 | `OFTP013W` | Console + log | `DD OFTPPTN CANNOT BE OPENED, NO PARTNERS` |
@@ -57,6 +57,9 @@ different messages share the number; each is listed.
 | `OFTP018I` | Console + log | `n PARTNERS KEPT BY COMMAND, n OVERRIDE OFTPPTN`: the partners added or changed by `PARTNER` commands (`docs/partners.md`), read from the spool at start |
 | `OFTP018W` | Console + log | a partner record of the spool was not taken (`HAS NO NAME`, `<reason>, IGNORED`, `IS KEPT BY COMMAND ALREADY`), two partners have one Odette ID (the second is `DISABLED`), or `THE PARTNER RECORDS OF THE SPOOL CANNOT BE READ` |
 | `OFTP019E` | Console + log | `PARTNER RECORDS OF THE SPOOL UNREADABLE, OFTPD NOT STARTED`: starting on the parmlib table alone would bring back a partner that was disabled or changed by command |
+| `OFTP024I` | Console + log | `RECEIVE RULES: n READ`: the rule member (`OFTPRCV`) was read without error, at start and after `F OFTPD,REFRESH`; n may be 0 |
+| `OFTP025E` | Console + log | `RECEIVE RULES NOT USED, n ERRORS`: the member has n lines in error (each reported with `OFTP010W`) and is not used at all. After `F OFTPD,REFRESH` the text ends with `, THE OLD RULES STAY`; at start there are no rules |
+| `OFTP026W` | Console + log | `DD OFTPRCV CANNOT BE OPENED, THE n RULES STAY`: `F OFTPD,REFRESH` only, when rules were read before and the DD cannot be opened now. A DD that is missing at start, or after a start without rules, says nothing |
 | `OFTP020E` | Console + log | `SPOOL NOT OPEN: <reason>`; OFTPD ends |
 | `OFTP021W` | Console + log | `SPOOL WAS NOT CLOSED (OPEN RC n), VERIFIED`: OFTPD did not end cleanly last time; the spool was checked |
 | `OFTP022W` | Console + log | `DD OFTPLOG CANNOT BE OPENED` or `IS NOT RECFM=F OR FB`: the messages go to the console |
@@ -152,9 +155,18 @@ The ones that report a normal transfer are `P`.
 | `OFTP221E` | Console + log | `<partner>: <data set> NOT RENAMED TO <data set>` |
 | `OFTP222P` | Log only | `<partner>: <key> <dsn> RECEIVED AS <data set>, n RECORDS` |
 | `OFTP223W` | Console + log | `<partner>: <dsn> FOR <id> REFUSED, <reason>`: not our Odette ID, no route, or it would go back |
+| `OFTP224W` | Console + log | `<partner>: <dsn> REFUSED, RULE <rule> MAKES NO VALID DATA SET NAME`: reason 01, no retry |
+| `OFTP225W` | Console + log | `<partner>: <dsn> REFUSED, <data set> EXISTS (RULE <rule>, REPLACE=N)`: reason 13, the sender tries again |
+| `OFTP226E` | Console + log | `<partner>: <dsn> NOT RECEIVED, <data set> CANNOT BE REPLACED, IT STAYS`: reason 12; in use, or not a sequential data set |
+| `OFTP227E` | Console + log | `<partner>: THE OLD <data set> IS NOW <backup>, NOT RENAMED BACK`: rename the backup to the data set name by hand |
+| `OFTP228W` | Console + log | `<partner>: THE OLD <data set> IS NOW <backup>, NOT DELETED`: the new file is in place; delete the backup |
+| `OFTP229I` | Console + log | `<partner>: <data set> REPLACED` |
+| `OFTP234W` | Console + log | `<partner>: <dsn> REFUSED, <data set> IS NOT A SEQUENTIAL DATA SET AND IS NOT REPLACED (RULE <rule>)`: `REPLACE=Y` on a PDS, VSAM or member name; reason 12, no retry |
+| `OFTP239I` | Console + log | `<partner>: THE OLD <data set> PUT BACK FROM <backup>`: at start, after a stop in the middle of a replace |
 | `OFTP240P` | Log only | `<partner>: <key> RELAY: EERP/NERP FOR <dsn> QUEUED` |
 | `OFTP241P` | Log only | `<partner>: <key> RELAY: <dsn> FROM <id> FOR <id> QUEUED FOR <partner>` |
 | `OFTP242W` | Console + log | `<partner>: <key> RELAY: <dsn> FOR <id> GIVEN UP AFTER n ATTEMPTS`: the originator gets a NERP |
+| `OFTP248W` | Console + log | `<partner>: <data set> EXISTS AND SO DOES THE OLD VERSION <backup>, DELETE <backup> BY HAND`: at start, after a stop in the middle of a replace |
 | `OFTP290W` | Console + log | `<partner>: <text>` for a failed identity or password check: `UNKNOWN CALLER <id>`, `WRONG PASSWORD FROM <partner>` (the engine's text, in lower case), `ANSWERED BY <id>, NOT <id>`, `PARTNER PASSWORD DOES NOT MATCH` |
 | `OFTP290P` | Log only | `<partner>: <text>`: any other line the protocol engine reports (a refusal reason, a timeout, a file sent or received, the session parameters, and the `TRACE SEND|RECV ...` lines of `F OFTPD,TRACE`) |
 

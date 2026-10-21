@@ -1,0 +1,56 @@
+* OFTPRCV0 - OFTPD receive rules
+*
+* Where an incoming file goes. A file that matches no rule is received as
+* INPREFIX.<virtual file name>, as it was before rules existed; so a member
+* with no rule in it changes nothing.
+*
+* RULE=name opens a rule (1..8 characters, unique); the keywords after it
+* belong to it. The FIRST rule, in the order of this member, that matches
+* the partner and the virtual file name decides, so put the narrow rules
+* before the wide ones.
+*
+* FROM     a partner name from OFTPPTN0, or * for any            (*)
+* VFN      the virtual file name: * is any number of characters,
+*          ? is exactly one; case does not matter                (*)
+* DSN      the data set name, with symbols; without it the file
+*          gets the INPREFIX name
+* REPLACE  Y: an existing data set is replaced once the new file
+*          has been received and closed (a file that fails leaves
+*          the old data set as it was); N: the file is refused
+*          (SFNA 13), the partner may try again                  (N)
+* UNIT     VOLSER   where the data set is allocated    (OFTPPRM0's)
+* SPACE    tracks, 1-9999; used only when the sender gives no size
+* XLATE    Y or N: translate this file or not, instead of what the
+*          partner entry says
+*
+* Symbols in DSN= (the data set name is checked when the file arrives; a
+* name that comes out invalid refuses the file with SFNA 01 and the
+* console says which rule made it):
+*   %VFN         the virtual file name
+*   %Q1 .. %Q9   its first .. ninth qualifier (between dots)
+*   %ID          the partner's name
+*   %YYYY %MM %DD %HH %MI %SS    the time the file arrived
+*   %CTR         the 4 digits of the sender's file counter
+*   %KEY         the spool key, T and 7 digits
+* %VFN, %Q1..%Q9 and %CTR carry text the PARTNER chooses into the name, so
+* they may NOT stand in the first qualifier (before the first '.'): a rule
+* with DSN=%VFN, DSN=PROD%VFN or DSN=%Q1.X would let a partner create or
+* replace any data set this started task may write. The member is then not
+* used (OFTP010W). Start with a fixed qualifier: DSN=ACCT.IN.%VFN. A DSN=
+* that can name a data set under TMPPREFIX is refused as well.
+* REPLACE=Y works on a plain sequential data set; a PDS, a VSAM cluster or
+* a member is refused (SFNA 12, OFTP234W) and left alone. While a file is
+* replaced the old one waits under TMPPREFIX.B<key>; see docs/installation.md
+* for what to do after a crash.
+* A qualifier is 1-8 characters and starts with a letter, so a date in
+* one needs a letter in front and no more than 7 characters after it:
+* Y%YYYY is 5, D%MM%DD is 5, T%HH%MI%SS is 7.
+*
+* F OFTPD,REFRESH reads this member again. A member with any error is not
+* used at all: the rules that were in force stay, and the console names
+* the line (OFTP010W) and says OFTP025E.
+*
+* RULE=ORDERS  FROM=PARTNER1  VFN=ORDERS.*
+*              DSN=PROD.ORDERS.Y%YYYY.D%MM%DD.T%HH%MI%SS
+* RULE=INVOICE FROM=*  VFN=INV?????.DATA
+*              DSN=ACCT.IN.%ID.%VFN  REPLACE=Y  VOLSER=WORK01  SPACE=30
