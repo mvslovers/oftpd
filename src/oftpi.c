@@ -446,7 +446,9 @@ pentry(DLG *d, const char *name, int adding)
     PVAL old, now;
     char req[256];
     size_t n;
-    int i, rc, code = 0;
+    int i;
+    int rc;
+    int code = 0;
 
     if (pentry_init(d, name, adding, old) != 0)
         return 0;
