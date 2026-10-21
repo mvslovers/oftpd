@@ -42,8 +42,9 @@ first character of the operand counts.
     and sessions, then #cmd("OFTP127I") with the state of the trace.],
   [#cmd("D Q")], [Shows the spool. OFTPD writes one #cmd("OFTP110I") line for
     each transfer, then #cmd("OFTP111I") with the count.],
-  [#cmd("D M")], [Shows the storage that OFTPD has left, and the number of
-    sessions, with message #cmd("OFTP102I").],
+  [#cmd("D M")], [Shows the largest free block of storage, the number of
+    subtask handles and the number of sessions, with message
+    #cmd("OFTP102I").],
   [#cmd("D S"), #cmd("D") without an operand, or any other operand],
     [Shows the number of sessions with message #cmd("OFTP101I"), then the
     state of the trace with #cmd("OFTP127I").],
@@ -98,6 +99,13 @@ changed. The count can be 0. Without an operand, OFTPD answers
 #cmd("OFTP237E"). A second operand is refused with #cmd("OFTP122E")\; no
 transfer is changed.
 
+OFTPD matches the partner name against the partner a transfer is sent
+through. For a transfer routed through another partner (see the keyword
+#cmd("VIA")) that is the other partner, not the final one. Only sends are
+changed. #cmd("HOLD") takes the sends in state queued or waiting, and
+#cmd("RELEASE") the sends in state held. Sends in any other state, and all
+receives, stay as they are.
+
 == TRACE <op-trace>
 
 #idx("TRACE")
@@ -150,7 +158,9 @@ F OFTPD,PURGE [days]
 ```)
 
 The command deletes the finished transfers from the spool whose last change
-is older than the given number of days, from 0 to 9999. Without an operand it
+is older than the given number of days, from 0 to 9999. A finished transfer is
+one in state delivered, confirmed, rejected or failed\; the others are not
+deleted. Without an operand it
 uses #cmd("KEEPDAYS") of #cmd("OFTPPRM"). If #cmd("KEEPDAYS") is 0 and no
 operand is given, or the operand is not a number from 0 to 9999, the answer is
 #cmd("OFTP122E") and nothing is deleted. A second operand, as in

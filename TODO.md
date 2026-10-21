@@ -150,12 +150,18 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   two RAKF userids (HERC01 in `ADMIN=`, HERC02 not), paging, `TSTSVC`
   34/34; then on the stand m38b as a test instance beside its OFTPD
   (`TSTSVC` 20/20, SVC 237 back to `00017068` at the end). Open from it:
-  - The dialog has not run on TK5 at all.
+  - ~~The dialog has not run on TK5 at all~~ (#53): it runs there with the
+    panels unchanged, see `docs/installation.md` section 9. Measured in a
+    TK5 container (2026-10-20): menu, send, the transfer list with S, H,
+    R, T and D, the partner list with C and the pick for send, configure
+    (Revedit, then the partner member is read again), monitor, and
+    `test/tso/ispf.lua`. Not measured: a wide screen other than 132x43,
+    and any ISPF but TK5's.
   - ~~**`SEND` reads the data set with OFTPD's authority**~~: over the
     SVC the caller's READ is checked at queue time (RACINIT PASSCHK=NO,
     RACHECK), measured in a TK5 container with a deny profile
-    (`internals/xmem.md` section 14). Not shown: a caller without an
-    ACEE, a system without a security product.
+    (`internals/xmem.md` section 14). A caller without an ACEE and a
+    system without a security product: `TSTSEC`, section 19 (#54).
   - ~~A request over 255 bytes is refused by the client before the SVC
     (`TSTSVC` step 2b); the routine's own length check is exercised by
     no test~~ (#55): `TSTSVC` step 2c issues the SVC directly with
@@ -248,8 +254,8 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   (`internals/interop.md`). Still untried there: a transfer cut off
   mid-file, the wait after a call that failed before any file, a NERP
   for a level 1.3 sender.
-- Dialog: `S` (show) and Configure not yet driven by the TN3270 test.
-  Panels for 80x43, measured on dev1 2026-10-13 at 80x43 and 160x62
+- Dialog: `S` (show) and Configure are driven by the TN3270 test (#62,
+  TK5 container 2026-10-20), as is the partner maintenance. Panels for 80x43, measured on dev1 2026-10-13 at 80x43 and 160x62
   (s3270 `-model 3279-4-E`, `-model 3279-5-E -oversize 160x62`): on
   Wally's ISPF `EXPAND(//)` works on TBDISPL panels, inside the ZCMD
   field and in `)MODEL` lines (`@Z / /+` lets the last field grow); a
@@ -317,8 +323,11 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   OFTPDs: add, change, send, refused delete, OFTPPTN partners, REFRESH,
   restart, delete, non-admin refusals), `TSTPTN`, `TSTSPL`; the trace of
   a deleted partner is gone from the slot a new one takes (by hand,
-  console). **Not measured**: the ISPF panels and `OFTPI` (built,
-  nothing drives them; `test/tso/` has no script for them yet).
+  console). The ISPF panels and `OFTPI`:
+  `test/tso/ispf.lua` drives new (blank and taken Odette ID, a name that
+  exists), M, X, E, an unknown line command, D (refused 513 and 512,
+  then done) over TN3270 (TK5 container, 2026-10-20). Not measured: the
+  dialog as a user without ADMIN=.
   Review follow-up (#113, container, 2026-10-20): `DELETE` and `REFRESH`
   walk the spool outside the monitor lock (they held it 4 to 9 s at 3000
   records, about 1.4 to 2.4 ms a record); a session set-up during a
@@ -339,8 +348,8 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   Measured (container, 2026-10-21): `TSTPTM` A 69/69, P1 11/11, P2 4/4,
   B 13/13, C 10/10; before the change A 66/69 and C 8/10 (the new
   checks). The ISPF partner editor takes any `2xx` as done (it read RC 0 only,
-  so a `210` left it in the entry panel); changed by reading, **not
-  driven**: nothing in `test/` runs the dialog.
+  so a `210` left it in the entry panel); changed by reading; the
+  script above has no check for the `210` case.
 - Books ML09-0001 (User's Guide) and ML09-0002 (Reference): ~~skeleton
   and CI~~ -- #64 (`docs/books`, `books.yml`); ~~chapters, the message
   reference with its check~~ -- #63, for the state of `main`, partner
@@ -362,6 +371,13 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   the same output as on 2.23.0. `TSTSCH` fails 8 of 32 assertions on
   MVS/CE with 2.23.0 and with 2.24.1 alike, so the bump did not cause it
   (the test reads the zone through `localtime_r()`); not yet understood.
+- ~~#60: how long a request takes over the SVC~~ -- measured in a
+  container 2026-10-20 (`internals/xmem.md` section 18): `STATUS`,
+  `SHOW`, `DELETE` 1-5 ms idle and under 100 ms loaded, `SEND` 27-143 ms
+  by spool size, `LIST` over a second from about 150 transfers idle and
+  from 50 loaded. Cause (every piece scans the whole spool again) and
+  the fix are #101; a batch OFTPD needs `TIME=1440` (sample updated).
+- #101: `LIST` is quadratic in the number of transfers.
 
 ## After the MVP
 
