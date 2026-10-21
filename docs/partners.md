@@ -56,7 +56,8 @@ host name included) are upper case. `SHOW` never prints a password: it says
 `SHOW` prints `-` for `OURID` and `ADDRESS` to a caller who is not named in
 `ADMIN=`; the line keeps its shape. An administrator sees both. This is
 defence in depth, not confidentiality: `ODETTEID`, `HOST`, `PORT`, the
-status and `PASSWORD=SET` or `NONE` stay visible to everyone. Only `PARTNER
+status and `PASSWORD` and `OURPASSWORD` (`SET` or `NONE`) stay visible to
+everyone. Only `PARTNER
 SHOW` is masked. The display of a transfer (`OFTP SHOW` of a key, its `from
 ... to ...` line) shows whoever may see that transfer the Odette IDs the
 transfer carries, the local one included.
@@ -94,9 +95,17 @@ partner DOCPTN added, but it has no PASSWORD
 
 The warning is no refusal: the partner is added or changed. OFTPD answers
 with the code `210` where it would answer `200`, and the batch `OFTP` step
-ends with RC 4. If the entry has an `ADDRESS`, the warning line reads
-`WARNING: without a PASSWORD every peer calling from the ADDRESS of the
-partner that knows the Odette ID can log on`.
+ends with RC 4. The warning has two texts. It says what the partner
+allows: with no `ADDRESS` in the entry any peer that knows the Odette ID,
+with an `ADDRESS` only a peer that calls from that address, because the
+address check still applies. The `210` line is the same in both cases.
+
+```
+no ADDRESS:  100 WARNING: without a PASSWORD every peer that knows the Odette ID of the partner can log on
+ADDRESS set: 100 WARNING: without a PASSWORD every peer calling from the ADDRESS of the partner that knows the Odette ID can log on
+```
+
+(`OFTP` prints the text after the code, as in the example above.)
 
 There is no warning when the partner has a `PASSWORD` after the command
 (`CHANGE ... PASSWORD(...)` answers a plain `partner DOCPTN changed`, RC 0),
@@ -162,6 +171,8 @@ the message line of the partner list. Any `2xx` answer counts as taken,
 `210` included (`partner PARTNER2 added, but it has no PASSWORD`). The
 dialog shows only that last line, not the `WARNING:` line before it. The
 line commands `E` and `X` show their answer in the same place. A refusal
-keeps the entry panel open.
+keeps the entry panel open. So does an answer that ends before its last
+line (`incomplete answer from OFTPD`): it carries no code, and the entry
+panel is not left on it.
 
 The panels are made for the 43-row screen (`docs/installation.md`, "What you need").
