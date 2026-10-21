@@ -51,7 +51,8 @@ reset(void)
 static long
 at(int h, int m, int s)
 {
-    struct tm tm;
+    struct tm tm, l;
+    time_t t;
 
     memset(&tm, 0, sizeof(tm));
     tm.tm_year = 126;
@@ -61,7 +62,13 @@ at(int h, int m, int s)
     tm.tm_min = m;
     tm.tm_sec = s;
     tm.tm_isdst = -1;
-    return (long)mktime(&tm);
+    t = mktime(&tm);
+    /* The record is stamped with localtime(), so the epoch must be one
+    ** whose localtime() is h:m:s. libc370's mktime() reads the struct as
+    ** UTC, so on MVS it is off by the zone: shift by what localtime() adds
+    ** (0 on the host). */
+    localtime_r(&t, &l);
+    return (long)t - ((long)mktime(&l) - (long)t);
 }
 
 static int
