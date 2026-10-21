@@ -197,3 +197,21 @@ do not use the console or the log.
 | `OFTP002E` | `UNKNOWN COMMAND <word>` |
 | `OFTP003E` | `COMMAND TOO LONG` / `OPERAND TOO LONG` |
 | `OFTP010E` | the reply of OFTPD to a request that failed |
+
+## Replies to a partner command
+
+OFTPD answers a request from a utility with lines that begin with a three
+digit code. `OFTP` prints the text after the code; the code decides the RC
+of the batch step. The reply to `PARTNER ADD` and `PARTNER CHANGE` (`ENABLE`
+and `DISABLE` are a `CHANGE`) has no message id. Besides the refusals
+(`docs/partners.md`, "What is refused") it is one of these.
+
+| Code | Text | RC |
+|---|---|---|
+| `200` | `partner <name> added` / `changed` / `unchanged` | 0 |
+| `210` | `partner <name> added` / `changed`, `but it has no PASSWORD`, after a line `WARNING: without a PASSWORD every peer that knows the Odette ID of the partner can log on` (with an `ADDRESS` in the entry: `... every peer calling from the ADDRESS of the partner that knows the Odette ID can log on`) | 4 |
+
+`210` means the partner is added or changed and enabled, and has no
+`PASSWORD` (`docs/partners.md`, "A partner without a PASSWORD"). It is a
+warning, not a refusal. The console messages `OFTP243I` and `OFTP244I` are
+written as for an ordinary add or change.
