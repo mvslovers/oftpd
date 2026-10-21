@@ -264,37 +264,37 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   connect() and closesocket() through DYN75) -- moot, the port is gone
   (#32). How long a dialog request takes over the SVC is not measured.
 
-- ~~Spool housekeeping~~ (from rvsMVS's cleanup job): `KEEPDAYS=n`
+- ~~Spool housekeeping~~ (from The Other's cleanup job): `KEEPDAYS=n`
   (default 7) deletes finished transfers once a day, `PURGE [DAYS(n)]`
   and `F OFTPD,PURGE [n]` on request (design 3.3.1). Measured in two
   MVS/CE containers and `TSTSPL` 27/27; the daily run itself deleting
   transfers really older than `KEEPDAYS` is observed too (#59,
   2026-10-20, `TSTKEEP`, design 3.3.1). Later: purge by partner or name,
   a spool backup job.
-- ~~HOLD/RELEASE per partner~~ (rvsMVS `H-ALL`/`S-sid`): `HOLD|RELEASE
+- ~~HOLD/RELEASE per partner~~ (The Other `H-ALL`/`S-sid`): `HOLD|RELEASE
   PARTNER(name|*) [VFN(prefix*)]` from the utility (what the caller may
   change) and `F OFTPD,HOLD|RELEASE name|ALL`; the changes and the
   single-key HOLD/RELEASE/RETRY are conditional puts now
   (`oftp_spl_putif()`). Measured in an MVS/CE container, `TSTSPL` 33/33.
   Still open from design 8: `STOP partner`, the three stop
-  strengths, and rvs `C-sid` (cancel the running transfer into HELD).
+  strengths, and the other's `C-sid` (cancel the running transfer into HELD).
   The session's own claim (`claim_out`) is still a plain get and put.
-- ~~Delete after EERP~~ (rvs `DISP=DELETE`): `SEND ... DISP(DELETE)`,
+- ~~Delete after EERP~~ (the other's `DISP=DELETE`): `SEND ... DISP(DELETE)`,
   over the SVC, ALTER checked at queue time, the data set deleted when the
   EERP arrives (design 3.2). Measured between two MVS/CE containers; the
   NERP case (source kept) and an ALTER refusal are read, not run. Later:
-  `DISP=COPY`, and rvs's rename of the source at queue time.
-- ~~Earliest start and a sending window~~ (rvs `STRTDATE`/`STRTTIME`/
+  `DISP=COPY`, and the other's rename of the source at queue time.
+- ~~Earliest start and a sending window~~ (the other's `STRTDATE`/`STRTTIME`/
   `SENDWIN`): measured between two MVS/CE containers (a send due at 17:03
   was called at 17:03:02, not before); `TSTSCH` 32/32. libc370#392
-  (`mktime()` ignores the zone) is worked around. Later from rvs: a
+  (`mktime()` ignores the zone) is worked around. Later from The Other: a
   deadline (`ENDDATE`/`ENDTIME`) and `ERRJOB`.
 - ~~Receive rules, names and REPLACE~~ (#44, `internals/receive-rules.md`
   sections 6 and 7): member `OFTPRCV0`, first match wins, `DSN=` symbols,
   `REPLACE=Y` by renaming the old data set aside, unit/volume/space/XLATE;
   measured between two OFTPDs in a container (`TSTRCVM`). Open from it:
   ~~the job after receipt~~ (#45, `JOB=`, section 8 of the same file; not
-  built: `?QDATE ?QTIME` and the other rvs date symbols, a job after a
+  built: `?QDATE ?QTIME` and the rest of The Other's date symbols, a job after a
   send, `ERRJOB=`; open: libc370's `rread()` cannot tell a read error from
   the end of the member, so the record count of the second pass catches
   only a read that fails differently from the first), `TO=` forwarding, GDG, SYSOUT, tape; security review fixes (first qualifier fixed, `%CTR`,
@@ -323,9 +323,27 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   walk the spool outside the monitor lock (they held it 4 to 9 s at 3000
   records, about 1.4 to 2.4 ms a record); a session set-up during a
   `DELETE` walk waited 6.1 s before, 80 ms (the idle figure) after.
-  `TSTPTM` A 61/61, P1/P2/B/C unchanged, `TSTTAKE` 9/9. Still open:
-  `PASSWORD` empty means an open partner, and `PARTNER SHOW` shows
-  ADDRESS and OURID to every user (both waiting for a decision).
+  `TSTPTM` A 61/61, P1/P2/B/C unchanged, `TSTTAKE` 9/9.
+  ~~`PASSWORD` empty means an open partner~~ (#129): still allowed;
+  `PARTNER ADD`/`CHANGE` of an enabled partner that ends up without a
+  `PASSWORD` answers `210` plus a `100 WARNING` row (batch RC 4). A
+  partner from `OFTPPTN` without `PASSWORD` is open the same way and
+  gets no warning (the member is not a command).
+  Review follow-up (#136): the warning says so when the partner has an
+  `ADDRESS` (the peer must still call from it); an answer the client
+  reads as incomplete no longer leaves the code of its last line in
+  `*code`. Still open: an `OFTPPTN` partner without `PASSWORD` gets
+  neither message nor refusal at load (needs a decision).
+  ~~`PARTNER SHOW` shows ADDRESS and OURID to every user~~ (#129): for
+  a caller without `ADMIN=` both print `-`, the line keeps its shape.
+  Measured (container, 2026-10-21): `TSTPTM` A 69/69, P1 11/11, P2 4/4,
+  B 13/13, C 10/10; before the change A 66/69 and C 8/10 (the new
+  checks). The ISPF partner editor takes any `2xx` as done (it read RC 0 only,
+  so a `210` left it in the entry panel); changed by reading, **not
+  driven**: nothing in `test/` runs the dialog.
+- Books ML09-0001 (User's Guide) and ML09-0002 (Reference): ~~skeleton
+  and CI~~ -- #64 (`docs/books`, `books.yml`); the chapters are still to be
+  written, each one says so.
 - ~~GitHub repository, CI~~ — `mvslovers/oftpd` (2026-10-13).
 
 - ~~#13: about 520 bytes per session abend~~ -- libc370's `try()`
@@ -359,5 +377,5 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 
 - ~~Product name~~ — OFTPD, repo `oftpd` (2026-10-13).
 - FMID prefix `TOFT` (check `LIST CDS/ACDS SYSMOD(TOFT010)` on MVS/CE
-  and TK5, with job numbers); book area (ML09 is the next free one);
+  and TK5, with job numbers); ~~book area~~ (ML09, approved);
   rows in the root `CLAUDE.md`.

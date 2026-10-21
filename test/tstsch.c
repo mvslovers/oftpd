@@ -1,4 +1,4 @@
-/* TSTSCH - earliest start and the sending window of a send (rvs STRTTIME,
+/* TSTSCH - earliest start and the sending window of a send (the other STRTTIME,
 ** STRTDATE, SENDWIN) */
 #include <stdio.h>
 #include <string.h>

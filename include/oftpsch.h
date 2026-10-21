@@ -3,7 +3,7 @@
 
 /* oftpsch.h - when a send may start (src/oftp#sch.c, portable)
 **
-** After rvsMVS's STRTDATE, STRTTIME and SENDWIN (User Manual A.2 #26-28):
+** After The Other's STRTDATE, STRTTIME and SENDWIN:
 **   STRTDATE  "*" or "" today, "*+n" n days on (0-9), "ddd" that day of
 **             the year (001-366), next year when it is before today
 **   STRTTIME  "*" or "" the time of now, "hh:mm" 00:00-23:59

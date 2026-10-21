@@ -332,7 +332,7 @@ command(int argc, char **argv, FILE *out)
         fprintf(out, "OFTP003E COMMAND TOO LONG\n");
         return 8;
     }
-    rc = oftp_cli_request(req, show, out, final, sizeof(final));
+    rc = oftp_cli_request(req, show, out, final, sizeof(final), NULL);
     if (rc == 12)
         fprintf(out, "OFTP010E %s\n", final);
     else
