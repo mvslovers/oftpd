@@ -14,10 +14,10 @@
 //* library can switch security off. So: put TSTSEC in a library of its
 //* own (the one `mbt test --mvs` deploys to) and let the program ask for
 //* authorization through SVC 244 as OFTPD does (TK5 with RAKF: the way
-//* it was measured). An APF-authorized library was not tried: the
-//* module has writable data, which mbt warns would be key-0 storage
-//* when fetched that way. Never put it in LNKLST, SYS2.LINKLIB or any
-//* library of a stand. An ESTAE puts CVTRAC back after an abend or a
+//* it was measured). It also ran from an APF-authorized library (13/13,
+//* 14/14, no S0C4 on TK5); `mbt module-data` keeps warning, as it does
+//* for every ac = 1 test module. Never put it in LNKLST, SYS2.LINKLIB or
+//* any library of a stand. An ESTAE puts CVTRAC back after an abend or a
 //* CANCEL; the call has no timeout, so a hang nobody cancels leaves it
 //* cleared until the next IPL.
 //*
