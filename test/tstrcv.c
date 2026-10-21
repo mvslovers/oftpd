@@ -78,6 +78,52 @@ named(const char *rule, const char *vfn)
     return out;
 }
 
+/* The member as shipped in OFTPD.SAMPLIB: all comments, so no rules; and
+** its examples, comment marker removed, are rules that load and that each
+** win for a file the example is meant for.
+*/
+static void
+sample(void)
+{
+    static char text[200][100];
+    static const char *all[201], *ex[201];
+    FILE *f = fopen("samplib/oftprcv0", "r");
+    int n = 0, first = -1, nex = 0, i;
+
+    CHECK(f != NULL, "samplib/oftprcv0 can be read");
+    if (f == NULL)
+        return;
+    while (n < 200 && fgets(text[n], sizeof(text[n]), f) != NULL) {
+        text[n][strcspn(text[n], "\r\n")] = '\0';
+        if (strncmp(text[n], "* Examples", 10) == 0)
+            first = n;
+        all[n] = text[n];
+        n++;
+    }
+    fclose(f);
+    all[n] = NULL;
+
+    partners();
+    CHECK_EQ(load(all), 0, "the sample member loads without errors");
+    CHECK_EQ(rs.n, 0, "and holds no rule: it changes nothing as shipped");
+
+    CHECK(first >= 0, "the sample has examples");
+    for (i = first; first >= 0 && i < n; i++)
+        if (strncmp(text[i], "* RULE=", 7) == 0
+            || (nex > 0 && strncmp(text[i], "*  ", 3) == 0))
+            ex[nex++] = text[i] + 1;
+    ex[nex] = NULL;
+    CHECK_EQ(load(ex), 0, "the examples load without errors");
+    CHECK_EQ(msgs, 0, "and say nothing");
+    CHECK_EQ(rs.n, 3, "three examples");
+    CHECK(strcmp(rule_for("PARTNER1", "ORDERS.URGENT"), "URGENT") == 0,
+          "ORDERS.URGENT from PARTNER1 is taken by the narrow rule");
+    CHECK(strcmp(rule_for("PARTNER1", "ORDERS.1"), "ORDERS") == 0,
+          "any other ORDERS.* by the wide one");
+    CHECK(strcmp(rule_for("PARTNER2", "INV12345.DATA"), "INVOICE") == 0,
+          "INV?????.DATA from anyone by INVOICE");
+}
+
 int
 main(void)
 {
@@ -270,5 +316,6 @@ main(void)
         nx.arrival = "2026";
         CHECK_EQ(oftp_rcv_name(&rs.r[1], &nx, out), -1, "a short arrival time is refused too");
     }
+    sample();
     return mbt_test_summary("TSTRCV");
 }
