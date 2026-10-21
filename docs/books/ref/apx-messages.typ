@@ -26,9 +26,11 @@ written to the console only, because they come before the log is open or
 report a failure of the log. Whenever the log is not open or has failed, the
 messages that would go to the log go to the console.
 
-The messages #cmd("OFTP001E"), #cmd("OFTP002E"), #cmd("OFTP003E") and
-#cmd("OFTP010E") come from the #cmd("OFTP") utility and are written to its
-output, not to the console.
+The messages #cmd("OFTP001E"), #cmd("OFTP002E"), #cmd("OFTP003E"),
+#cmd("OFTP004E"), #cmd("OFTP007E") and #cmd("OFTP010E") come from the
+#cmd("OFTP") utility and are written to its output, not to the console.
+Except for #cmd("OFTP010E"), they are found before OFTPD is asked, and the
+return code is 8.
 
 An entry shows the message as OFTPD writes it. Words in lower case, such as
 #var("name") or #var("n"), stand for text that OFTPD fills in. The

@@ -51,6 +51,25 @@ and `ENABLED`. `KEYWORD=VALUE` works as well as `KEYWORD(VALUE)`. `CHANGE`
 alters only what you name. A keyword that is none, or a value that does not
 fit, is refused (return code 8) and nothing is changed.
 
+A word of more than 99 characters is never cut. In a line of `OFTPPTN` it
+is refused with `OFTP010W OFTPPTN: line n: a word is longer than 99
+characters`, and the partner entry being read is disabled. `OFTP` does not
+get that far: it refuses an operand much earlier (`OFTP003E`, below).
+
+Write every value after `=` or in parentheses. A word without one, such as
+`PARTNER CHANGE ACME OURPASS`, is refused by `OFTP` itself, before OFTPD
+sees it, with return code 8:
+
+```
+OFTP007E OPERAND 2 HAS NO VALUE: WRITE KEYWORD(VALUE)
+```
+
+The number is the place of the word, counted from the first word after
+`PARTNER CHANGE`. The message never shows the word, because it may be a
+password. `XLATE` alone is taken as `XLATE(Y)`. An operand whose value is
+longer than 79 characters is refused with `OFTP003E OPERAND TOO LONG:` and
+its keyword, again never the value (message reference, `docs/books/ref`).
+
 OFTPD reads every request in upper case, so values (passwords and the
 host name included) are upper case. `SHOW` never prints a password: it says
 `PASSWORD=SET` or `NONE`. To change a password, give the new one. To clear a host, an address or a
@@ -66,8 +85,17 @@ Only `PARTNER SHOW` is masked. The display of a transfer (`OFTP SHOW` of a
 key, its `from ... to ...` line) shows whoever may see that transfer the
 Odette IDs the transfer carries, the local one included.
 
-**A password is as secret as the place you type it.** `OFTP` masks it in
-the echo of `SYSIN`, but it is in your JCL, and under TSO it is on your
+**A password is as secret as the place you type it.** In batch `OFTP`
+echoes each command of `SYSIN` to `SYSPRINT` and prints the value after
+`PASSWORD` and after `OURPASSWORD` as eight stars (`PASSWORD(********)`),
+whatever its length. It does so in every way the command can be written:
+`PASSWORD(x)`, `PASSWORD=x`, `PASSWORD('x y')`, and with blanks between the
+keyword and the value (`PASSWORD x`, `PASSWORD (x)`, `PASSWORD = x`). The
+echo looks for the text `PASSWORD` in any case and anywhere in the line,
+so a keyword that ends in it is masked as well. A `PASSWORD` that stands
+alone masks the word after it, whatever that word is. The echo is cut into
+lines of at most 72 columns; a line that goes on ends in ` -`, as it does in
+`SYSIN`. But the password is in your JCL, and under TSO it is on your
 terminal and in your session's history. Keep the JCL in a data set only you
 can read.
 
@@ -79,6 +107,10 @@ it (measured on MVS/CE; not on TK5). Until OFTPD has copied the request,
 any program on the system could therefore read the password. That window
 is short, but it is there; it is a limit of the way the utilities reach
 OFTPD, not something a setting closes.
+A request that nobody takes, or an answer that nobody collects, stays in
+the slot until its caller leaves or the slot is freed. Whenever a slot is
+freed, its request and its answer are erased first, and when OFTPD stops
+it erases every slot.
 
 ### A partner without a PASSWORD
 
@@ -143,7 +175,7 @@ OFTPD not reached. An answer with return code 12 is printed after
 
 | Request | Text shown | Return code |
 |---|---|---|
-| any change by a userid not in `ADMIN=` | `needs ADMIN= ...` | 8 |
+| any change by a userid not in `ADMIN=` | `needs ADMIN= in OFTPPRM` | 8 |
 | `PARTNER=` missing, longer than 8, or with a character that is not a letter, digit, `#`, `@`, `$`, `_` or `-` | `PARTNER= is a name of 1 to 8 letters, digits, # @ $ _ -` | 8 |
 | `ADD` of a name that exists | `partner exists: use CHANGE` | 8 |
 | `ADD` when the table holds 32 partners | `the partner table is full` | 8 |
@@ -156,6 +188,7 @@ OFTPD not reached. An answer with return code 12 is printed after
 | `DELETE` of a partner that another partner is reached through | `partner X is reached through it` | 8 |
 | `DELETE` of a partner that is only in `OFTPPTN` | `the partner is in OFTPPTN: remove it there, then REFRESH` | 8 |
 | `DELETE` while the spool holds a transfer for, to or from it | `n transfers name partner NAME: PURGE or DELETE them first`, with ` (disabled)` directly after the name when this `DELETE` disabled it | 8 |
+| `DELETE` when the partner changed while OFTPD looked through the spool | `the partner was changed meanwhile, try again` | 4 |
 | any request that gets past the userid and the name check, when OFTPD cannot use its spool | `spool not available` | 4 |
 | `SEND` to a disabled partner | `OFTP010E unknown or disabled partner` | 12 |
 | `ADD`, `CHANGE` or `ENABLE` that changes an entry and leaves the enabled partner without `PASSWORD` | **taken**: `partner NAME added, but it has no PASSWORD` (or `changed, ...`), after the warning line | 4 |
@@ -173,6 +206,14 @@ queued while you decide, and then refuses with the number of transfers it
 found. Delete or `PURGE` those transfers (`OFTP LIST PARTNER(name)`,
 `OFTP DELETE key`, `OFTP PURGE DAYS(0)`), then `DELETE` the partner again.
 Disabling a partner keeps its queue; enable it to carry on.
+
+OFTPD looks through the spool without holding up the sessions of other
+partners. If the partner changes meanwhile (a session or a call starts,
+someone enables it, another partner is now reached through it, or the entry
+is a different one), `DELETE` deletes nothing and answers `the partner was
+changed meanwhile, try again` (return code 4). A partner that this `DELETE`
+disabled stays disabled, and the refusal does not enable it again. Give the
+command again.
 
 OFTPD writes the console messages `OFTP243I` (added), `OFTP244I` (changed)
 and `OFTP245I` (deleted) with the userid, and at start `OFTP018I` with the
