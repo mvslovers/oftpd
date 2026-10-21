@@ -94,5 +94,20 @@ main(void)
         CHECK_EQ(code, 200, "with its code");
     }
 
+    /* an answer that does not end as one carries no code: a caller that
+    ** decides on code / 100 == 2 must not take it for success (#136)
+    */
+    {
+        int code = -1;
+
+        CHECK_EQ(oftp_cli_piece("200 ok\n100 late\n", 17, NULL, NULL, final,
+                                80, &code), -2, "a final line with a tail");
+        CHECK_EQ(oftp_cli_broken(final, 80, &code), 12, "is RC 12");
+        CHECK_EQ(code, 0, "with no code");
+        CHECK(strcmp(final, "incomplete answer from OFTPD") == 0,
+              "and its text");
+        CHECK_EQ(oftp_cli_broken(final, 80, NULL), 12, "no code wanted: RC 12");
+    }
+
     return mbt_test_summary("TSTREP");
 }

@@ -241,8 +241,18 @@ phase_a(const char *host, const char *port, const char *dsn)
           "ADD of an enabled partner without PASSWORD says so");
     CHECK(show_of(NAME "W", "PASSWORD=NONE") && show_of(NAME "W", "ENABLED=Y"),
           "and it is added: the warning is no refusal");
+    CHECK(find("100 ", "ADDRESS") == NULL,
+          "the warning does not speak of an address the partner has not");
     CHECK(answers("PARTNER CHANGE PARTNER=" NAME "W PORT=2", "210"),
           "a CHANGE that leaves it without PASSWORD says so again");
+    /* with an ADDRESS the peer must still call from it (#136) */
+    CHECK(answers("PARTNER CHANGE PARTNER=" NAME "W ADDRESS=192.0.2.9", "210")
+          && find("100 ", "calling from the ADDRESS") != NULL
+          && find("100 ", "every peer that knows") == NULL,
+          "with an ADDRESS the warning says the peer must call from it");
+    CHECK(answers("PARTNER CHANGE PARTNER=" NAME "W ADDRESS()", "210")
+          && find("100 ", "every peer that knows") != NULL,
+          "and without it again, the plain warning");
     CHECK(answers("PARTNER CHANGE PARTNER=" NAME "W PASSWORD=SECRETW", "200")
           && strstr(reply, "WARNING") == NULL && strstr(reply, "SECRETW") == NULL,
           "with a PASSWORD set there is no warning");
