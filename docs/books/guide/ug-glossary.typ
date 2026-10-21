@@ -39,12 +39,21 @@ This glossary defines the terms of OFTPD and of OFTP as this book uses them.
   [partner], [A system that exchanges files with OFTPD, described by an entry in
     the partner table.],
   [partner table], [The member #cmd("OFTPPTN"), which describes the partners.],
+  [reason code], [The two-digit number with which a refusal says why, for
+    example 01 for a file name that is not valid, 12 for a failure of the access
+    method, and 13 for a file that is already there.],
   [receipt], [The answer of the receiving side that says it has a file (an EERP)
     or has refused it (a NERP).],
+  [receive rule], [A rule in the member #cmd("OFTPRCV") that says how files from
+    certain partners are named, whether they replace an existing data set, and
+    how they are allocated.],
   [session], [A connection between two systems, in which the two sides identify
     themselves and then exchange files and receipts.],
   [settings], [The member #cmd("OFTPPRM"), which describes the system on which
     OFTPD runs and the limits of the monitor.],
+  [SFID, SFNA], [The start-file command, with which a sender announces a file,
+    and the negative answer to it, with which the receiver refuses the file and
+    says whether to try again. The end-file negative answer is the EFNA.],
   [spool], [The VSAM data set in which the monitor keeps one record for every
     transfer, and the state of each.],
   [SVC], [The supervisor call that the installation reserves for OFTPD. The
