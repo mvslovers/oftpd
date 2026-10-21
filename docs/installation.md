@@ -58,7 +58,8 @@ REST API).
 
 ## 3. Allocate and install
 
-1. Submit `oftpd-<v>-alloc.jcl` once. It allocates `OFTPD.LINKLIB` and
+1. Submit `oftpd-<v>-alloc.jcl` once (not on an upgrade from 0.1.0, see
+   "Upgrading"). It allocates `OFTPD.LINKLIB` and
    `OFTPD.AOFTPLOD`; edit `UNIT=` or add a `VOL=SER=` if `SYSDA` is not
    what you want.
 2. In `oftpd-<v>-inst.jcl`, replace the three `CHANGE.ME...` names with
@@ -411,7 +412,10 @@ partner table (`docs/partners.md`).
 
 **From 0.1.0:** `TOFT100` deletes `TOFT010` (`++VER(Z038) DELETE(TOFT010)`),
 so the SYSMOD installs over the prerelease; step 1 above still applies to
-`TOFT100`. The TCP control port is gone. Remove `CONTROLPORT=` from
+`TOFT100`. Skip the allocation job: it allocates `OFTPD.LINKLIB` and
+`OFTPD.AOFTPLOD` with `DISP=(NEW,CATLG,DELETE)`, and the prerelease
+already created both, so a second run fails. Stop OFTPD, then run the
+install job. The TCP control port is gone. Remove `CONTROLPORT=` from
 `OFTPPRM0` (OFTPD reports it as an unknown keyword with `OFTP010W`) and add
 `SVC=237`, without which the utilities and the dialog cannot reach OFTPD at
 all.

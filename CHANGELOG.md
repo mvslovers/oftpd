@@ -71,6 +71,8 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   after a pause of 5 to 60 seconds that differs from one system to the
   next. Two systems that called each other at the same moment used to be
   refused by each other and retry in step.
+  Each session claims the file or the EERP it sends, so two sessions with
+  one partner never send the same one.
 - **Spool housekeeping.** Finished transfers (delivered, confirmed, rejected,
   failed) are deleted from the spool once a day after `KEEPDAYS` days
   (default 7, `0` keeps them for ever); `OFTP PURGE [DAYS(n)]` and
@@ -132,8 +134,6 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   seconds. It is recognised by its job now and its slot is freed.
 - An answer given while OFTPD was stopping was thrown away. It is delivered,
   and a request that was never served is told so.
-- Two sessions with the same partner could take the same file or send the
-  same EERP; each now claims what it sends.
 
 ## [0.1.0-dev] - 2026-10-13
 
