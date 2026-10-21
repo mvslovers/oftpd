@@ -57,8 +57,9 @@ host name included) are upper case. `SHOW` never prints a password: it says
 `ADMIN=`; the line keeps its shape. An administrator sees both. This is
 defence in depth, not confidentiality: `ODETTEID`, `HOST`, `PORT`, the
 status and `PASSWORD` and `OURPASSWORD` (`SET` or `NONE`) stay visible to
-everyone. Only `PARTNER
-SHOW` is masked. The display of a transfer (`OFTP SHOW` of a key, its `from
+everyone. `OURID` defaults to the local Odette ID, which `OFTP STATUS`
+shows to everyone, so the `-` hides only an `OURID` that differs from it.
+Only `PARTNER SHOW` is masked. The display of a transfer (`OFTP SHOW` of a key, its `from
 ... to ...` line) shows whoever may see that transfer the Odette IDs the
 transfer carries, the local one included.
 
@@ -81,6 +82,14 @@ send an empty password, so every peer that knows the Odette ID of the
 partner and sends an empty password logs on. A peer that sends a password is
 refused. With an `ADDRESS` in the entry the call must also come from that
 address (`OFTP201W` otherwise); without one it may come from anywhere.
+
+This holds in both directions. When OFTPD calls the partner, the partner's
+answer must carry an empty password too, so a partner that insists on a
+password while its entry has none fails the call. `PASSWORD` is what OFTPD
+expects, `OURPASSWORD` what it sends.
+
+A partner with `VIA` is never matched by its own Odette ID at log-on, so it
+cannot log on itself. For such a partner the warning below is only a hint.
 
 `ADD` and `CHANGE` warn when an enabled partner has no `PASSWORD` after the
 command. `ENABLE` is a `CHANGE` of `ENABLED`, so enabling a partner without
@@ -130,7 +139,7 @@ command. Check the member for entries without `PASSWORD`.
 | `DELETE` while a session with it runs | RC 4, try again |
 | `DELETE` while the spool holds a transfer for, to or from it | RC 8 |
 | `SEND` to a disabled partner | RC 12, "unknown or disabled partner" |
-| `ADD`, `CHANGE` or `ENABLE` that leaves an enabled partner without `PASSWORD` | RC 4, **taken** with a warning (reply `210`) |
+| `ADD`, `CHANGE` or `ENABLE` that changes an entry and leaves the enabled partner without `PASSWORD` | RC 4, **taken** with a warning (reply `210`) |
 
 RC 4 has two meanings: the request was not done and may be tried again, or
 it was done with a warning. The text of the last line says which.
@@ -170,9 +179,9 @@ When OFTPD takes the entry, the entry panel ends and the answer stands in
 the message line of the partner list. Any `2xx` answer counts as taken,
 `210` included (`partner PARTNER2 added, but it has no PASSWORD`). The
 dialog shows only that last line, not the `WARNING:` line before it. The
-line commands `E` and `X` show their answer in the same place. A refusal
-keeps the entry panel open. So does an answer that ends before its last
-line (`incomplete answer from OFTPD`): it carries no code, and the entry
-panel is not left on it.
+line commands `E` and `X` show their answer in the same place. Any answer
+that is not `2xx` keeps the entry panel open: a refusal, OFTPD busy or not
+reached, or an answer that ends before its last line (`incomplete answer
+from OFTPD`), which carries no code.
 
 The panels are made for the 43-row screen (`docs/installation.md`, "What you need").
