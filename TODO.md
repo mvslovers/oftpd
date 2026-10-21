@@ -336,6 +336,9 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   checks). The ISPF partner editor takes any `2xx` as done (it read RC 0 only,
   so a `210` left it in the entry panel); changed by reading, **not
   driven**: nothing in `test/` runs the dialog.
+- Books ML09-0001 (User's Guide) and ML09-0002 (Reference): ~~skeleton
+  and CI~~ -- #64 (`docs/books`, `books.yml`); the chapters are still to be
+  written, each one says so.
 - ~~GitHub repository, CI~~ — `mvslovers/oftpd` (2026-10-13).
 
 - ~~#13: about 520 bytes per session abend~~ -- libc370's `try()`
@@ -362,5 +365,5 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
 
 - ~~Product name~~ — OFTPD, repo `oftpd` (2026-10-13).
 - FMID prefix `TOFT` (check `LIST CDS/ACDS SYSMOD(TOFT010)` on MVS/CE
-  and TK5, with job numbers); book area (ML09 is the next free one);
+  and TK5, with job numbers); ~~book area~~ (ML09, approved);
   rows in the root `CLAUDE.md`.
