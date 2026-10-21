@@ -59,9 +59,9 @@ defence in depth, not confidentiality: `ODETTEID`, `HOST`, `PORT`, the
 status and `PASSWORD` and `OURPASSWORD` (`SET` or `NONE`) stay visible to
 everyone. `OURID` defaults to the local Odette ID, which `OFTP STATUS`
 shows to everyone, so the `-` hides only an `OURID` that differs from it.
-Only `PARTNER SHOW` is masked. The display of a transfer (`OFTP SHOW` of a key, its `from
-... to ...` line) shows whoever may see that transfer the Odette IDs the
-transfer carries, the local one included.
+Only `PARTNER SHOW` is masked. The display of a transfer (`OFTP SHOW` of a
+key, its `from ... to ...` line) shows whoever may see that transfer the
+Odette IDs the transfer carries, the local one included.
 
 **A password is as secret as the place you type it.** `OFTP` masks it in
 the echo of `SYSIN`, but it is in your JCL, and under TSO it is on your
