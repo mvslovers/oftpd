@@ -244,14 +244,20 @@ included, and `LIST MINE` lists them all. A `SEND` is not checked against
 a data set profile, since there is none. So on such a system give OFTPD
 only to people who may touch each other's transfers.
 
-`CALL`, `PURGE` and `REFRESH` need a userid in `ADMIN=` in either case.
-Without a security product there is no security environment and so no
-userid, and OFTPD refuses all three. `CALL` and `PURGE` are utility
-commands; the utility prints `needs ADMIN= in OFTPPRM` (RC 8). `REFRESH`
-is sent by the dialog only, after you edit the partner member (section 9).
-The operator's `F OFTPD,CALL`, `F OFTPD,PURGE` and `F OFTPD,REFRESH`
-(section 7) are not affected. `PURGE DAYS(0)` deletes every finished
-transfer, however recent.
+`CALL`, `PURGE`, `REFRESH` and the `PARTNER` commands that change the
+partner table (`ADD`, `CHANGE`, `ENABLE`, `DISABLE`, `DELETE`) need a userid
+in `ADMIN=` in either case. Without a security product there is no security
+environment and so no userid, and OFTPD refuses all of them. `CALL`, `PURGE`
+and the `PARTNER` commands come from the `OFTP` utility or from the ISPF
+dialog (its `C` line command on the partner list sends a `CALL`, its `M`,
+`E`, `X` and `D` the `PARTNER` commands); the utility prints
+`needs ADMIN= in OFTPPRM` (RC 8). `REFRESH` is sent by the dialog only,
+after you edit the partner member (section 9). `PARTNER LIST` and `SHOW`
+work for anyone. So on a system without a security product partners are
+maintained in one way only: edit `OFTPPTN0` and give the operator command
+`F OFTPD,REFRESH`. The operator's `F OFTPD,CALL`, `F OFTPD,PURGE` and
+`F OFTPD,REFRESH` (section 7) are not affected. `PURGE DAYS(0)` deletes
+every finished transfer, however recent.
 
 ## 9. The ISPF dialog
 
