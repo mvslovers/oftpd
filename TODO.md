@@ -129,8 +129,15 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   a resubmitted job of the same name included; ~~a caller woken by the stop is told "not reached"~~ -- it is
   told `OFTPD stopped before carrying out the request` now, and an
   answer given after the stop cleared ACTIVE is delivered instead of
-  being discarded (section 15); TK5, a cancelled TSO user and the
-  `TPROT`/`MVCK` race are not measured.
+  being discarded (section 15); ~~TK5, a cancelled TSO user and the
+  `TPROT`/`MVCK` race are not measured~~ -- measured in a TK5 container
+  (#52, section 17): a cancelled TSO user's slot is freed when the slot
+  thread reaches it (`OFTP064W`/`OFTP066W`), not at the cancel, and the
+  pool is whole; a reply buffer freed during the park takes the answer
+  without a program check (`TSTSVCR`). Open: a new TSO logon reusing the
+  same ASID and ASCB address before the slot thread reaches the slot,
+  the program-check outcome of the copy-out, and the request-side window
+  between `TPROT` and `MVCK` (analysed, not shown).
   **The utilities use it** (#22, `internals/xmem.md` section 13): no
   host means the SVC, no fallback to TCP; the caller's userid travels
   beside the request line, and `ADMIN=` in `OFTPPRM` decides who sees
