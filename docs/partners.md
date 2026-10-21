@@ -128,7 +128,10 @@ OFTPD, not something a setting closes.
 A request that nobody takes, or an answer that nobody collects, stays in
 the slot until its caller leaves or the slot is freed. Whenever a slot is
 freed, its request and its answer are erased first, and when OFTPD stops
-it erases every slot.
+it erases every slot, except when the stop cannot finish cleanly: if a
+caller is still inside OFTPD's routine after the 10-second drain
+(`OFTP037W ... CSA RETAINED`), or the SVC entry cannot be given back
+(`OFTP036W`), the slots stay as they are.
 
 ### A partner without a PASSWORD
 
