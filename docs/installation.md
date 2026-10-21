@@ -164,9 +164,8 @@ comments changes nothing.
 
 OFTPD itself does not need the `OFTPRCV` DD: without it there are no rules,
 and the start says nothing about it. It is in the sample procedure, which
-points it at the parmlib member (`R=OFTPRCV0`); there a member that is not in
-the parmlib is a JCL error and OFTPD does not start. So either copy
-`OFTPRCV0` to the parmlib or delete the DD from your copy of the procedure.
+points it at the parmlib member (`R=OFTPRCV0`). So either copy `OFTPRCV0` to
+the parmlib or delete the DD from your copy of the procedure.
 
 ```
 RULE=ORDERS  FROM=PARTNER1  VFN=ORDERS.*
@@ -226,8 +225,8 @@ new file is complete and closed, then the new one takes its name and the old
 one is deleted (`OFTP229I`). A file that fails on the way costs nothing. A
 data set that is in use makes the replace fail: the file is refused at the
 end (reason 12, `OFTP221E` or `OFTP226E`) and the old data set stays.
-`REPLACE=Y` works on a plain sequential data set only: if the name is a PDS,
-a VSAM cluster or a member, the file is refused (reason 12, `OFTP234W`) and
+`REPLACE=Y` works on a plain sequential data set only: if the name is a PDS
+or a VSAM cluster, the file is refused (reason 12, `OFTP234W`) and
 nothing is touched.
 
 While a replace is running, the old content is under the name
@@ -555,8 +554,7 @@ all.
 
 **The procedure:** the sample procedure now has an `OFTPRCV` DD for the
 receive rules (section 6). If you take the new procedure over your old one,
-copy `OFTPRCV0` to your parmlib first, or delete the DD from your copy;
-otherwise the start fails with a JCL error for the missing member.
+copy `OFTPRCV0` to your parmlib first, or delete the DD from your copy.
 
 ### On TK5
 

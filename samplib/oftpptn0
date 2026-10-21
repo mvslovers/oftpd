@@ -21,7 +21,9 @@
 * COMPRESS     Y: offer buffer compression                    (N)
 * CALL         N: never call it, only answer                  (Y)
 * ADDRESS      calls from it must come from this IP address    (-)
-* XLATE        Y: translate F, V and U data EBCDIC<->ASCII     (N)
+* XLATE        Y: translate F, V and U data EBCDIC<->ASCII
+*              of files received from it (a rule can override;
+*              SEND has its own XLATE operand)                (N)
 * ENABLED      N: refuse it and never call it                 (Y)
 * SESSIONS     sessions with it at once, 1-16, under MAXSESS;
 *              a call beyond it is refused with ESID 08       (1)
