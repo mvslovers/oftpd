@@ -180,6 +180,12 @@ extern int  oftp_svc_answer(OFTP_MON *m, unsigned i, const char *reply,
                                                         asm("OFTPSANS");
 extern void oftp_svc_sweep(OFTP_MON *m)                 asm("OFTPSSWP");
 
+/* oftp_svc_scrub() wipes the request and the reply of every slot. The
+** stop calls it before the anchor is freed; nothing may be inside the
+** routine by then.
+*/
+extern void oftp_svc_scrub(OFTP_MON *m)                 asm("OFTPSSCR");
+
 /* The slot thread itself lives with the request handlers, because
 ** that is all it does: take a request out of a slot, run the same
 ** ctl_* handlers every request goes through, write the answer back.
@@ -208,12 +214,20 @@ extern int  oftp_mon_load(OFTP_CONFIG *c, const char *dd, int partner)
 */
 extern int  oftp_mon_rules(OFTP_MON *m, int refresh)    asm("OFTPMRUL");
 
-/* Reads DD OFTPPTN again and merges it: partners are updated in place
-** and new ones appended; one no longer in the member is disabled, never
-** removed (a session may still use it). Returns the partners enabled, or
-** -1 when the member cannot be read.
+/* Reads DD OFTPPTN again and merges it (internals/design.md section 4).
+** Only the parmlib layer moves: a partner kept by command is not touched,
+** and wins over an OFTPPTN entry of its name. One no longer in the member
+** is removed when no session and no transfer in the spool names it, else
+** disabled. Returns the partners enabled, or -1 when the member cannot be
+** read.
 */
 extern int  oftp_mon_refresh(OFTP_MON *m)               asm("OFTPMRFR");
+
+/* At the start, once the spool is open: puts the partners kept by command
+** (the spool's P records) over the table read from OFTPPTN. Returns how
+** many were loaded, or -1 when the spool cannot be read.
+*/
+extern int  oftp_mon_maint(OFTP_MON *m)                 asm("OFTPMPTN");
 
 /* A MODIFY command's text */
 extern void oftp_mon_command(OFTP_MON *m, const char *cmd)

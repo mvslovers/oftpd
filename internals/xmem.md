@@ -1010,6 +1010,19 @@ So OFTPD decrements in exactly one place: after it has **won** a
 
 That is also why the stop posts parked slots and frees nothing: every
 wake-up of a parked slot takes `STOPDEC` and cleans up after itself.
+
+**Who wipes.** A request can carry a password (`PARTNER ... PASSWORD=`)
+and a reply can echo a line, so a slot that goes back to FREE is wiped,
+`req` and `reply` both, by whoever frees it: the routine at `RETREL` and
+`FREEDEC` (subroutine `WIPE`), and the sweep for a DONE slot it frees
+(`free_done()`: DONE to COPYOUT, wipe, FREE, then the decrement; the
+COPYOUT step keeps a new claimant out while the wipe runs). The
+`SWEPT` exit wipes nothing, since the slot is not ours. The sweep does
+not wipe a CLAIMED or COPYOUT slot it frees: a wipe before the `CS`
+could hit a new claimant. `oftp_svc_stop()` calls `oftp_svc_scrub()` as
+its last step before the FREEMAIN of the anchor, which wipes all four
+slots whatever their state. Measured by `TSTSVC` (step 8) and
+`TSTTAKE`.
 Until #34 the routine tested `ANCFLAG` before the state, and that
 discarded an answer: the stop clears ACTIVE before it joins the slot
 thread, so a request being served at that moment was carried out,
@@ -1453,8 +1466,10 @@ T0000044 there once and in order, and no sweep message on the console.
 **`TSTSVC`** (`tstsvc.jcl`, from the `TESTLIB`, not authorized, JOB00057):
 **34/34**, step 2b included. Step 2b proves the *client's* refusal: a
 request over `REQMAX` gets `BADREQ` from `oftp_svc_call()` without
-the SVC being issued, so the routine's own length check is still not
-exercised by any test.
+the SVC being issued, so the routine's own length check was not
+exercised by any test at the time of this run. It is since (#55):
+`TSTSVC` step 2c issues the SVC directly with declared lengths the
+routine must refuse (`test/mvs/tstsvc.c`); measured on MVS/CE only.
 
 **Negative control** after `P OFTPD` (JOB00059): `LIST` CC 12,
 `OFTP010E OFTPD not reached: not running, or without SVC=`.

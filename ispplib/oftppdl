@@ -1,0 +1,20 @@
+)ATTR
+ + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)   COLOR(GREEN)
+ % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)   COLOR(WHITE)
+ @ TYPE(OUTPUT) INTENS(HIGH) JUST(LEFT) CAPS(OFF) COLOR(WHITE)
+ ! TYPE(OUTPUT) INTENS(HIGH) JUST(LEFT) CAPS(OFF) COLOR(YELLOW)
+)BODY WIDTH(&ZSCREENW) EXPAND(//)
+%------------------------- OFTPD - Delete a Partner -/-/------------------------
++
++
+%  Partner  @OFTENAM +is deleted from the partner table of OFTPD.
++
++  Its definition, with the passwords, is gone for good. OFTPD refuses while
++  a transfer in the spool still names the partner, or a session runs; the
++  partner is disabled then. Remove transfers in the transfer list (D) or
++  with PURGE.
++
+!OFTMSG
++
++  Enter deletes the partner, END leaves it as it is.
+)END

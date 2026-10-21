@@ -114,6 +114,13 @@ time. Only spool entries are deleted, never data sets.
 The spool belongs to OFTPD alone: the utilities and the dialog never open
 it, they ask OFTPD.
 
+The spool also holds the partners kept by command (section 6), **with their
+passwords in clear text**, as `OFTPPTN` does. Protect the cluster and every
+backup or copy of it the way you protect `OFTPPTN`: only OFTPD's userid and
+the administrators may read it. If OFTPD cannot read the partner records at
+start it stops with `OFTP019E` instead of starting with the parmlib table
+alone, which could bring back a partner that was disabled by command.
+
 ## 6. Settings and partners
 
 Copy `OFTPD.SAMPLIB(OFTPPRM0)` and `(OFTPPTN0)` to `SYS2.PARMLIB` and edit
@@ -133,6 +140,11 @@ them. Each member describes its keywords at the top.
   `SESSIONS=n` lets up to n sessions with the partner run at once (1 by
   default); give both sides the same number, since a call beyond the
   other side's limit is refused and made again after a short pause.
+
+`OFTPPTN0` is the seed. Partners can also be added, changed, disabled and
+deleted while OFTPD runs, from the `OFTP` utility and the ISPF dialog,
+without a parmlib edit or a restart; OFTPD keeps those in its spool and
+the spool wins by name. `docs/partners.md` describes both.
 
 The sockets are the Hercules host's: `127.0.0.1` is the machine Hercules
 runs on, not MVS, and the OFTP port is opened there.
@@ -334,7 +346,8 @@ link list or in the logon procedure's `STEPLIB`, as in the `TSO` step of
 `OFTPBAT`.
 
 The commands are `SEND`, `LIST`, `SHOW`, `DELETE`, `HOLD`, `RELEASE`,
-`RETRY`, `CALL`, `PARTNERS` and `PURGE [DAYS(n)]`. `HOLD` and `RELEASE`
+`RETRY`, `CALL`, `PARTNERS`, `PARTNER` (maintaining the partner table,
+`docs/partners.md`) and `PURGE [DAYS(n)]`. `HOLD` and `RELEASE`
 take a transfer's key, or `PARTNER(name)` (`*` for all) and optionally
 `VFN(name)` or `VFN(prefix*)` for every send that matches and that you
 may change. `OFTP` needs no authorization of its own:
@@ -386,7 +399,8 @@ for example as an entry in a menu panel: a line for the option in the
 body, and `O,'CMD(OFTPI) NEWAPPL(OFTP)'` in its `TRANS` (replace `O` with
 the option you choose). The dialog reaches OFTPD the way `OFTP` does,
 through the SVC and with the same rules. Reading the partner member
-again after option 4 is for an administrator.
+again after option 4 is for an administrator. Option 3 maintains the
+partner table (`docs/partners.md`).
 
 ## Removing it
 

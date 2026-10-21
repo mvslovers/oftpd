@@ -529,8 +529,11 @@ SERVLP   LR    R4,R3
          BNE   RETREL
          L     R1,SLNEXT(,R7)      resume index for next call
 *---------------------------------------------------------------------*
-* Release our slot, then decrement in-flight last.
-RETREL   LA    R3,STFREE
+* Release our slot, then decrement in-flight last. Request and reply
+* are wiped first: the slot is readable from key 8, and once it is FREE
+* another caller may be writing into it.
+RETREL   BAL   R4,WIPE
+         LA    R3,STFREE
          ST    R3,SLSTATE(,R7)
          L     R3,ANCINFL(,R2)
 DECLP    LR    R4,R3
@@ -572,7 +575,8 @@ STOPDEC  LA    R15,RCSTOP
 WAKEDOWN LA    R15,RCDOWN
          SLR   R0,R0
          SLR   R1,R1
-FREEDEC  LA    R3,STFREE
+FREEDEC  BAL   R4,WIPE
+         LA    R3,STFREE
          ST    R3,SLSTATE(,R7)
          L     R3,ANCINFL(,R2)
 FDECLP   LR    R4,R3
@@ -620,6 +624,22 @@ BADREQ   LA    R15,RCBAD
          SLR   R0,R0
          SLR   R1,R1
          BR    R14
+*---------------------------------------------------------------------*
+* WIPE: clear the request and the reply of our slot (SLREQ up to the
+* end of the slot, nine pieces of 256 bytes). R7 = our slot, link R4.
+* Clobbers R3 only; R0, R1 and R15 carry the answer: not touched.
+WIPE     DS    0H
+         LA    R3,SLREQ(,R7)
+         XC    0(256,R3),0(R3)
+         XC    256(256,R3),256(R3)
+         XC    512(256,R3),512(R3)
+         XC    768(256,R3),768(R3)
+         XC    1024(256,R3),1024(R3)
+         XC    1280(256,R3),1280(R3)
+         XC    1536(256,R3),1536(R3)
+         XC    1792(256,R3),1792(R3)
+         XC    2048(256,R3),2048(R3)
+         BR    R4
 *---------------------------------------------------------------------*
 * MOVEOUT: R1 = length-1, R4 = caller destination, R5 = CSA source.
 * R9 and R12 are SPKA operands for caller key and entry PSW key.

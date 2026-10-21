@@ -88,14 +88,14 @@ extern void oftp_rcv_clear(OFTP_RULES *s)               asm("OFTPRCVC");
 
 /* One line of the member. Returns the number of errors in it. */
 extern int  oftp_rcv_line(OFTP_RULES *s, const char *text, int lineno,
-                          OFTP_CFGMSG msg, void *ctx)   asm("OFTPRCVL");
+                          OFTP_CFGMSG msg, const void *ctx)   asm("OFTPRCVL");
 
 /* After the last line: checks each rule (partner known, name unique,
 ** pattern well formed). Returns the errors in the whole member, those of
 ** the lines included; 0 means the set can be used.
 */
 extern int  oftp_rcv_finish(OFTP_RULES *s, const OFTP_CONFIG *c,
-                            OFTP_CFGMSG msg, void *ctx) asm("OFTPRCVF");
+                            OFTP_CFGMSG msg, const void *ctx) asm("OFTPRCVF");
 
 /* The first rule that matches, or NULL */
 extern const OFTP_RULE *oftp_rcv_match(const OFTP_RULES *s,

@@ -7,7 +7,7 @@ version = "0.1.0-dev"
 [toolchain]
 mbt = "3.0"
 cc370 = "1.6.1"
-libc370 = "2.23.0"   # try() frees the SDWA (libc370#640); rename() of long names (#590); KSDS inserts (#514)
+libc370 = "2.24.1"   # select() failure = ENOTSOCK (#161); key-0 window first fopen (#693); try() frees the SDWA (#640); KSDS inserts (#514)
 
 # No [dependencies] yet: nothing calls crypto370 or anything else.
 
@@ -62,8 +62,15 @@ reus = false
 [test.TSTVER]
 sources = ["test/tstver.c"]
 
+[test.TSTPTN]            # maintaining the partner table in memory
+sources = ["test/tstptn.c"]
+
 [test.TSTSESS]           # two engines joined by a socket pair; POSIX
 sources = ["test/tstsess.c"]
+mvs = false
+
+[test.TSTUTL]            # the OFTP utility's operands and SYSIN echo; POSIX
+sources = ["test/tstutl.c"]
 mvs = false
 
 [test.TSTKSDS]           # VSAM on MVS; runs for real only from test/mvs/tstksds.jcl
@@ -95,11 +102,25 @@ host = false
 # job still answered __isauth() == 0 until this line existed.
 ac = 1
 
+# What oftp_svc_take() leaves in a CSA request slot (#113). It switches
+# to key 0, so AC(1) and an authorized library, like TSTPROT; no OFTPD
+# needed. Runs for real only from test/mvs/tsttake.jcl (PARM='RUN').
+[test.TSTTAKE]
+sources = ["test/mvs/tsttake.c"]
+host = false
+ac = 1
+
 # The daily KEEPDAYS run on MVS (#59): seeds old and young finished
 # transfers into the spool of a stopped OFTPD, and reads it back after
 # OFTPD's first tick. Runs for real only from test/mvs/tstkeep.jcl.
 [test.TSTKEEP]
 sources = ["test/mvs/tstkeep.c"]
+host = false
+
+# Maintaining the partner table at run time against two RUNNING OFTPDs;
+# runs for real only from test/mvs/tstptm.jcl (PARM='RUN ...').
+[test.TSTPTM]
+sources = ["test/mvs/tstptm.c"]
 host = false
 
 # The cross-memory transport end to end: an unauthorized, problem-state

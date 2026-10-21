@@ -54,6 +54,9 @@ different messages share the number; each is listed.
 | `OFTP015W` | Console + log | `PARTNER <name> NOT ADDED, TABLE FULL` |
 | `OFTP016I` | Console + log | `PARTNERS RELOADED: n ENABLED, n NEW, n DISABLED`: the answer to `F OFTPD,REFRESH` |
 | `OFTP017E` | Console + log | `DD OFTPPTN CANNOT BE READ` (`F OFTPD,REFRESH`) |
+| `OFTP018I` | Console + log | `n PARTNERS KEPT BY COMMAND, n OVERRIDE OFTPPTN`: the partners added or changed by `PARTNER` commands (`docs/partners.md`), read from the spool at start |
+| `OFTP018W` | Console + log | a partner record of the spool was not taken (`HAS NO NAME`, `<reason>, IGNORED`, `IS KEPT BY COMMAND ALREADY`), two partners have one Odette ID (the second is `DISABLED`), or `THE PARTNER RECORDS OF THE SPOOL CANNOT BE READ` |
+| `OFTP019E` | Console + log | `PARTNER RECORDS OF THE SPOOL UNREADABLE, OFTPD NOT STARTED`: starting on the parmlib table alone would bring back a partner that was disabled or changed by command |
 | `OFTP020E` | Console + log | `SPOOL NOT OPEN: <reason>`; OFTPD ends |
 | `OFTP021W` | Console + log | `SPOOL WAS NOT CLOSED (OPEN RC n), VERIFIED`: OFTPD did not end cleanly last time; the spool was checked |
 | `OFTP022W` | Console + log | `DD OFTPLOG CANNOT BE OPENED` or `IS NOT RECFM=F OR FB`: the messages go to the console |
@@ -64,7 +67,7 @@ different messages share the number; each is listed.
 | `OFTP090E` | Console + log | `COM AREA NOT AVAILABLE`; OFTPD ends |
 | `OFTP091E` | Console + log | `NO STORAGE`; OFTPD ends |
 | `OFTP095I` | Console + log | `WAITING FOR n SESSIONS` at stop (every 10 seconds) |
-| `OFTP096W` | Console + log | `<who>: n SESSION SUBTASKS STILL RUNNING` when the stop gave up waiting |
+| `OFTP096W` | Console + log | `<who>: n SESSION SUBTASKS STILL RUNNING`: the stop has waited a minute or more for sessions (repeated every minute; it keeps waiting, the operator's CANCEL ends OFTPD) |
 | `OFTP098E` | Console + log | `OFTPD ABEND, n SOCKETS CLOSED, SVC <state>`: OFTPD abended; written even when the log is busy, then to the console only |
 
 ## Cross memory (the SVC)
@@ -114,6 +117,9 @@ These answer a command, so they stay on the console.
 | `OFTP235I` | Console + log | `n FINISHED TRANSFERS OLDER THAN n DAYS DELETED BY <who>`: after `F OFTPD,PURGE`, or the daily purge when it deleted something |
 | `OFTP236E` | Console + log | `SPOOL HOUSEKEEPING FAILED AFTER n, BY <who>` |
 | `OFTP237E` | Console + log | `<verb> OF <partner>: SPOOL NOT AVAILABLE` |
+| `OFTP243I` | Console + log | `PARTNER <name> ADDED BY <who>`: after `PARTNER ADD` (`docs/partners.md`) |
+| `OFTP244I` | Console + log | `PARTNER <name> CHANGED BY <who>`: after `PARTNER CHANGE`, `ENABLE` or `DISABLE` |
+| `OFTP245I` | Console + log | `PARTNER <name> DELETED BY <who>`: after `PARTNER DELETE` |
 
 ## Sessions and transfers
 

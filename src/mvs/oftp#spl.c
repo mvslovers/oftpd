@@ -29,14 +29,17 @@
 
 /* the struct must fit the fixed record */
 typedef char sprec_fits[sizeof(OFTP_SPREC) <= OFTP_SPLRECL ? 1 : -1];
+typedef char spptn_fits[sizeof(OFTP_SPPTN) == OFTP_SPLRECL ? 1 : -1];
 
-enum { OP_ADD, OP_GET, OP_PUT, OP_PUTIF, OP_DEL, OP_NEXT, OP_PURGE, OP_STOP };
+enum { OP_ADD, OP_GET, OP_PUT, OP_PUTIF, OP_DEL, OP_NEXT, OP_PURGE, OP_STOP,
+       OP_PNEXT, OP_PADD, OP_PPUT, OP_PDEL };
 
 typedef struct spl_req {
     struct spl_req *next;
     int         op;
     char        key[8];
-    OFTP_SPREC *rec;
+    void       *rec;                    /* OFTP_SPREC, or OFTP_SPPTN     */
+    size_t      len;                    /* what rec points to            */
     long        before;                 /* OP_PURGE                      */
     char        was;                    /* OP_PUTIF: the state expected  */
     unsigned    count;                  /* OP_PURGE: records deleted     */
@@ -112,15 +115,19 @@ do_add(OFTP_SPOOL *sp, OFTP_SPREC *rec)
     return 0;
 }
 
+/* The first record of kind (the first octet of its key) above key; ""
+** is the first of the kind. The walk ends at the first record of
+** another kind. Copies len octets of it into rec.
+*/
 static int
-do_next(OFTP_SPOOL *sp, const char *key, OFTP_SPREC *rec)
+next_of(OFTP_SPOOL *sp, char kind, const char *key, void *rec, size_t len)
 {
     char from[8];
     int n;
 
     if (key[0] == '\0') {
         memset(from, 0, sizeof(from));
-        from[0] = 'T';
+        from[0] = kind;
     } else
         memcpy(from, key, 8);
     vsclear(sp->vs);
@@ -134,12 +141,44 @@ do_next(OFTP_SPOOL *sp, const char *key, OFTP_SPREC *rec)
             vsclear(sp->vs);
             return n == -1 ? OFTP_SPL_NOTFOUND : OFTP_SPL_ERROR;
         }
-        if (sp->buf[0] != 'T')
+        if (sp->buf[0] != kind)
             return OFTP_SPL_NOTFOUND;
         if (key[0] == '\0' || memcmp(sp->buf, key, 8) > 0)
             break;
     }
-    memcpy(rec, sp->buf, sizeof(*rec));
+    memcpy(rec, sp->buf, len);
+    return 0;
+}
+
+static int
+do_next(OFTP_SPOOL *sp, const char *key, OFTP_SPREC *rec)
+{
+    return next_of(sp, 'T', key, rec, sizeof(*rec));
+}
+
+/* One above the highest 'P' key, and the record written under it */
+static int
+do_padd(OFTP_SPOOL *sp, OFTP_SPPTN *rec)
+{
+    OFTP_SPPTN p;
+    char last[8], num[12];
+    unsigned long no = 0;
+    int rc;
+
+    last[0] = '\0';
+    while ((rc = next_of(sp, 'P', last, &p, sizeof(p))) == 0) {
+        memcpy(last, p.key, 8);
+        no = strtoul(p.key + 1, NULL, 10);
+    }
+    if (rc != OFTP_SPL_NOTFOUND || no >= 9999999)
+        return OFTP_SPL_ERROR;
+    snprintf(num, sizeof(num), "P%07lu", no + 1);
+    memcpy(rec->key, num, 8);
+    vsclear(sp->vs);
+    if (vswrite(sp->vs, rec, OFTP_SPLRECL, rec->key, 8) != 0) {
+        vsclear(sp->vs);
+        return OFTP_SPL_ERROR;
+    }
     return 0;
 }
 
@@ -169,9 +208,34 @@ do_purge(OFTP_SPOOL *sp, long before, unsigned *count, OFTP_SPREC *rec)
     return rc == OFTP_SPL_NOTFOUND ? 0 : rc;
 }
 
+/* The transfer operations touch transfer records only: the 'P' records
+** hold partner data with passwords, and nothing a caller types as a key
+** may reach them or the control record. Partners have OP_PPUT/OP_PDEL.
+*/
+static int
+wrong_kind(const SPL_REQ *r)
+{
+    switch (r->op) {
+    case OP_GET:
+    case OP_PUT:
+    case OP_PUTIF:
+    case OP_DEL:
+        return r->key[0] != 'T';
+    case OP_PPUT:
+    case OP_PDEL:
+        return r->key[0] != 'P';
+    default:
+        return 0;
+    }
+}
+
 static void
 serve(OFTP_SPOOL *sp, SPL_REQ *r)
 {
+    if (wrong_kind(r)) {
+        r->rc = OFTP_SPL_NOTFOUND;
+        return;
+    }
 #ifdef OFTP_DEBUG_ABEND
     /* Test builds only (-DOFTP_DEBUG_ABEND), never shipped: a lookup of
     ** this key ends in an S0C4, to measure the recovery in spool_thread()
@@ -189,12 +253,13 @@ serve(OFTP_SPOOL *sp, SPL_REQ *r)
         break;
     case OP_GET:
         if ((r->rc = read_key(sp, r->key)) == 0)
-            memcpy(r->rec, sp->buf, sizeof(*r->rec));
+            memcpy(r->rec, sp->buf, r->len);
         break;
     case OP_PUT:
+    case OP_PPUT:
         if ((r->rc = read_key(sp, r->key)) == 0) {
             memset(sp->buf, 0, OFTP_SPLRECL);
-            memcpy(sp->buf, r->rec, sizeof(*r->rec));
+            memcpy(sp->buf, r->rec, r->len);
             if (vsupdate(sp->vs, sp->buf, OFTP_SPLRECL) != 0) {
                 vsclear(sp->vs);
                 r->rc = OFTP_SPL_ERROR;
@@ -208,7 +273,7 @@ serve(OFTP_SPOOL *sp, SPL_REQ *r)
                 break;
             }
             memset(sp->buf, 0, OFTP_SPLRECL);
-            memcpy(sp->buf, r->rec, sizeof(*r->rec));
+            memcpy(sp->buf, r->rec, r->len);
             if (vsupdate(sp->vs, sp->buf, OFTP_SPLRECL) != 0) {
                 vsclear(sp->vs);
                 r->rc = OFTP_SPL_ERROR;
@@ -216,6 +281,7 @@ serve(OFTP_SPOOL *sp, SPL_REQ *r)
         }
         break;
     case OP_DEL:
+    case OP_PDEL:
         if ((r->rc = read_key(sp, r->key)) == 0
             && vsdelete(sp->vs, sp->buf, OFTP_SPLRECL) != 0) {
             vsclear(sp->vs);
@@ -224,6 +290,12 @@ serve(OFTP_SPOOL *sp, SPL_REQ *r)
         break;
     case OP_NEXT:
         r->rc = do_next(sp, r->key, r->rec);
+        break;
+    case OP_PNEXT:
+        r->rc = next_of(sp, 'P', r->key, r->rec, r->len);
+        break;
+    case OP_PADD:
+        r->rc = do_padd(sp, r->rec);
         break;
     case OP_PURGE:
         r->rc = do_purge(sp, r->before, &r->count, r->rec);
@@ -346,6 +418,7 @@ request(OFTP_SPOOL *sp, int op, const char *key, OFTP_SPREC *rec)
     if (key != NULL)
         memcpy(r.key, key, key[0] ? 8 : 1);
     r.rec = rec;
+    r.len = sizeof(*rec);
     return enqueue(sp, &r);
 }
 
@@ -505,6 +578,7 @@ oftp_spl_putif(OFTP_SPOOL *sp, const OFTP_SPREC *rec, char was)
     r.op = OP_PUTIF;
     memcpy(r.key, rec->key, 8);
     r.rec = (OFTP_SPREC *)rec;
+    r.len = sizeof(*rec);
     r.was = was;
     return enqueue(sp, &r);
 }
@@ -531,7 +605,53 @@ oftp_spl_purge(OFTP_SPOOL *sp, long before, unsigned *n)
     r.op = OP_PURGE;
     r.before = before;
     r.rec = &rec;                       /* the walk's work record */
+    r.len = sizeof(rec);
     enqueue(sp, &r);
     *n = r.count;
     return r.rc;
+}
+
+int
+oftp_spl_ptn_next(OFTP_SPOOL *sp, const char *key, OFTP_SPPTN *rec)
+{
+    SPL_REQ r;
+
+    memset(&r, 0, sizeof(r));
+    r.op = OP_PNEXT;
+    memcpy(r.key, key, key[0] ? 8 : 1);
+    r.rec = rec;
+    r.len = sizeof(*rec);
+    return enqueue(sp, &r);
+}
+
+int
+oftp_spl_ptn_add(OFTP_SPOOL *sp, OFTP_SPPTN *rec)
+{
+    SPL_REQ r;
+
+    memset(&r, 0, sizeof(r));
+    r.op = OP_PADD;
+    r.rec = rec;
+    r.len = sizeof(*rec);
+    return enqueue(sp, &r);
+}
+
+int
+oftp_spl_ptn_put(OFTP_SPOOL *sp, const OFTP_SPPTN *rec)
+{
+    SPL_REQ r;
+    OFTP_SPPTN copy = *rec;
+
+    memset(&r, 0, sizeof(r));
+    r.op = OP_PPUT;
+    memcpy(r.key, copy.key, 8);
+    r.rec = &copy;
+    r.len = sizeof(copy);
+    return enqueue(sp, &r);
+}
+
+int
+oftp_spl_ptn_del(OFTP_SPOOL *sp, const char *key)
+{
+    return request(sp, OP_PDEL, key, NULL);
 }

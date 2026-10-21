@@ -9,7 +9,7 @@
 static int msgs;
 
 static void
-count(void *ctx, const char *line)
+count(const void *ctx, const char *line)
 {
     (void)ctx;
     printf("    (%s)\n", line);

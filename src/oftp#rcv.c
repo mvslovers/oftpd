@@ -8,7 +8,7 @@
 #include "oftprcv.h"
 
 static void
-say(OFTP_CFGMSG msg, void *ctx, const char *line)
+say(OFTP_CFGMSG msg, const void *ctx, const char *line)
 {
     if (msg != NULL)
         msg(ctx, line);
@@ -440,7 +440,7 @@ apply(OFTP_RULES *s, const char *k, const char *v, int lineno, char *m,
 
 int
 oftp_rcv_line(OFTP_RULES *s, const char *text, int lineno, OFTP_CFGMSG msg,
-              void *ctx)
+              const void *ctx)
 {
     const char *p = text;
     char m[160], tok[100], *eq;
@@ -487,7 +487,7 @@ clashes(const char *pat, const char *prefix)
 }
 
 int
-oftp_rcv_finish(OFTP_RULES *s, const OFTP_CONFIG *c, OFTP_CFGMSG msg, void *ctx)
+oftp_rcv_finish(OFTP_RULES *s, const OFTP_CONFIG *c, OFTP_CFGMSG msg, const void *ctx)
 {
     int i, j;
     char m[160];
