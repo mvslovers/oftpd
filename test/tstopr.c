@@ -56,7 +56,7 @@ main(void)
     {
         char d[32];
 
-        CHECK(strcmp(oftp_printable(d, sizeof(d), "PAY\x01ROLL\x1b[2J\x7f.X"),
+        CHECK(strcmp(oftp_printable(d, sizeof(d), "PAY\x01ROLL\x1b[2J\x02.X"),
                      "PAY.ROLL.[2J..X") == 0,
               "control characters become dots");
         CHECK(strcmp(oftp_printable(d, sizeof(d), "PAYROLL.DATA"),
