@@ -8,7 +8,8 @@ This glossary defines the terms of OFTPD and of OFTP as this book uses them.
 #deflist(width: 1.6in,
   [administrator], [A user named with #cmd("ADMIN") in #cmd("OFTPPRM"). An
     administrator sees and changes all transfers, including the files received,
-    and may call a partner and purge the spool.],
+    and may call a partner, purge the spool, and add, change and delete
+    partners.],
   [buffer], [The size of the blocks in which a session carries data. The two
     sides agree on it when the session starts.],
   [call], [To open a session with a partner. OFTPD calls a partner that has a
@@ -38,7 +39,11 @@ This glossary defines the terms of OFTPD and of OFTP as this book uses them.
     #cmd("F OFTPD") and #cmd("P OFTPD").],
   [partner], [A system that exchanges files with OFTPD, described by an entry in
     the partner table.],
-  [partner table], [The member #cmd("OFTPPTN"), which describes the partners.],
+  [partner kept by command], [A partner that an administrator added or changed
+    with the #cmd("PARTNER") command or in the dialog. OFTPD keeps it in the
+    spool, and it wins over an entry of the same name in #cmd("OFTPPTN").],
+  [partner table], [The table of the partners. Its sources are the member
+    #cmd("OFTPPTN") and the partners kept by command.],
   [reason code], [The two-digit number with which a refusal says why, for
     example 01 for a file name that is not valid, 12 for a failure of the access
     method, and 13 for a file that is already there.],
@@ -55,7 +60,7 @@ This glossary defines the terms of OFTPD and of OFTP as this book uses them.
     and the negative answer to it, with which the receiver refuses the file and
     says whether to try again. The end-file negative answer is the EFNA.],
   [spool], [The VSAM data set in which the monitor keeps one record for every
-    transfer, and the state of each.],
+    transfer, and the state of each. It also holds the partners kept by command.],
   [SVC], [The supervisor call that the installation reserves for OFTPD. The
     utility and the dialog reach the monitor through it.],
   [transfer], [The sending or the receiving of one file, kept as one record in

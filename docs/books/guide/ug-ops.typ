@@ -247,11 +247,24 @@ messages are in the Reference.
     [A rule has no effect (#cmd("OFTP025E"))], [The member has errors and was not
       used. #cmd("OFTP010W") names each line. After a refresh the old rules stay.
       Correct the member and refresh again.],
-    [A change to a partner does not take effect], [Partners change with
-      #cmd("F OFTPD,REFRESH"). The settings change only after a restart. If the
-      table is full (#cmd("OFTP015W")), take partners out of the member and
-      refresh again\; a partner that a transfer in the spool still names stays in
-      the table until that transfer is deleted.],
+    [A change to a partner does not take effect], [A change in the member
+      #cmd("OFTPPTN") needs #cmd("F OFTPD,REFRESH"). The settings change only
+      after a restart. A partner kept by command is not changed by the member:
+      it wins by name, and only the #cmd("PARTNER") command changes it (see
+      @ptn-cmd). If the table is full (#cmd("OFTP015W")), delete a partner
+      that is kept by command or take an entry out of the member, and use
+      #cmd("REFRESH")\; a partner that a transfer in the spool still names stays
+      in the table until that transfer is deleted.],
+    [A #cmd("PARTNER") command is refused], [The answer, the last line of the
+      output, says why. #cmd("needs ADMIN= in OFTPPRM") means that the user is
+      not an administrator\; #cmd("the partner has a session now, try again")
+      means that a partner with a session cannot be changed or deleted\; and
+      #cmd("transfers name partner") means that a partner with
+      transfers in the spool cannot be deleted\; and
+      #cmd("the partner was changed meanwhile, try again") means that the
+      partner changed while OFTPD looked through the spool, so repeat the
+      command. The Reference lists the
+      answers, in the chapter “The OFTP Command”.],
     [A file is received, but no job runs (#cmd("OFTP247W"))], [The receive rule of
       the file has a #cmd("JOB="), and the job was not submitted. The message gives
       the reason, for instance a member that is missing or empty, a line that is
