@@ -254,6 +254,16 @@ return function(t)
   -- again when the edit ends
   t:type("4"):enter()
   t:expect("OFTPD - Configure the Partners")
+  -- the field holds a member before anything is typed: the one in the ISPF
+  -- profile, or else the one OFTPD read at start (#183)
+  show(t, "configure, offered")
+  local offered
+  for _, l in ipairs(t:screen()) do
+    offered = offered or l:match("Partner member ===>%s*(%S+)")
+  end
+  if not offered then
+    error("Configure offers no partner member although OFTPD runs")
+  end
   local dsn = t.fixtures.PARMS .. "(OFTPPTN0)"
   t:type(dsn .. string.rep(" ", 46 - #dsn)):enter()
   t:expect("EDITME")
