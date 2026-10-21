@@ -8,12 +8,28 @@ OFTPD keeps its partners in two layers.
   the `OFTP` utility or the ISPF dialog. OFTPD keeps them in its spool, so
   they need no parmlib edit and no restart, and they survive a restart.
 
-A partner in both layers is the one kept by command: it wins by name.
+A partner in both layers is the one kept by command: it wins by name. A
+partner that only `OFTPPTN` holds gets into both layers the first time a
+command changes it (`CHANGE`, `ENABLE` or `DISABLE` that alters the entry):
+OFTPD copies the entry, with your change, into its spool, and from then on
+the copy wins. `PARTNER SHOW` says `kept by command, overrides OFTPPTN`.
 `REFRESH` reads the parmlib layer only and leaves partners kept by command
 alone. A partner you removed from `OFTPPTN` leaves the table; while a
 session, a call or a transfer in the spool still holds it, it is disabled
-instead. To get the parmlib entry of a name back, delete the partner kept by
-command; the entry in `OFTPPTN` is in force again at once.
+instead.
+
+To get the parmlib entry of a name back, delete the partner kept by
+command. **That `DELETE` is followed by a full `REFRESH`, not by the reading
+of that one entry.** OFTPD reads `OFTPPTN` and the receive rules
+(`OFTPRCV0`) again, as for `F OFTPD,REFRESH`, and writes `OFTP016I` and
+`OFTP024I` (or `OFTP025E`/`OFTP026W`). So everything that changed in the
+member since the last start or `REFRESH` takes effect now, for all partners:
+new entries are added, changed entries replace the entries of the table,
+partners that left the member are disabled or removed, and the receive rules
+are replaced. Look at the member before you delete. The answer ends with
+`the OFTPPTN entry is back`; if OFTPD cannot read `OFTPPTN`, the partner is
+deleted all the same and the answer says `OFTPPTN cannot be read, its entry
+is back after the next REFRESH`. (That case writes no `OFTP017E`.)
 
 **Protect the spool like `OFTPPTN`.** A partner kept by command is stored
 in the spool with everything you gave it, **both passwords in clear text**,
@@ -252,7 +268,16 @@ one; the entry panel follows. Line commands on a partner:
 | `E`, `X` | enable, disable |
 | `D` | delete: asks for confirmation first |
 | `C` | call the partner now |
-| `S` | select it for a send |
+| `S` | select it for a send (only in the list that the Send panel opens, below) |
+
+`S` works only in the partner list that the *Send* panel opens when you type
+`?` in its *Partner* field. There `S` puts the name into the *Partner* field
+and returns to the Send panel, and `C` calls the partner as usual. `M`, `E`,
+`X` and `D` change nothing there (the message line says `S selects a partner,
+C calls it`), and a name in *New partner* is refused (`Partners are added from
+option 3 of the menu`). In option 3 `S` does nothing: the message line says
+`Line commands: C call, M modify, E enable, X disable, D delete`. The panel
+shows the same list of letters in both cases.
 
 The entry panel shows both passwords as `(set)` or `(none)`. A field you
 leave as it is stays as it is; type a new value into a password input

@@ -420,8 +420,8 @@ The main panel has these options.
 #deflist(width: 1.5in,
   [1 Send], [Queues a data set for a partner. You give the partner, the data
     set, and if you want the virtual file name, text, translation, hold and
-    user data. A question mark in the partner field shows the partners to pick
-    one from.],
+    user data. A question mark in the partner field shows the partners\; type
+    S in front of the one to pick.],
   [2 Transfers], [Lists the transfers, which you can limit to a partner, a
     state, or your own. Type a letter in front of a line: S to show it, H to
     hold, R to release, T to retry, D to delete.],
@@ -448,7 +448,9 @@ at the table, but OFTPD refuses a change.
   If the partner is in the table already, the message says so\; use M to change
   it. Otherwise the entry panel follows.
 - In front of a partner, type one of these letters\: *M* to modify it, *E* to
-  enable it, *X* to disable it, *D* to delete it, *C* to call it now.
+  enable it, *X* to disable it, *D* to delete it, *C* to call it now. The
+  letter *S* selects a partner for a send\; it works only in the list that the
+  Send panel shows, not here.
 
 The entry panel has the keywords of an entry of the member: the Odette ID, the
 two passwords, our own ID, the host, the port, the address, the level, the

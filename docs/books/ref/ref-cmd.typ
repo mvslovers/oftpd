@@ -387,8 +387,14 @@ OFTPD disabled it.
 
 If the partner was kept by command and has an entry of the same name in
 #cmd("OFTPPTN") as well, deleting it brings that entry back at once, and the
-answer ends with #cmd("the OFTPPTN entry is back"). If OFTPD cannot read
-#cmd("OFTPPTN") then, the answer ends with #cmd("OFTPPTN cannot be read, its entry is back after the next REFRESH").
+answer ends with #cmd("the OFTPPTN entry is back"). OFTPD does this with a
+full refresh, the same as #cmd("F OFTPD,REFRESH"), not by reading that one
+entry\: it reads #cmd("OFTPPTN") and the receive rules again and writes
+#cmd("OFTP016I") and #cmd("OFTP024I"). Every change in the member since the last
+start or refresh takes effect for all partners, and the receive rules are
+replaced. If OFTPD cannot read #cmd("OFTPPTN") then, the partner is deleted all
+the same, no refresh happens, and the answer ends with
+#cmd("OFTPPTN cannot be read, its entry is back after the next REFRESH").
 
 === Answers and Messages <cmd-partner-ans>
 
