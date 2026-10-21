@@ -43,5 +43,23 @@ main(void)
                "OFTP.IN.AAAAAAAA.BBBBBBBB.CCCCCCCC.T0000001"), "last qualifier dropped to fit 44");
     CHECK(oftp_dsn_map("A.VERY.LONG.PREFIX.WITH.MANY.QUALIFIERS.X", "B", "T0000001", out) == -1,
           "prefix and suffix alone too long");
+
+    {
+        char m[57];
+
+        oftp_dsn_member("SYS1.PARMLIB                                ",
+                        "OFTPPTN0", m);
+        CHECK(strcmp(m, "SYS1.PARMLIB(OFTPPTN0)") == 0, "DSN(MEMBER)");
+        oftp_dsn_member("SYS2.PARMLIB                                ",
+                        "        ", m);
+        CHECK(strcmp(m, "SYS2.PARMLIB") == 0, "no member: the DSN alone");
+        oftp_dsn_member("A.B.C.D.E.F.G.H.I.J.K.L.M.N.O.P.Q.R.S.T.U.VW",
+                        "ABCDEFGH", m);
+        CHECK(strcmp(m, "A.B.C.D.E.F.G.H.I.J.K.L.M.N.O.P.Q.R.S.T.U.VW(ABCDEFGH)") == 0,
+              "44 + 8 characters fill the buffer exactly");
+        oftp_dsn_member("                                            ",
+                        "OFTPPTN0", m);
+        CHECK(m[0] == '\0', "blank DSN: empty");
+    }
     return mbt_test_summary("TSTDSN");
 }

@@ -125,3 +125,22 @@ oftp_dsn_map(const char *prefix, const char *vfn, const char *suffix,
     }
     return oftp_dsn_valid(out) ? 0 : -1;
 }
+
+void
+oftp_dsn_member(const char *dsnm, const char *elnm, char *out)
+{
+    size_t n = 0, m = 0;
+
+    while (n < 44 && dsnm[n] != ' ' && dsnm[n] != '\0')
+        n++;
+    while (m < 8 && elnm[m] != ' ' && elnm[m] != '\0')
+        m++;
+    memcpy(out, dsnm, n);
+    if (n > 0 && m > 0) {
+        out[n++] = '(';
+        memcpy(out + n, elnm, m);
+        n += m;
+        out[n++] = ')';
+    }
+    out[n] = '\0';
+}

@@ -21,6 +21,8 @@ typedef struct oftp_mon {
     OFTP_CONFIG cfg;
     OFTP_RULES  rules;                  /* OFTPRCV0; replaced as a whole
                                         ** under lock(m, 0)              */
+    char        ptnmember[57];          /* DSN(MEMBER) behind DD OFTPPTN,
+                                        ** "" when it cannot be read    */
     OFTP_SPOOL *spool;
     OFTP_LOG    log;                    /* DD OFTPLOG (oftplog.h)        */
     volatile int stop;                  /* 1: P OFTPD received           */
@@ -213,6 +215,11 @@ extern int  oftp_mon_load(OFTP_CONFIG *c, const char *dd, int partner)
 ** nothing was replaced.
 */
 extern int  oftp_mon_rules(OFTP_MON *m, int refresh)    asm("OFTPMRUL");
+
+/* Reads the JFCB of DD OFTPPTN and keeps its data set and member name in
+** m->ptnmember, for the ISPF dialog's Configure panel (request MEMBER)
+*/
+extern void oftp_mon_ptnmember(OFTP_MON *m)             asm("OFTPMPMB");
 
 /* Reads DD OFTPPTN again and merges it (internals/design.md section 4).
 ** Only the parmlib layer moves: a partner kept by command is not touched,

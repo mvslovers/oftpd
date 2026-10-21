@@ -608,9 +608,9 @@ The menu has five options: 1 sends a data set, 2 lists the transfers (show,
 hold, release, retry, delete), 3 maintains the partner table
 (`docs/partners.md`), 4 edits the partner member and 5 shows the monitor
 (Odette ID, port, SVC, sessions and the spool). Option 4 opens an ISPF edit
-of the member named on its panel (`SYS2.PARMLIB(OFTPPTN0)` at first, kept
-in your profile); when the edit ends the dialog sends `REFRESH`, so OFTPD
-reads the partner and rule members again. That is for an administrator:
+of the member named on its panel (at first the member OFTPD read at start,
+kept in your profile afterwards); when the edit ends the dialog sends
+`REFRESH`, so OFTPD reads the partner and rule members again. That is for an administrator:
 anyone else gets `needs ADMIN=` after the edit. On a system without a
 security product nobody is one, and OFTPD refuses it (section 8).
 
@@ -671,8 +671,9 @@ Then `ISPF`, `M`, `O` opens the dialog. Without the entry, enter
 primary menu.
 
 Option 4 asks for the partner member and keeps it in your ISPF profile.
-The first time it offers `SYS2.PARMLIB(OFTPPTN0)`: on TK5 type the member
-you use, for example `SYS1.PARMLIB(OFTPPTN0)`. The editor is TK5's
+The first time it offers the data set and member that the `OFTPPTN` DD of
+the started task names, for example `SYS1.PARMLIB(OFTPPTN0)` on TK5; if OFTPD
+is not running the field is empty and you type the name. The editor is TK5's
 `REVEDIT`. When it ends, the dialog asks OFTPD to read its partner member
 again. That is the member of the `OFTPPTN` DD of the started task,
 whichever member you edited.

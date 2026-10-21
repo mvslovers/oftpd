@@ -205,6 +205,14 @@ add_transfer(void *ctx, const char *line)
 }
 
 static void
+dsn_line(void *ctx, const char *line)
+{
+    DLG *d = ctx;
+
+    PUT(d, oftcdsn, line);
+}
+
+static void
 show_line(void *ctx, const char *line)
 {
     DLG *d = ctx;
@@ -634,8 +642,12 @@ main(void)
     }
     oftp_isp_exec("VGET (OFTCDSN) PROFILE");
     GET(d, oftcdsn, dsn);
-    if (dsn[0] == '\0')
-        PUT(d, oftcdsn, "SYS2.PARMLIB(OFTPPTN0)");
+    if (dsn[0] == '\0') {
+        /* the member OFTPD read at start; blank when it cannot say */
+        char final[200];
+
+        oftp_cli_request("MEMBER", dsn_line, d, final, sizeof(final), NULL);
+    }
 
     for (;;) {
         PUT(d, oftopt, "");

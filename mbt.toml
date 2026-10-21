@@ -148,6 +148,13 @@ host = false
 sources = ["test/mvs/tstsvc.c"]
 host = false
 
+# The partner member OFTPD reports to the ISPF dialog (#183), against a
+# RUNNING OFTPD; runs for real only from test/mvs/tstmem.jcl
+# (PARM='RUN dsn(member)').
+[test.TSTMEM]
+sources = ["test/mvs/tstmem.c"]
+host = false
+
 # Receive rules (#44) against two RUNNING OFTPDs; runs for real only from
 # test/mvs/tstrcvm.jcl (PARM='RUN n').
 [test.TSTRCVM]
