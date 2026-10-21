@@ -27,4 +27,11 @@ extern int  oftp_dsn_valid(const char *d)               asm("OFTPDSNV");
 extern int  oftp_dsn_map(const char *prefix, const char *vfn,
                          const char *suffix, char *out) asm("OFTPDSNM");
 
+/* out[57]: "DSN(MEMBER)" from the 44-byte data set name and the 8-byte
+** element name of a JFCB, both blank-padded and not terminated; just
+** "DSN" when the member is blank. out is empty when the name is blank.
+*/
+extern void oftp_dsn_member(const char *dsnm, const char *elnm, char *out)
+                                                        asm("OFTPDSNB");
+
 #endif /* OFTPDSN_H */

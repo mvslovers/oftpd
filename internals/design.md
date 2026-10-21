@@ -655,7 +655,11 @@ multi-line output for lists (`1xx` lines, then a final `2xx`, `4xx` or
 `5xx` line). Verbs mirror the utility: `SEND`, `LIST`,
 `SHOW`, `HOLD`, `RELEASE`, `DELETE`, `RETRY`, `CALL`, `PARTNERS`,
 `PARTNER ADD|CHANGE|DELETE|SHOW PARTNER=name KEYWORD=VALUE ...` (the
-keywords of `OFTPPTN`; `ENABLED=N` disables), `STATUS`.
+keywords of `OFTPPTN`; `ENABLED=N` disables), `STATUS`, `MEMBER`. `MEMBER`
+is read-only and open to every caller: it answers `100 DSN(MEMBER)`, the
+data set and member that DD `OFTPPTN` named when OFTPD started, then `200`;
+when that is not known, only `200`. The ISPF dialog asks it for the default
+of its Configure panel.
 
 **What the user sees.** The utility prints the final line without its
 number (`oftp_cli_piece`, `src/oftp#rep.c`); the number is not shown. The

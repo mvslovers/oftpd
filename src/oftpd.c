@@ -123,6 +123,7 @@ main(int argc, char **argv)
     }
     if (oftp_mon_load(&m->cfg, "OFTPPTN", 1) != 0)
         oftp_mon_msg("OFTP013W DD OFTPPTN CANNOT BE OPENED, NO PARTNERS");
+    oftp_mon_ptnmember(m);
     on = oftp_cfg_finish(&m->cfg, cfgmsg, "OFTPPTN");
     oftp_mon_msg("OFTP014P ODETTE ID %s, %d OF %d PARTNERS ENABLED",
                  m->cfg.odetteid, on, m->cfg.nptn);

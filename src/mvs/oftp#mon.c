@@ -17,7 +17,9 @@
 #include <ibm/mvs/cvt.h>
 #include <mvs/clock.h>
 #include <mvs/crt.h>
+#include <mvs/dd.h>
 #include <mvs/lock.h>
+#include <mvs/osio.h>
 #include <mvs/recovery.h>
 #include <mvs/rfile.h>
 #include <mvs/storage.h>
@@ -2081,6 +2083,19 @@ ctl_partners(OFTP_MON *m, CTLOUT *o)
     ctl_put(o, out);
 }
 
+/* MEMBER: the partner member OFTPD read at start, for the dialog */
+static void
+ctl_member(OFTP_MON *m, CTLOUT *o)
+{
+    char out[80];
+
+    if (m->ptnmember[0] != '\0') {
+        snprintf(out, sizeof(out), "100 %s", m->ptnmember);
+        ctl_put(o, out);
+    }
+    ctl_put(o, "200 partner member");
+}
+
 static void
 ctl_status(OFTP_MON *m, CTLOUT *o)
 {
@@ -2625,6 +2640,8 @@ ctl_request(OFTP_MON *m, CTLOUT *o, char *line)
         ctl_partner(m, o, line);
     else if (strncmp(line, "STATUS", 6) == 0)
         ctl_status(m, o);
+    else if (strncmp(line, "MEMBER", 6) == 0)
+        ctl_member(m, o);
     else if (strncmp(line, "PURGE", 5) == 0)
         ctl_purge(m, o, line);
     else if (strncmp(line, "REFRESH", 7) == 0) {
@@ -2945,6 +2962,32 @@ oftp_mon_load(OFTP_CONFIG *c, const char *dd, int partner)
     }
     fclose(fp);
     return 0;
+}
+
+void
+oftp_mon_ptnmember(OFTP_MON *m)
+{
+    DCB *dcb;
+    JFCB jfcb;
+
+    /* No operator message on any failure below: the member stays unknown,
+    ** MEMBER answers only 200, and the dialog starts with an empty field.
+    ** The partner table itself is read, and reported, by oftp_cfg_finish().
+    */
+    m->ptnmember[0] = '\0';
+    if ((dcb = osbdcb("OFTPPTN ", NULL)) == NULL)
+        return;
+    if (osbopen(dcb, 0, "r") != 0) {
+        free(dcb);
+        return;
+    }
+    memset(&jfcb, 0, sizeof(jfcb));
+    if (__rdjfcb(dcb, &jfcb) != 0) {
+        osbclose(dcb, NULL, 1, 0);
+        return;
+    }
+    osbclose(dcb, NULL, 1, 0);
+    oftp_dsn_member(jfcb.jfcbdsnm, jfcb.jfcbelnm, m->ptnmember);
 }
 
 /* Two enabled partners with one Odette ID cannot both stand: the one kept
