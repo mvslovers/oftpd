@@ -610,9 +610,10 @@ hold, release, retry, delete), 3 maintains the partner table
 (Odette ID, port, SVC, sessions and the spool). Option 4 opens an ISPF edit
 of the member named on its panel (at first the member OFTPD read at start,
 kept in your profile afterwards); when the edit ends the dialog sends
-`REFRESH`, so OFTPD reads the partner and rule members again. That is for an administrator:
-anyone else gets `needs ADMIN=` after the edit. On a system without a
-security product nobody is one, and OFTPD refuses it (section 8).
+`REFRESH`, so OFTPD reads the partner and rule members again. That is for
+an administrator: anyone else gets `needs ADMIN=` after the edit. On a
+system without a security product nobody is one, and OFTPD refuses it
+(section 8).
 
 ## Upgrading
 

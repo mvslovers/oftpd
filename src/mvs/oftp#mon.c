@@ -2970,6 +2970,10 @@ oftp_mon_ptnmember(OFTP_MON *m)
     DCB *dcb;
     JFCB jfcb;
 
+    /* No operator message on any failure below: the member stays unknown,
+    ** MEMBER answers only 200, and the dialog starts with an empty field.
+    ** The partner table itself is read, and reported, by oftp_cfg_finish().
+    */
     m->ptnmember[0] = '\0';
     if ((dcb = osbdcb("OFTPPTN ", NULL)) == NULL)
         return;
@@ -2978,7 +2982,10 @@ oftp_mon_ptnmember(OFTP_MON *m)
         return;
     }
     memset(&jfcb, 0, sizeof(jfcb));
-    __rdjfcb(dcb, &jfcb);
+    if (__rdjfcb(dcb, &jfcb) != 0) {
+        osbclose(dcb, NULL, 1, 0);
+        return;
+    }
     osbclose(dcb, NULL, 1, 0);
     oftp_dsn_member(jfcb.jfcbdsnm, jfcb.jfcbelnm, m->ptnmember);
 }
