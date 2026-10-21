@@ -7,7 +7,7 @@
 //* Edit the data set names (IBMUSER, the test library) and the volume
 //* (one with VSAM space in your user catalog), then submit. The test
 //* library is the one `mbt test --mvs` deployed. The console shows
-//* OFTP239I (1) and OFTP243W (2); the log of the job does not.
+//* OFTP239I (1) and OFTP248W (2); the log of the job does not.
 //* ------------------------------------------------------------------
 //OLD      EXEC PGM=IEFBR14
 //D1       DD  DISP=(MOD,DELETE),DSN=IBMUSER.OFTPD.TRCVR.PDS,

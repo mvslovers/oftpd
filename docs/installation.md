@@ -231,7 +231,7 @@ While a replace is running, the old content is under the name
 to. If OFTPD or the system stops in the instant between the two renames,
 that backup is the **only copy** of the old data set. At the next start OFTPD
 renames it back if the target is missing (`OFTP239I`); if both exist it
-leaves both and says `OFTP243W`. If you have to do it by hand: look whether
+leaves both and says `OFTP248W`. If you have to do it by hand: look whether
 the target data set exists. If it does not, rename `TMPPREFIX.B<key>` back
 to the target name. Delete the backup only when the target exists and is the
 file you want.

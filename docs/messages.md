@@ -32,7 +32,7 @@ characters, `T0000012`) it follows the name.
 **A number keeps its meaning for ever.** A message that changes its class
 changes its letter and keeps its number: `OFTP211I`, as it was in a
 development version, is `OFTP211P` now. A number is never given to another
-message. `215`, `216`, `233` and `243` exist with two letters because two
+message. `215`, `216` and `233` exist with two letters because two
 different messages share the number; each is listed.
 
 ## Start, stop and the log
@@ -166,7 +166,7 @@ The ones that report a normal transfer are `P`.
 | `OFTP240P` | Log only | `<partner>: <key> RELAY: EERP/NERP FOR <dsn> QUEUED` |
 | `OFTP241P` | Log only | `<partner>: <key> RELAY: <dsn> FROM <id> FOR <id> QUEUED FOR <partner>` |
 | `OFTP242W` | Console + log | `<partner>: <key> RELAY: <dsn> FOR <id> GIVEN UP AFTER n ATTEMPTS`: the originator gets a NERP |
-| `OFTP243W` | Console + log | `<partner>: <data set> EXISTS AND SO DOES THE OLD VERSION <backup>, DELETE <backup> BY HAND`: at start, after a stop in the middle of a replace |
+| `OFTP248W` | Console + log | `<partner>: <data set> EXISTS AND SO DOES THE OLD VERSION <backup>, DELETE <backup> BY HAND`: at start, after a stop in the middle of a replace |
 | `OFTP290W` | Console + log | `<partner>: <text>` for a failed identity or password check: `UNKNOWN CALLER <id>`, `WRONG PASSWORD FROM <partner>` (the engine's text, in lower case), `ANSWERED BY <id>, NOT <id>`, `PARTNER PASSWORD DOES NOT MATCH` |
 | `OFTP290P` | Log only | `<partner>: <text>`: any other line the protocol engine reports (a refusal reason, a timeout, a file sent or received, the session parameters, and the `TRACE SEND|RECV ...` lines of `F OFTPD,TRACE`) |
 

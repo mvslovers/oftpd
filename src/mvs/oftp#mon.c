@@ -3215,7 +3215,7 @@ restore_old(const OFTP_MON *m, const OFTP_SPREC *r)
     if (!exists(bak))
         return;
     if (exists(r->local))
-        oftp_mon_msg("OFTP243W %s: %s EXISTS AND SO DOES THE OLD VERSION %s,"
+        oftp_mon_msg("OFTP248W %s: %s EXISTS AND SO DOES THE OLD VERSION %s,"
                      " DELETE %s BY HAND", r->partner, r->local, bak, bak);
     else if (rename(bak, r->local) == 0)
         oftp_mon_msg("OFTP239I %s: THE OLD %s PUT BACK FROM %s", r->partner,

@@ -224,7 +224,7 @@ complete), so at the next start `oftp_mon_recover` discards the partial
 receive and `restore_old()` looks at its backup: target missing and backup
 there, it renames the backup back to the target (`OFTP239I`; `OFTP227E` if
 that rename fails, naming the backup); both there (the second rename had
-happened already), it leaves both and says `OFTP243W` -- the operator
+happened already), it leaves both and says `OFTP248W` -- the operator
 compares and deletes the backup. By hand it is the same rule: check
 whether the target exists; if not, rename the backup back; only if the
 target exists, delete the backup. `REPLACE=N` on an existing name
@@ -239,7 +239,7 @@ be opened on a refresh; `OFTP224W` invalid name, `OFTP225W` exists, `OFTP226E`
 cannot be replaced, `OFTP227E` not renamed back, `OFTP228W` backup not
 deleted, `OFTP229I` replaced; `OFTP234W` the existing data set is not a
 sequential one and is not replaced, `OFTP239I` the old data set restored
-from its backup at start, `OFTP243W` both the target and the backup exist
+from its backup at start, `OFTP248W` both the target and the backup exist
 after a crash; `OFTP221E` (older) the rename of the temporary file failed.
 
 **Visibility of the backup.** For the short time of a replace the old
@@ -286,7 +286,7 @@ onto a PDS and onto a VSAM cluster, and `test/mvs/tstrcvr.c` (new, from
 | after these, `LISTCAT` of `TMPPREFIX` | `NOT FOUND`: no temporary name or backup left |
 | `REPLACE=Y` where the old data set was held by another job (again) | REJECTED with 12, now `OFTP226E` (the check at the close; the old data set compared equal to what it held) |
 | recovery, backup only (`TMPPREFIX.B<key>` present, target missing) | the backup renamed to the target, the half-received temporary file removed, the spool record deleted (TSTRCVR 1) |
-| recovery, both present | both left, the record deleted (TSTRCVR 2); `OFTP243W` is in the code path but was not read from the console |
+| recovery, both present | both left, the record deleted (TSTRCVR 2); `OFTP248W` is in the code path but was not read from the console |
 | recovery, no backup | the target untouched (TSTRCVR 3) |
 | `TSTRCVM` 1, 2, 3 | 28/28, 6/6, 3/3; `REFRESH` with the broken member: `OFTP010W` three times (DSN, `BOGUS`, `FROM=NOBODY`), `OFTP025E`, the second set still in force |
 | `mbt test --mvs` | all pass except `TSTSCH` (8 assertions, as before this work) and `TSTLOG` (3 assertions, "the record is stamped", from the log work in main); both are clock/time-stamp tests in files this work does not touch, and pass on the host |
@@ -306,5 +306,5 @@ for a file whose SFID gives no size (`tstdsf` covers the allocation string,
 the container run sent files with a size); a real stop of a running OFTPD
 between the two renames and the restore at its next start (TSTRCVR runs the
 same function on prepared data sets, not after a crash); the console text of
-`OFTP239I` and `OFTP243W`. `TSTRCVM` and `TSTRCVR` need their JCL, not
+`OFTP239I` and `OFTP248W`. `TSTRCVM` and `TSTRCVR` need their JCL, not
 `mbt test --mvs` (`host = false`, they skip there).
