@@ -14,6 +14,7 @@
 #include <time.h>
 
 #include <ext/array.h>
+#include <ibm/mvs/cvt.h>
 #include <mvs/clock.h>
 #include <mvs/crt.h>
 #include <mvs/lock.h>
@@ -1539,17 +1540,23 @@ struct ctlout {
     ** do.
     */
     int         admin;                  /* may see and change everything */
+    int         nosec;                  /* the system has no security
+                                        ** product (CVTRAC 0): nobody
+                                        ** to tell apart               */
     char        user[9];                /* "" when nobody is known       */
 };
 
 /* May the asker see and change transfer r: an administrator, or the
 ** owner. No userid owns nothing, so a received file, which has no
-** owner, is an administrator's.
+** owner, is an administrator's. Without a security product nobody
+** has a userid worth the name, and a sender that could not manage its
+** own transfer would not be using OFTPD: everyone may (#54).
 */
 static int
 ctl_may(const CTLOUT *o, const OFTP_SPREC *r)
 {
-    return o->admin || (o->user[0] != '\0' && strcmp(o->user, r->owner) == 0);
+    return o->admin || o->nosec
+        || (o->user[0] != '\0' && strcmp(o->user, r->owner) == 0);
 }
 
 /* For the console: who changed a transfer */
@@ -1801,9 +1808,10 @@ ctl_list(OFTP_MON *m, CTLOUT *o, const char *line)
     kw(line, "STATUS", status, sizeof(status));
     kw(line, "MINE", mine, sizeof(mine));
     /* Only one's own: asked for with MINE=Y, and all there is for
-    ** anyone but an administrator
+    ** anyone but an administrator -- or anyone at all, on a system
+    ** without a security product, where "one's own" cannot be told
     */
-    own = mine[0] == 'Y' || !o->admin;
+    own = !o->nosec && (mine[0] == 'Y' || !o->admin);
     last[0] = '\0';
     while (oftp_spl_next(m->spool, last, &r) == 0) {
         memcpy(last, r.key, 8);
@@ -2764,6 +2772,7 @@ svc_line(OFTP_MON *m, const OFTP_SVCJOB *j, char *out, size_t cap,
     memcpy(who->user, j->user, (size_t)n);
     who->user[n] = '\0';
     who->admin = oftp_cfg_admin(&m->cfg, who->user);
+    who->nosec = CVTPTR->cvtrac == NULL;
 }
 
 static int

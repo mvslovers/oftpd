@@ -498,7 +498,9 @@ A transfer belongs to the userid that queued it. That userid sees and
 changes it; so does a userid named in `ADMIN=`, which sees and changes
 every transfer, including the received ones, which belong to nobody.
 Anyone else gets `not your transfer` (RC 8). `LIST` shows an
-administrator everything, and `LIST MINE` only their own. `CALL` and
+administrator everything, and `LIST MINE` only their own. On a system
+without a security product there is no one to tell apart, so every caller
+sees and changes every transfer. `CALL` and
 `PURGE` are for an administrator only; `PURGE DAYS(0)` deletes every
 finished transfer, however recent.
 
