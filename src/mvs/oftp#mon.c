@@ -3396,18 +3396,20 @@ display_partners(OFTP_MON *m)
     for (i = 0; i < m->cfg.nptn; i++) {
         OFTP_PARTNER *p = &m->cfg.ptn[i];
         char ss[32];
+        char where[sizeof(p->host) + 8];
 
         if (p->peer.name[0] == '\0')
             continue;
+        oftp_cfg_where(p, where, sizeof(where));
         ss[0] = '\0';
         if (m->busy[i])
             snprintf(ss, sizeof(ss), " %d OF %d SESSIONS", m->busy[i],
                      p->sessions);
         if (m->trace_all || m->trace[i])
             strcat(ss, " TRACE");
-        oftp_mon_msg("OFTP100I %-8s %-25s %s%s LEVEL %d %s:%d", p->peer.name,
+        oftp_mon_msg("OFTP100I %-8s %-25s %s%s LEVEL %d %s", p->peer.name,
                      p->peer.code, p->enabled ? "ENABLED" : "DISABLED",
-                     ss, p->peer.level, p->host[0] ? p->host : "-", p->port);
+                     ss, p->peer.level, where);
     }
     oftp_mon_msg("OFTP101I %d PARTNERS, %d SESSIONS",
                  oftp_cfg_count(&m->cfg, NULL), m->nsess);

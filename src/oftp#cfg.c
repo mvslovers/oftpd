@@ -511,6 +511,15 @@ oftp_cfg_relay_live(const OFTP_PARTNER *next, const char *nextname,
     return 1;
 }
 
+void
+oftp_cfg_where(const OFTP_PARTNER *p, char *buf, size_t n)
+{
+    if (p->via[0])
+        snprintf(buf, n, "VIA %s", p->via);
+    else
+        snprintf(buf, n, "%s:%d", p->host[0] ? p->host : "-", p->port);
+}
+
 OFTP_PARTNER *
 oftp_cfg_byid(OFTP_CONFIG *c, const char *odetteid)
 {
