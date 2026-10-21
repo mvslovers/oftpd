@@ -24,9 +24,9 @@ authorized, held or given up, the output of `F OFTPD,D ...`. A single
 transfer (sent, received, delivered, refused with a retry to come) is
 `P`.
 
-**Session messages begin with the partner's name**, then a colon. A call
-that has not been matched to a partner yet (`OFTP204W`, `OFTP205P`) begins
-with the caller's address instead. Where a spool key is shown (eight
+**Session messages begin with the partner's name**, then a colon (`OFTP201W`, `OFTP202W` and `OFTP218P`
+have no colon). A call that has not been matched to a partner yet
+(`OFTP204W`, `OFTP205P`) begins with the caller's address instead. Where a spool key is shown (eight
 characters, `T0000012`) it follows the name.
 
 **A number keeps its meaning for ever.** A message that changes its class
@@ -62,16 +62,16 @@ different messages share the number; each is listed.
 | `OFTP026W` | Console + log | `DD OFTPRCV CANNOT BE OPENED, THE n RULES STAY`: `F OFTPD,REFRESH` only, when rules were read before and the DD cannot be opened now. A DD that is missing at start, or after a start without rules, says nothing |
 | `OFTP020E` | Console + log | `SPOOL NOT OPEN: <reason>`; OFTPD ends |
 | `OFTP021W` | Console + log | `SPOOL WAS NOT CLOSED (OPEN RC n), VERIFIED`: OFTPD did not end cleanly last time; the spool was checked |
-| `OFTP022W` | Console + log | `DD OFTPLOG CANNOT BE OPENED` or `IS NOT RECFM=F OR FB`: the messages go to the console |
-| `OFTP023E` | Console + log | `LOG WRITE FAILED, ERRNO n` (once; from then on the messages go to the console) or `LOG CLOSE FAILED, ERRNO n` |
-| `OFTP040P` | Log only | `RECOVERED n SENDS, DISCARDED n PARTIAL RECEIVES`: what the start found in the spool |
+| `OFTP022W` | Console only | `DD OFTPLOG CANNOT BE OPENED` or `IS NOT RECFM=F OR FB`: the messages go to the console. The log is not open, so it is written to the console only |
+| `OFTP023E` | Console only | `LOG WRITE FAILED, ERRNO n` (once; from then on the messages go to the console) or `LOG CLOSE FAILED, ERRNO n`. The log has failed or is closed when it is written, so it goes to the console only |
+| `OFTP040P` | Log only | `RECOVERED n SENDS, DISCARDED n PARTIAL RECEIVES`: what the start found in the spool. Not written when it found neither |
 | `OFTP050E` | Console + log | `LISTEN ON PORT n FAILED, ERRNO n` |
 | `OFTP051P` | Log only | `LISTENING ON PORT n, SOCKET n` |
-| `OFTP090E` | Console + log | `COM AREA NOT AVAILABLE`; OFTPD ends |
-| `OFTP091E` | Console + log | `NO STORAGE`; OFTPD ends |
-| `OFTP095I` | Console + log | `WAITING FOR n SESSIONS` at stop (every 10 seconds) |
+| `OFTP090E` | Console only | `COM AREA NOT AVAILABLE`; OFTPD ends. Written before the log is opened, so to the console only |
+| `OFTP091E` | Console only | `NO STORAGE`; OFTPD ends. Written before the log is opened, so to the console only |
+| `OFTP095I` | Console + log | `WAITING FOR n SESSIONS` at stop (every 10 seconds), or `LISTENER: WAITING FOR n SESSIONS` / `SCHEDULER: WAITING FOR n SESSIONS` for the sessions that task started |
 | `OFTP096W` | Console + log | `<who>: n SESSION SUBTASKS STILL RUNNING`: the stop has waited a minute or more for sessions (repeated every minute; it keeps waiting, the operator's CANCEL ends OFTPD) |
-| `OFTP098E` | Console + log | `OFTPD ABEND, n SOCKETS CLOSED, SVC <state>`: OFTPD abended; written even when the log is busy, then to the console only |
+| `OFTP098E` | Console + log | `OFTPD ABEND, n SOCKETS CLOSED, SVC <state>`: OFTPD abended; written even when the log is busy, then to the console only. A second form, `OFTPD ABEND, MONITOR BLOCK NOT FOUND`, means the recovery exit could not find the monitor's data |
 
 ## Cross memory (the SVC)
 
@@ -104,7 +104,7 @@ These answer a command, so they stay on the console.
 |---|---|---|
 | `OFTP100I` | Console + log | `D P`: one line per partner (name, Odette ID, enabled or disabled, level, host and port) |
 | `OFTP101I` | Console + log | `D P`: `n PARTNERS, n SESSIONS`; `D S`: `n SESSIONS` |
-| `OFTP102I` | Console + log | `D S`: `LARGEST FREE BLOCK n KB, n SUBTASK HANDLES, n SESSIONS` |
+| `OFTP102I` | Console + log | `D M`: `LARGEST FREE BLOCK n KB, n SUBTASK HANDLES, n SESSIONS` |
 | `OFTP110I` | Console + log | `D Q`: one line per transfer (key, direction, state, partner, data set) |
 | `OFTP111I` | Console + log | `n TRANSFERS IN THE SPOOL` |
 | `OFTP120E` | Console + log | `<name> IS NOT A PARTNER THAT CAN BE CALLED` / `IS NOT A PARTNER` |
@@ -189,7 +189,8 @@ except for a refusal for lack of authority.
 
 `OFTP001E`, `OFTP002E`, `OFTP003E` and `OFTP010E` come from the utility
 itself and are written to its own output (SYSPRINT or the terminal). They
-do not use the console or the log.
+do not use the console or the log. `OFTPI001E` comes from the ISPF dialog
+(`OFTPI`) in the same way.
 
 | Id | Text and meaning |
 |---|---|
@@ -197,3 +198,4 @@ do not use the console or the log.
 | `OFTP002E` | `UNKNOWN COMMAND <word>` |
 | `OFTP003E` | `COMMAND TOO LONG` / `OPERAND TOO LONG` |
 | `OFTP010E` | the reply of OFTPD to a request that failed |
+| `OFTPI001E` | `OFTPI RUNS UNDER ISPF: SELECT CMD(OFTPI)`: the dialog was started outside ISPF |
