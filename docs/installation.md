@@ -414,9 +414,9 @@ partner table (`docs/partners.md`).
 upgrade path has been tested. `TOFT100` deletes `TOFT010`
 (`++VER(Z038) DELETE(TOFT010)`), so the SYSMOD installs over the prerelease,
 but it takes no configuration with it: set an existing 0.1.0 installation up
-again, with the settings below, the procedure, the authorization (section 4)
-and a spool of its own (section 5). Step 1 above still applies to
-`TOFT100`. Skip the allocation job: it allocates `OFTPD.LINKLIB` and
+again: the authorization (section 4), a spool of its own (section 5), the
+settings (section 6) and the procedure (section 7). Section 1 still applies
+to `TOFT100`. Skip the allocation job: it allocates `OFTPD.LINKLIB` and
 `OFTPD.AOFTPLOD` with `DISP=(NEW,CATLG,DELETE)`, and the prerelease
 already created both, so a second run fails. Stop OFTPD, then run the
 install job. The TCP control port is gone. Remove `CONTROLPORT=` from
