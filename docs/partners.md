@@ -53,6 +53,14 @@ host name included) are upper case. `SHOW` never prints a password: it says
 `PASSWORD=SET` or `NONE`. To change a password, give the new one. To clear a host, an address or a
 `VIA`, give an empty value (`HOST()`).
 
+`SHOW` prints `-` for `OURID` and `ADDRESS` to a caller who is not named in
+`ADMIN=`; the line keeps its shape. An administrator sees both. This is
+defence in depth, not confidentiality: `ODETTEID`, `HOST`, `PORT`, the
+status and `PASSWORD=SET` or `NONE` stay visible to everyone. Only `PARTNER
+SHOW` is masked. The display of a transfer (`OFTP SHOW` of a key, its `from
+... to ...` line) shows whoever may see that transfer the Odette IDs the
+transfer carries, the local one included.
+
 **A password is as secret as the place you type it.** `OFTP` masks it in
 the echo of `SYSIN`, but it is in your JCL, and under TSO it is on your
 terminal and in your session's history. Keep the JCL in a data set only you
@@ -64,6 +72,40 @@ erases the slot as soon as it has copied the request. Common storage is
 not fetch-protected, so until then any program on the system could read it.
 That window is short, but it is there; it is a limit of the way the
 utilities reach OFTPD, not something a setting closes.
+
+### A partner without a PASSWORD
+
+A partner without `PASSWORD` is allowed. OFTPD then expects the partner to
+send an empty password, so every peer that knows the Odette ID of the
+partner and sends an empty password logs on. A peer that sends a password is
+refused. With an `ADDRESS` in the entry the call must also come from that
+address (`OFTP201W` otherwise); without one it may come from anywhere.
+
+`ADD` and `CHANGE` warn when an enabled partner has no `PASSWORD` after the
+command. `ENABLE` is a `CHANGE` of `ENABLED`, so enabling a partner without
+a password warns as well.
+
+```
+OFTP PARTNER ADD DOCPTN ODETTEID(O0000000000DOCP) HOST(127.0.0.1) -
+     CALL(N)
+WARNING: without a PASSWORD every peer that knows the Odette ID of the partner can log on
+partner DOCPTN added, but it has no PASSWORD
+```
+
+The warning is no refusal: the partner is added or changed. OFTPD answers
+with the code `210` where it would answer `200`, and the batch `OFTP` step
+ends with RC 4. If the entry has an `ADDRESS`, the warning line reads
+`WARNING: without a PASSWORD every peer calling from the ADDRESS of the
+partner that knows the Odette ID can log on`.
+
+There is no warning when the partner has a `PASSWORD` after the command
+(`CHANGE ... PASSWORD(...)` answers a plain `partner DOCPTN changed`, RC 0),
+when the partner is disabled, and when the command changes nothing
+(`unchanged`).
+
+A partner from the `OFTPPTN` member without `PASSWORD` is just as open and
+gets no warning: reading the member, at start or at `REFRESH`, is not a
+command. Check the member for entries without `PASSWORD`.
 
 ### What is refused
 
@@ -79,6 +121,10 @@ utilities reach OFTPD, not something a setting closes.
 | `DELETE` while a session with it runs | RC 4, try again |
 | `DELETE` while the spool holds a transfer for, to or from it | RC 8 |
 | `SEND` to a disabled partner | RC 12, "unknown or disabled partner" |
+| `ADD`, `CHANGE` or `ENABLE` that leaves an enabled partner without `PASSWORD` | RC 4, **taken** with a warning (reply `210`) |
+
+RC 4 has two meanings: the request was not done and may be tried again, or
+it was done with a warning. The text of the last line says which.
 
 **A partner with transfers in the spool is never deleted.** That counts
 every transfer, finished ones too (a finished transfer is the record of what
@@ -110,5 +156,12 @@ leave as it is stays as it is; type a new value into a password input
 field to replace the password, and leave it blank to keep it. The new partner starts with level 5, mode both, no compression,
 may be called, one session and enabled. The refusals above come back as the
 panel's message.
+
+When OFTPD takes the entry, the entry panel ends and the answer stands in
+the message line of the partner list. Any `2xx` answer counts as taken,
+`210` included (`partner PARTNER2 added, but it has no PASSWORD`). The
+dialog shows only that last line, not the `WARNING:` line before it. The
+line commands `E` and `X` show their answer in the same place. A refusal
+keeps the entry panel open.
 
 The panels are made for the 43-row screen (`docs/installation.md`, "What you need").
