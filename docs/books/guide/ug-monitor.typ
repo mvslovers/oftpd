@@ -66,13 +66,15 @@ S OFTPD
 ```)
 
 During the start the monitor reads the settings and the partner table, opens
-the log and the spool, sets right what the previous run left in the spool,
+the log and the spool, reads the partners kept by command from the spool, sets
+right what the previous run left in the spool,
 starts the cross-memory service and begins to listen. The console shows
 #cmd("OFTP000I") with the version, and when the start is done,
 #cmd("OFTP001I OFTPD READY"). A partner entry with an error is reported with
 #cmd("OFTP010W") and disabled, and the others work. The rest of the start is in
 the log only: whether the monitor is authorized (#cmd("OFTP004P")), how many
-partners are enabled (#cmd("OFTP014P")), the port it listens on
+partners of the member are enabled (#cmd("OFTP014P")), how many partners are
+kept by command (#cmd("OFTP018I")), the port it listens on
 (#cmd("OFTP051P")), and the cross-memory service with its SVC number and its
 subsystem name (#cmd("OFTP039P")).
 
@@ -85,6 +87,10 @@ If the monitor cannot start, it ends with a message that names the cause.
     [#cmd("OFTP012E")], [#cmd("OFTPPRM") has no #cmd("ODETTEID").],
     [#cmd("OFTP020E")], [The spool cannot be opened. Check DD #cmd("OFTPSPL"),
       and that no other job has the cluster open.],
+    [#cmd("OFTP019E")], [The partner records of the spool cannot be read
+      to the end. The monitor does not start with a partner table that could
+      bring back a partner that was disabled or changed by command. Check the
+      spool, then start again.],
     [#cmd("OFTP050E")], [The port is in use. Another program holds it, perhaps
       an OFTPD that has not ended.],
     [#cmd("OFTP091E")], [No storage. Raise the region.],
@@ -156,7 +162,8 @@ The operator controls the monitor with the MODIFY command, abbreviated
     [#cmd("F OFTPD,D S")], [Shows the number of sessions.],
     [#cmd("F OFTPD,D M")], [Shows the storage that is left.],
     [#cmd("F OFTPD,CALL name")], [Calls a partner now.],
-    [#cmd("F OFTPD,REFRESH")], [Reads the partner table again.],
+    [#cmd("F OFTPD,REFRESH")], [Reads the member #cmd("OFTPPTN") again. The
+      partners kept by command stay as they are.],
     [#cmd("F OFTPD,HOLD name")], [Holds the sends to a partner, or to
       #cmd("ALL").],
     [#cmd("F OFTPD,RELEASE name")], [Releases them again.],
