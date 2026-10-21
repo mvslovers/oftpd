@@ -162,9 +162,11 @@ sends. A text file is received as variable blocked records, with the record
 length #cmd("TLRECL"). Fixed, variable and undefined files keep their format,
 and their data is stored as it comes, unless the partner has #cmd("XLATE=Y") in
 the partner table (or a receive rule says #cmd("XLATE=Y")). Then OFTPD translates
-it from ISO 8859-1 to EBCDIC. Text is always translated. The data set is created by the started task of OFTPD, and OFTPD never deletes
-it. Who may read it depends on the protection of the data sets that begin with
-the prefix.
+it from ISO 8859-1 to EBCDIC. Text is always translated. The data set is created by the started task of
+OFTPD. OFTPD does not delete a data set that it has received, except that a
+receive rule with #cmd("REPLACE=Y") replaces the data set of an earlier file
+(@xfer-rules). Who may read it depends on the protection of the data sets that
+begin with the prefix.
 
 A received file belongs to nobody, so only an administrator sees it in
 #cmd("OFTP LIST"). Its state is #cmd("RECEIVED") until OFTPD has sent the
