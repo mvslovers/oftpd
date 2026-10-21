@@ -192,8 +192,8 @@ unknown `FROM=` partner, a duplicate rule name, a bad pattern: each is
 per file, at its `F_OPEN`, and kept in the session for the close, so a
 `REFRESH` in the middle of a file does not change that file. The `OFTP_MON`
 block holds the set (some 11 KB for 64 rules); there is no writable static.
-The rules are read after the partners, because `FROM=` is checked against
-them.
+The rules are read after the partners, those of `OFTPPTN` and those kept
+by command (`oftp_mon_maint`), because `FROM=` is checked against them.
 
 **`REPLACE=Y`, the mechanism.** A received file is under `TMPPREFIX.<key>`
 until `f_close_in` has the closed, complete file. With an existing target

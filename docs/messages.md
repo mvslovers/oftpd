@@ -32,7 +32,7 @@ characters, `T0000012`) it follows the name.
 **A number keeps its meaning for ever.** A message that changes its class
 changes its letter and keeps its number: `OFTP211I`, as it was in a
 development version, is `OFTP211P` now. A number is never given to another
-message. `215`, `216` and `233` exist with two letters because two
+message. `215`, `216`, `233` and `243` exist with two letters because two
 different messages share the number; each is listed.
 
 ## Start, stop and the log
@@ -46,7 +46,7 @@ different messages share the number; each is listed.
 | `OFTP004P` | Log only | `AUTHORIZED BY LIBRARY` or `BY SVC`: how OFTPD got authorization |
 | `OFTP005W` | Console + log | `NOT AUTHORIZED, RC=n, CONTINUING` |
 | `OFTP006W` | Console + log | `NO ABEND RECOVERY (ESTAE FAILED)`: an abend of OFTPD will not close its sockets |
-| `OFTP010W` | Console + log | `<member>: <line>`: a line of `OFTPPRM` or `OFTPPTN` that was not understood; the entry is skipped or disabled |
+| `OFTP010W` | Console + log | `<member>: <line>`: a line of `OFTPPRM`, `OFTPPTN` or `OFTPRCV` that was not understood; the entry is skipped or disabled, and one error in `OFTPRCV` keeps the whole rule member from being used (`OFTP025E`) |
 | `OFTP011E` | Console + log | `DD OFTPPRM CANNOT BE OPENED`; OFTPD ends |
 | `OFTP012E` | Console + log | `OFTPPRM HAS NO ODETTEID`; OFTPD ends |
 | `OFTP013W` | Console + log | `DD OFTPPTN CANNOT BE OPENED, NO PARTNERS` |
@@ -57,6 +57,9 @@ different messages share the number; each is listed.
 | `OFTP018I` | Console + log | `n PARTNERS KEPT BY COMMAND, n OVERRIDE OFTPPTN`: the partners added or changed by `PARTNER` commands (`docs/partners.md`), read from the spool at start |
 | `OFTP018W` | Console + log | a partner record of the spool was not taken (`HAS NO NAME`, `<reason>, IGNORED`, `IS KEPT BY COMMAND ALREADY`), two partners have one Odette ID (the second is `DISABLED`), or `THE PARTNER RECORDS OF THE SPOOL CANNOT BE READ` |
 | `OFTP019E` | Console + log | `PARTNER RECORDS OF THE SPOOL UNREADABLE, OFTPD NOT STARTED`: starting on the parmlib table alone would bring back a partner that was disabled or changed by command |
+| `OFTP024I` | Console + log | `RECEIVE RULES: n READ`: the rule member (`OFTPRCV`) was read without error, at start and after `F OFTPD,REFRESH`; n may be 0 |
+| `OFTP025E` | Console + log | `RECEIVE RULES NOT USED, n ERRORS`: the member has n lines in error (each reported with `OFTP010W`) and is not used at all. After `F OFTPD,REFRESH` the text ends with `, THE OLD RULES STAY`; at start there are no rules |
+| `OFTP026W` | Console + log | `DD OFTPRCV CANNOT BE OPENED, THE n RULES STAY`: `F OFTPD,REFRESH` only, when rules were read before and the DD cannot be opened now. A DD that is missing at start, or after a start without rules, says nothing |
 | `OFTP020E` | Console + log | `SPOOL NOT OPEN: <reason>`; OFTPD ends |
 | `OFTP021W` | Console + log | `SPOOL WAS NOT CLOSED (OPEN RC n), VERIFIED`: OFTPD did not end cleanly last time; the spool was checked |
 | `OFTP022W` | Console + log | `DD OFTPLOG CANNOT BE OPENED` or `IS NOT RECFM=F OR FB`: the messages go to the console |
