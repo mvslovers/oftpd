@@ -149,6 +149,20 @@ host = false
 sources = ["test/mvs/tstsvcr.c"]
 host = false
 
+# How long a request takes over the SVC (internals/xmem.md section 18):
+# the requests the dialog makes, timed with the TOD clock, against a
+# RUNNING OFTPD. Runs for real only from test/mvs/tstlat.jcl; measures,
+# and fails on a wrong clock or a refused request, never on a slow one.
+[test.TSTLAT]
+sources = ["test/mvs/tstlat.c"]
+host = false
+
+# Background load for TSTLAT: spins the processor or writes and reads a
+# data set for a number of seconds. Measures nothing.
+[test.TSTLOD]
+sources = ["test/mvs/tstlod.c"]
+host = false
+
 # The SMP installation package (mbt package): the load modules go to
 # OFTPD.LINKLIB (SMP's, distribution library OFTPD.AOFTPLOD), samplib/
 # and ispplib/ are received as text libraries beside it.
