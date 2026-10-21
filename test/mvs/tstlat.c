@@ -258,6 +258,7 @@ main(int argc, char **argv)
     for (s = 0; s < (int)(sizeof(steps) / sizeof(steps[0])); s++) {
         int target = steps[s] > max ? max : steps[s];
         char what[40];
+        int  queued = 0;
 
         /* queue held sends up to the step, each timed */
         if (nkeys < target)
@@ -274,8 +275,9 @@ main(int argc, char **argv)
             add(lastus);
             snprintf(keys[nkeys], sizeof(keys[0]), "%.8s", fin);
             nkeys++;
+            queued++;
         }
-        if (nsamp > 0 && nkeys == target && target > 0) {
+        if (queued > 0 && nkeys == target) {
             snprintf(what, sizeof(what), "SEND (%d..%d)",
                      nkeys - nsamp, nkeys - 1);
             report(what, 0);
@@ -337,8 +339,8 @@ main(int argc, char **argv)
         snprintf(req, sizeof(req), "DELETE KEY=%s", keys[i]);
         rc = timed(req, fin, sizeof(fin));
         if (rc != 0) {
-            delfail++;
-            printf("    DELETE %s: rc %d: %s\n", keys[i], rc, fin);
+            if (delfail++ < 3)
+                printf("    DELETE %s: rc %d: %s\n", keys[i], rc, fin);
             continue;
         }
         add(lastus);

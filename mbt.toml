@@ -149,7 +149,7 @@ host = false
 sources = ["test/mvs/tstsvcr.c"]
 host = false
 
-# How long a request takes over the SVC (internals/xmem.md section 17):
+# How long a request takes over the SVC (internals/xmem.md section 18):
 # the requests the dialog makes, timed with the TOD clock, against a
 # RUNNING OFTPD. Runs for real only from test/mvs/tstlat.jcl; measures,
 # and fails on a wrong clock or a refused request, never on a slow one.
