@@ -158,12 +158,16 @@ is not queued or waiting, with the message #cmd("only a queued or waiting send c
 
 Option 4 is for an administrator. It opens an ISPF edit of the partner member,
 named on its panel, and when the edit ends it asks the monitor to read the member
-and the receive rules again, which is #cmd("F OFTPD,REFRESH"). The first time it
-offers #cmd("SYS2.PARMLIB(OFTPPTN0)") and keeps the name you give in your ISPF
-profile\; on TK5, type the member you use, for example
-#cmd("SYS1.PARMLIB(OFTPPTN0)"). The editor is the one of TK5. Anyone who is not
-an administrator gets #cmd("needs ADMIN=") after the edit. On a system without a
-security product nobody is one (see @ops-admin).
+and the receive rules again, which is #cmd("F OFTPD,REFRESH"). Your ISPF profile
+keeps the name you give there. When the profile holds no name yet, the panel
+offers the data set and member of the DD #cmd("OFTPPTN") of the started task,
+for example #cmd("SYS1.PARMLIB(OFTPPTN0)") on TK5. OFTPD notes the name when it
+starts, and the dialog asks for it when it starts. If the DD names a sequential
+data set, the field holds the data set name alone. If OFTPD is not running, the
+field is empty and you type the name. A name already in the profile is kept and
+not replaced by the one of the DD. The editor is the one of TK5. Anyone who is
+not an administrator gets #cmd("needs ADMIN=") after the edit. On a system
+without a security product nobody is one (see @ops-admin).
 
 The monitor reads the member of the DD #cmd("OFTPPTN") of the started task,
 whichever member you edited.
