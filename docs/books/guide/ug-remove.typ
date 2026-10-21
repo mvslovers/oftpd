@@ -153,23 +153,29 @@ If a step ends higher than 04, the following #cmd("APPLY") or #cmd("ACCEPT")
 step does not run\; the last step does, and shows what is still there. Read the
 output of the failed step\; do not submit the whole job again before you know
 what it did. An #cmd("ACCEPT") that ended with return code 12 on
-#cmd("HMA2833") leaves the function applied and the distribution library full.
-Submit the #cmd("ACCEPT") step alone, with both #cmd("HMASMP") statements, and
-it completes as shown above.
+#cmd("HMA2833") has still rewritten the ACDS, and the distribution library
+still lists the first module of the function. Submitting the #cmd("ACCEPT") step
+alone, with both #cmd("HMASMP") statements, ends with return code 00 and
+#cmd("HMA2270"), but deletes only the other modules\; the first one stays in
+#cmd("OFTPD.AOFTPLOD"), where SMP no longer knows it. That return code 00 does
+not mean the library is empty: list it as shown above. Scratch the library with
+step 5 if OFTPD goes for good.
 
 *What has been measured.* The job was run on test systems (MVS/CE) in two
 states: with the prerelease 0.1.0-dev alone, and after the upgrade from the
 prerelease to 1.0.0-dev, the build of the tree before the release. A system with
 more than one product in the same zones, a system with other service on it, and
 a dummy function with a #cmd("++MAC") element instead of none have not been
-measured. Whatever the system, the #cmd("LIST") in step 4 is the proof.
+measured. The recovery after a failed #cmd("ACCEPT") was measured with the
+prerelease only. Whatever the system, the #cmd("LIST") in step 4 is the proof.
 
 == Step 3: Free the Ids <ug-remove-free>
 
 #idx("UCLIN")
 #idx("FMID", "removal")
 The dummy function has not made the ids free. It has left #cmd("TOFTDEL") itself
-in both zones, with the status #cmd("REC APP ACC"), and a mark
+in both zones, with the status #cmd("REC APP ACC") (the ACDS adds #cmd("RGN")),
+and a mark
 #cmd("DELBY = TOFTDEL") on every id it deleted. This job removes the three
 entries from the CDS (what is applied) and the ACDS (what is accepted). It
 changes the two SMP data bases and no library:
@@ -234,7 +240,7 @@ zones count: an id gone from one and still in the other is not free.
 answers with return code 00, so it does not raise the return code of the step
 above the 04 that you expect. The job has six #cmd("LIST") statements, and all
 six must show the id as not found. A stanza that names #cmd("TYPE = FUNCTION")
-is an entry that is still there, whether it shows the status
+is an entry that is still there, whether it shows a status such as
 #cmd("REC APP ACC") or only a #cmd("DELBY") of its successor. This is what the
 statements #cmd("LIST CDS SYSMOD(TOFT100)") and
 #cmd("LIST CDS SYSMOD(TOFTDEL)") print after step 2, before step 3 has run:
@@ -248,8 +254,11 @@ not #cmd("DELBY = TOFTDEL"). The #cmd("DEL") of step 3 clears it all the same.
 == Step 5: Scratch the Libraries <ug-remove-scratch>
 
 After step 2 the two libraries are empty, but they still exist. The allocation
-job of the installation creates both with #cmd("DISP=(NEW,CATLG,DELETE)"), so it
-would fail against either of them. Delete them in a job of your own:
+job of the installation creates both with #cmd("DISP=(NEW,CATLG,DELETE)"). Run
+against libraries that still exist, it does not fail: it ends with return code
+00, reports #cmd("IEF287I") with #cmd("NOT CATLGD") for both, and leaves
+uncataloged duplicates behind. Delete the libraries in a job of your own before
+you install again:
 
 #screen(```
   DELETE OFTPD.LINKLIB  NONVSAM SCRATCH PURGE
