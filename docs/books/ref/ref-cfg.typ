@@ -5,10 +5,15 @@
 #idx("configuration")#idx("OFTPPRM")#idx("OFTPPTN")
 OFTPD is configured by two members that the OFTPD started task reads from
 its JCL: #cmd("OFTPPRM") holds the settings of the monitor, and #cmd("OFTPPTN")
-holds the partner table. This chapter describes both, the data sets the
-started task needs, the way OFTPD names and allocates the data sets it
-receives, and what a refresh of the partner table does and does not change.
+holds the partner table. A third member, #cmd("OFTPRCV"), is optional. It holds
+the receive rules, which change the way OFTPD names and allocates the data
+sets it receives\; chapter @ref-rcv describes it. This chapter describes the
+first two members, the data sets the started task needs, the way OFTPD names
+and allocates the data sets it receives when no rule applies, and what a
+refresh of the partner table does and does not change.
 How to set up a first partner is described in the _OFTPD User's Guide_.
+The partner table has two layers: the partners of #cmd("OFTPPTN"), and the
+partners that an administrator keeps by command (@cfg-layers).
 
 == The Data Definitions of the Started Task <cfg-dd>
 
@@ -16,8 +21,9 @@ How to set up a first partner is described in the _OFTPD User's Guide_.
 The OFTPD started task needs the data definitions in @cfg-dd-tab. The sample
 procedure that comes with OFTPD sets them up with the symbolic parameters
 #cmd("M") (the member of #cmd("OFTPPRM"), default #cmd("OFTPPRM0")), #cmd("P")
-(the member of #cmd("OFTPPTN"), default #cmd("OFTPPTN0")), #cmd("D") (the
-partitioned data set that holds both, default #cmd("SYS2.PARMLIB")) and
+(the member of #cmd("OFTPPTN"), default #cmd("OFTPPTN0")), #cmd("R") (the
+member of #cmd("OFTPRCV"), default #cmd("OFTPRCV0")), #cmd("D") (the
+partitioned data set that holds all three, default #cmd("SYS2.PARMLIB")) and
 #cmd("S") (the spool, default #cmd("OFTP.SPOOL")), and a region of 8 MB.
 
 #tab(caption: [Data definitions of the OFTPD started task])[
@@ -27,6 +33,10 @@ partitioned data set that holds both, default #cmd("SYS2.PARMLIB")) and
       @cfg-prm. Read once, when OFTPD starts.],
     [#cmd("OFTPPTN")], [The partner table, described in @cfg-ptn. Read when
       OFTPD starts, and again by the #cmd("REFRESH") command.],
+    [#cmd("OFTPRCV")], [The receive rules, described in @ref-rcv. Optional:
+      without the DD there are no rules, and OFTPD writes no message. Read when
+      OFTPD starts, after the partner table, and again by the #cmd("REFRESH")
+      command.],
     [#cmd("OFTPSPL")], [The spool, a VSAM data set that holds one record for
       each transfer. Allocate it with #cmd("DISP=OLD").],
     [#cmd("OFTPLOG")], [The log, a data set with fixed or fixed blocked
@@ -198,6 +208,16 @@ OFTPD reads the member when it starts, and again at each #cmd("REFRESH")
 #cmd("ODETTEID"), or whose name or #cmd("ODETTEID") is used by an earlier
 partner, and reports it with message #cmd("OFTP010W").
 
+The #cmd("PARTNER") command of the #cmd("OFTP") utility (@cmd-partner) takes the
+same keywords as an entry, with the same meaning and the same limits. It differs
+from the member in these points: it refuses a request with a wrong keyword or
+value as a whole, where the member disables the partner\; the utility sends the request in
+upper case, so the value of #cmd("HOST") is stored in upper case, where the
+member keeps its case\; and it refuses an
+entry whose Odette ID another partner has, or whose #cmd("VIA") names no enabled
+direct partner, where the member disables the partner. A value in the member or
+in a command cannot contain a blank or a comma.
+
 #deflist(width: 1.35in,
   [#cmd("PARTNER")], [*Required, and it starts the entry.* The name of the
     partner, 1 to 8 characters. The names are unique. The commands of the
@@ -215,7 +235,8 @@ partner, and reports it with message #cmd("OFTP010W").
     the #cmd("ODETTEID") of #cmd("OFTPPRM").],
   [#cmd("HOST")], [The host name or the dotted address under which OFTPD
     calls the partner, up to 63 characters. A dotted address is used as it
-    is\; anything else is looked up as a name. The case is kept. Without a
+    is\; anything else is looked up as a name. The member keeps the case\; a host
+    given with the #cmd("OFTP PARTNER") command is in upper case. Without a
     host, OFTPD never calls the partner, and only answers its calls.],
   [#cmd("PORT")], [The TCP port of the partner. Default 3305, allowed 1 to
     65535.],
@@ -268,11 +289,51 @@ partner, and reports it with message #cmd("OFTP010W").
 #idx("VIA")
 A partner with #cmd("VIA=name") is never called, and a caller is never
 identified as this partner. Its #cmd("HOST"), #cmd("PORT") and passwords are
-therefore not used\; OFTPD does not refuse them if the entry has them. OFTPD sends the files for it
-in a session with the partner #cmd("name"), addressed to the Odette ID of the
-final partner. #cmd("name") must be a direct partner that is enabled. Only
-one level is allowed: if #cmd("name") is not an enabled direct partner,
-OFTPD disables the partner with the #cmd("VIA").
+therefore not used\; OFTPD does not refuse them if the entry has them. OFTPD
+sends the files for it in a session with the partner #cmd("name"), addressed to
+the Odette ID of the final partner. #cmd("name") must be a direct partner that
+is enabled. Only one level is allowed: if #cmd("name") is not an enabled direct
+partner, OFTPD disables the partner with the #cmd("VIA") (message
+#cmd("OFTP010W")), when it reads the member, at a refresh and at the start of
+OFTPD. The #cmd("PARTNER") command does not disable it: it refuses the entry
+(@cmd-partner-refuse). It also refuses to disable a partner, or to delete one,
+that another partner is reached through.
+
+=== Two Layers: OFTPPTN and Partners Kept by Command <cfg-layers>
+
+#idx("partner kept by command")#idx("partner table", "layers")
+The partner table of OFTPD has two layers. One is the member #cmd("OFTPPTN"). The
+other is the set of partners that an administrator adds or changes with the
+#cmd("PARTNER") command (@cmd-partner) or in the ISPF dialog, and that OFTPD
+keeps in the spool. Both layers share the table of 32 places.
+
+- When OFTPD starts, it reads #cmd("OFTPPTN"), and then the partners kept by
+  command from the spool. If it cannot read the spool for these, it writes
+  #cmd("OFTP019E") and does not start. If it cannot open #cmd("OFTPPTN"), it
+  writes #cmd("OFTP013W") and goes on with the partners kept by command.
+  #cmd("OFTP018I") gives the number of the partners kept by command and how many
+  of them override a partner of #cmd("OFTPPTN").
+- A partner that has the same name in both layers is one partner. The entry kept
+  by command wins, and replaces the whole entry of #cmd("OFTPPTN")\; OFTPD does
+  not merge the two. The first #cmd("CHANGE") of a partner of #cmd("OFTPPTN")
+  makes it a partner kept by command in this way.
+- #cmd("OFTPPTN") is not changed by the command. A partner that is only in
+  #cmd("OFTPPTN") cannot be deleted by command, and a #cmd("REFRESH") leaves a
+  partner kept by command alone (@cfg-refresh).
+- If two enabled partners have the same Odette ID, OFTPD keeps the one that is
+  kept by command, or else the earlier one. It disables the other, in the table
+  only, and writes #cmd("OFTP018W").
+- OFTPD changes the spool first and the table afterwards. If it cannot write the
+  spool, nothing changes.
+
+#note[The spool holds a partner kept by command as text with the
+#cmd("PASSWORD") and the #cmd("OURPASSWORD") in clear. Protect the spool data set
+as you protect the member. A request that carries a password waits in common
+storage (CSA) that a program in key 8 can read, until OFTPD has taken it.
+OFTPD clears the request in storage as soon as it has copied it, and the
+routine of the SVC clears request and reply when the caller takes the slot back.
+OFTPD also clears all slots when it stops. See the _OFTPD User's Guide_,
+chapter "Partners and Configuration".]
 
 == Refreshing the Partner Table <cfg-refresh>
 
@@ -280,21 +341,40 @@ OFTPD disables the partner with the #cmd("VIA").
 The operator command #cmd("F OFTPD,REFRESH") reads #cmd("OFTPPTN") again\; so
 does the #cmd("REFRESH") request of an administrator in the ISPF dialog. It
 does not read #cmd("OFTPPRM"). OFTPD reports the result with message
-#cmd("OFTP016I").
+#cmd("OFTP016I"). The refresh replaces what #cmd("OFTPPTN") says. It leaves
+alone the partners that an administrator keeps by command (@cfg-layers): their
+entries, and their presence in the table, stay as they are, whatever the member
+says.
 
 - A partner that is new is added. If the table is full, OFTPD skips it and
   writes #cmd("OFTP015W").
 - A partner that is still in the member is replaced by its entry in the
   member, whether the entry has changed or not. The wait before OFTPD calls
   it again after a failed call is cancelled, so that a new #cmd("HOST") is
-  tried at once.
+  tried at once. This does not apply to a partner kept by command.
 - A partner that is no longer in the member is taken out of the table, and
   its slot is free for another partner, if no transfer in the spool names it
   and no session or call of it is running. Otherwise OFTPD disables it, and
-  a later refresh takes it out when it is free of these.
+  a later refresh takes it out when it is free of these. This does not apply to
+  a partner kept by command: it stays in the table, with its entry, even if the
+  member does not name it any more.
+
+A partner that is in both layers is the partner kept by command, with its own
+entry\; the entry in the member is not used. If the partner is deleted by
+command later, the entry of the member takes its place at once (see
+@cmd-partner-delete). After a refresh, OFTPD checks the table as a whole. Of two
+enabled partners with one Odette ID it keeps the partner kept by command, or
+else the earlier one, and disables the other with message #cmd("OFTP018W")\; it
+disables a partner whose #cmd("VIA") names no enabled direct partner
+(#cmd("OFTP010W")).
 
 The message #cmd("OFTP016I") gives the numbers of partners enabled, new,
-disabled and removed. The table holds 32 slots. A refresh frees the slots of
+disabled and removed. The enabled partners are the enabled partners of the whole
+table, those kept by command too. The new partners are those that the refresh
+added from the member. The disabled partners are the partners that were enabled
+and have left the member, and that the refresh keeps in the table, disabled. The
+removed partners are those that the refresh freed. A partner kept by command is
+never one of the last three. The table holds 32 slots. A refresh frees the slots of
 the removed partners before it adds the new ones. If the table is still
 full, OFTPD writes #cmd("OFTP015W") for each partner that it cannot add\; the
 next refresh reads that partner again. A partner that was disabled and not
@@ -306,9 +386,11 @@ the table it has.
 == Names of Received Data Sets <cfg-dsn>
 
 #idx("received files", "data set names")
-A file that OFTPD receives is stored in a new cataloged data set. OFTPD
-builds its name from #cmd("INPREFIX") and the virtual file name of the
-transfer, one qualifier at a time:
+A file that OFTPD receives is stored in a new cataloged data set. A receive
+rule can choose its name with the keyword #cmd("DSN"), and then the name is
+built as chapter @ref-rcv describes. If no rule matches the file, or the rule
+that matches has no #cmd("DSN"), OFTPD builds the name from #cmd("INPREFIX") and
+the virtual file name of the transfer, one qualifier at a time:
 
 - Letters are changed to upper case. Letters, digits, and the characters
   #cmd("@"), #cmd("#"), #cmd("$") and #cmd("-") are kept\; any other character
@@ -333,7 +415,9 @@ transfer, one qualifier at a time:
 ] <cfg-dsn-tab>
 
 If the name is already used, OFTPD adds the transfer key (for example
-#cmd("T0000012")) as an extra qualifier.
+#cmd("T0000012")) as an extra qualifier. This holds for the names built from
+#cmd("INPREFIX") only. A name that a rule makes with #cmd("DSN") is not changed:
+the file is refused, or, with #cmd("REPLACE=Y"), it replaces the data set.
 
 The file is first received into a data set named #cmd("TMPPREFIX") followed by
 the transfer key, and is renamed to the final name after it has been closed.
@@ -368,11 +452,22 @@ primary of the size divided by 15 plus 1, but at least 5, and a secondary of
 half the primary plus 1. The disposition is #cmd("NEW,CATLG,DELETE"). A name
 that is already cataloged is refused.
 
+A receive rule that matches the file can change some of this (see @ref-rcv).
+Its #cmd("UNIT") and #cmd("VOLSER") take the place of those of #cmd("OFTPPRM"),
+each for itself. Its #cmd("SPACE") is the primary quantity, in tracks, when the
+size that the sender announces is 0\; the secondary quantity is half of it plus
+1. Its #cmd("XLATE") takes the place of the #cmd("XLATE") of the partner for
+this file. The record format and the record length come from the file
+description whatever a rule says. When no rule matches, or the rule does not
+give a keyword, the values described above hold.
+
 == A Job After Receipt <cfg-job>
 
 #idx("JOB")#idx("job after receipt")#idx("internal reader")#idx("symbols", "in a job")
-A receive rule can carry the keyword #cmd("JOB=pds(member)"). OFTPD then reads
-that member once the file is under its final name, puts the symbols of
+A receive rule can carry the keyword #cmd("JOB=pds(member)"). The rules are in
+the member that the DD #cmd("OFTPRCV") names, and @ref-rcv describes them, with
+the other keywords of a rule and the way OFTPD chooses the rule for a file.
+OFTPD then reads that member once the file is under its final name, puts the symbols of
 @cfg-job-sym-tab into it, and gives it to its own internal reader. The job is
 submitted before OFTPD owes the receipt (EERP) to the partner, but the receipt
 does not wait for the job. It says that the file has arrived, not that anything

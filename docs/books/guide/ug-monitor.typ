@@ -17,13 +17,14 @@ data definitions that the monitor needs. The chapter “Configuration and the
 Partner Table” of the _OFTPD Reference_ describes each one.
 
 #screen(```
-//OFTPD    PROC M=OFTPPRM0,P=OFTPPTN0,
+//OFTPD    PROC M=OFTPPRM0,P=OFTPPTN0,R=OFTPRCV0,
 //            D='SYS2.PARMLIB',
 //            S='OFTP.SPOOL'
 //OFTPD    EXEC PGM=OFTPD,REGION=8M,TIME=1440
 //STEPLIB  DD  DISP=SHR,DSN=OFTPD.LINKLIB
 //OFTPPRM  DD  DSN=&D(&M),DISP=SHR,FREE=CLOSE
 //OFTPPTN  DD  DSN=&D(&P),DISP=SHR
+//OFTPRCV  DD  DSN=&D(&R),DISP=SHR
 //OFTPSPL  DD  DSN=&S,DISP=OLD
 //OFTPLOG  DD  SYSOUT=*,DCB=(RECFM=FB,LRECL=160,BLKSIZE=160)
 //SYSPRINT DD  SYSOUT=*
@@ -32,10 +33,11 @@ Partner Table” of the _OFTPD Reference_ describes each one.
 //SYSUDUMP DD  SYSOUT=*
 ```)
 
-The parameters name the members of the settings and the partner table, the
-library that holds them, and the spool. Give another one when you start the
-monitor, for example #cmd("S OFTPD,S='MY.SPOOL'") or
-#cmd("S OFTPD,P=OFTPPTN1").
+The parameters name the members of the settings, the partner table and the
+receive rules, the library that holds them, and the spool. Give another one
+when you start the monitor, for example #cmd("S OFTPD,S='MY.SPOOL'") or
+#cmd("S OFTPD,P=OFTPPTN1"). The DD #cmd("OFTPRCV") is optional: without it
+there are no receive rules.
 
 The started task needs the right to update the spool, and to create data sets
 under the prefixes #cmd("INPREFIX") and #cmd("TMPPREFIX"). If the system
@@ -65,12 +67,16 @@ Start the monitor from the console.
 S OFTPD
 ```)
 
-During the start the monitor reads the settings and the partner table, opens
-the log and the spool, sets right what the previous run left in the spool,
+During the start the monitor reads the settings, the partner table and the
+receive rules, opens the log and the spool, sets right what the previous run left in the spool,
 starts the cross-memory service and begins to listen. The console shows
 #cmd("OFTP000I") with the version, and when the start is done,
 #cmd("OFTP001I OFTPD READY"). A partner entry with an error is reported with
-#cmd("OFTP010W") and disabled, and the others work. The rest of the start is in
+#cmd("OFTP010W") and disabled, and the others work. A member of receive rules
+is read and checked as a whole. If it is in order, the console shows
+#cmd("OFTP024I") with the number of rules. If a line is in error,
+#cmd("OFTP010W") shows it with its line number, #cmd("OFTP025E") follows, and
+the monitor starts without receive rules. The rest of the start is in
 the log only: whether the monitor is authorized (#cmd("OFTP004P")), how many
 partners are enabled (#cmd("OFTP014P")), the port it listens on
 (#cmd("OFTP051P")), and the cross-memory service with its SVC number and its
@@ -156,7 +162,7 @@ The operator controls the monitor with the MODIFY command, abbreviated
     [#cmd("F OFTPD,D S")], [Shows the number of sessions.],
     [#cmd("F OFTPD,D M")], [Shows the storage that is left.],
     [#cmd("F OFTPD,CALL name")], [Calls a partner now.],
-    [#cmd("F OFTPD,REFRESH")], [Reads the partner table again.],
+    [#cmd("F OFTPD,REFRESH")], [Reads the partner table and the receive rules again.],
     [#cmd("F OFTPD,HOLD name")], [Holds the sends to a partner, or to
       #cmd("ALL").],
     [#cmd("F OFTPD,RELEASE name")], [Releases them again.],

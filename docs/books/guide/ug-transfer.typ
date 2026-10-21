@@ -132,14 +132,17 @@ You can change a transfer that is yours.
   [#cmd("HOLD key")], [Holds a send that is queued or waiting.],
   [#cmd("RELEASE key")], [Queues a held send again, and begins to count the
     attempts from 0.],
-  [#cmd("RETRY key")], [Queues a send again, from any state but queued,
-    for instance after a refusal. A send that was already sent is sent a second
+  [#cmd("RETRY key")], [Queues a send again, from any state but queued and
+    active, for instance after a refusal. A send that was already sent is sent a second
     time.],
   [#cmd("DELETE key")], [Removes the transfer from the spool. The data set is
     not deleted. A transfer in a session cannot be deleted.],
 )
 
-A command with #cmd("PARTNER") in place of the key, #cmd("OFTP HOLD PARTNER(MAC1)") for example, changes all your sends to that partner.
+A command with #cmd("PARTNER") in place of the key, #cmd("OFTP HOLD PARTNER(MAC1)") for example, changes all your sends to that partner. A send to a partner that is reached
+through another one counts as a send to the other one. #cmd("HOLD key"),
+#cmd("RELEASE key"), #cmd("RETRY key") and #cmd("DELETE key") take the key of a
+transfer only\; any other key gets the answer #cmd("no such transfer").
 
 == Receiving Files <xfer-recv>
 
@@ -155,9 +158,52 @@ file sent as #cmd("DAILY") becomes #cmd("OFTP.IN.DAILY"). If the data set exists
 OFTPD adds the transfer key as a further qualifier. The Reference gives the
 exact rules.
 
+#idx("receive rule")#idx("received files", "choosing the name")
+An administrator can choose the names with receive rules. A rule says that the
+files of a partner, or of every partner, whose virtual file name looks like a
+pattern go to a data set with a name of the rule's making. The name can hold
+parts of the virtual file name, the name of the partner, and the date and time
+of the arrival. A rule can also say on which volume and in how much space the
+data set is created, that a data set of the same name is replaced by the new
+file, and that a job starts when the file has arrived. For example, these two
+rules
+
+#screen(```
+RULE=ORDERS  FROM=MAC1  VFN=ORDERS.*
+             DSN=ACCT.ORDERS.Y%YYYY.D%MM%DD.T%HH%MI%SS
+RULE=DAILY   VFN=DAILY  DSN=ACCT.IN.%ID.%VFN  REPLACE=Y
+```)
+
+put the file #cmd("ORDERS.JAN"), which MAC1 sends on 20 October 2026 at 23:56:09,
+into #cmd("ACCT.ORDERS.Y2026.D1020.T235609"), and the file #cmd("DAILY") of
+MAC1 into #cmd("ACCT.IN.MAC1.DAILY"). The next #cmd("DAILY") of MAC1 replaces
+that data set, but only when it has arrived in full\; if the transfer fails, the
+old data set stays as it was. A file that no rule matches is named as
+described above.
+
+The name under which a file was stored is in the last column of
+#cmd("OFTP LIST") (see @xfer-follow), in the line #cmd("data set") of
+#cmd("OFTP SHOW key"), which an administrator sees, and in the message
+#cmd("OFTP222P") in the log of the monitor, which also gives the number of
+records. If a rule makes a name that
+already exists and the rule does not allow a replacement, OFTPD refuses the
+file, and the partner may send it again. The rules, their keywords, the
+symbols for the names and the messages are described in the chapter “Receive
+Rules” of the _OFTPD Reference_. Ask your administrator which rules your system
+has.
+
 The attributes of the data set come from the file description that the partner
 sends. A text file is received as variable blocked records, with the record
 length #cmd("TLRECL"). Fixed, variable and undefined files keep their format.
+
+OFTPD cuts the data of a fixed file into records of the record length of the
+file description, wherever the partner marks the end of a record inside its
+data buffers. Some partners set those marks wrongly at the end of a buffer.
+OFTPD counts the marks, and at the end of the file it accepts the record count
+of the partner if it equals the number of records OFTPD cut or the number of
+marks it saw. A variable file is cut at the marks, and a record longer than the
+record length makes OFTPD refuse the end of the file.
+
 The data set is created by the started task of OFTPD, and OFTPD never deletes
 it. Who may read it depends on the protection of the data sets that begin with
 the prefix.
@@ -167,7 +213,9 @@ A received file belongs to nobody, so only an administrator sees it in
 receipt to the partner, and #cmd("CONFIRMED") after it. A file that OFTPD
 refuses, for instance because the data set cannot be created or because the file
 is for another Odette ID, is not kept in the spool\; the reason is in the log of
-the monitor (messages #cmd("OFTP220E") and #cmd("OFTP223W")).
+the monitor (messages #cmd("OFTP220E") and #cmd("OFTP223W"), and for a file
+that a receive rule refuses #cmd("OFTP224W"), #cmd("OFTP225W") and
+#cmd("OFTP234W")).
 
 #idx("received files", "job after receipt")
 A receive rule can also start a job when a file has arrived: with
@@ -215,9 +263,12 @@ The main panel has these options.
     state, or your own. Type a letter in front of a line: S to show it, H to
     hold, R to release, T to retry, D to delete.],
   [3 Partners], [Shows the partner table. C in front of a partner calls it now,
-    which an administrator may do.],
+    which an administrator may do. An administrator may also type M to change a
+    partner, E to enable it, X to disable it and D to delete it, and add a
+    partner in the field New partner (see @ptn-maint-ispf).],
   [4 Configure], [Lets an administrator edit the member of the partner table.
-    When the edit ends, OFTPD reads the member again.],
+    When the edit ends, OFTPD reads the member again. Partners that are kept
+    by command stay as they are.],
   [5 Monitor], [Shows the Odette ID, the port, the SVC, the sessions and the
     spool of the monitor.],
   [X Exit], [Leaves the dialog.],
@@ -232,5 +283,8 @@ A user named with #cmd("ADMIN") in the settings may also use the following.
 - #cmd("OFTP PURGE DAYS(n)") deletes the finished transfers older than n days from
   the spool. Without #cmd("DAYS") it uses the #cmd("KEEPDAYS") of the settings.
   Only the spool is cleaned\; no data set is deleted.
+- #cmd("OFTP PARTNER ADD"), #cmd("CHANGE"), #cmd("ENABLE"), #cmd("DISABLE") and
+  #cmd("DELETE") maintain the partner table while OFTPD runs (see
+  @ptn-maint).
 - #cmd("OFTP LIST") shows all transfers, including the files received.
 - Changes to all transfers, whoever queued them.

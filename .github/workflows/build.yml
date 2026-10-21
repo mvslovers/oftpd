@@ -10,3 +10,12 @@ jobs:
     uses: mvslovers/mbt/.github/workflows/build3.yml@main
     with:
       host_tests: true
+
+  messages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Every message id of the source is in the reference
+        run: |
+          python3 tools/check-messages.py --self-test
+          python3 tools/check-messages.py docs/books/ref/msg-*.typ
