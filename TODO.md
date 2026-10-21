@@ -11,11 +11,11 @@ state. The MVP scope is `internals/design.md` section 0.
 Checked against the issues on this date; the issues win if they disagree.
 
 **1.0.0** (milestone `1.0.0`), open: levels 1.4 and 1.3 against a real
-peer #50, `MAXRETRY` cut off mid-file #51, `docs/` #63, book area #64,
+peer #50, `docs/` #63, book area #64,
 release preparation #65, colon after the partner name in three messages
 #93, `LIST` over 150 transfers #101, books: partner password, VIA and
 OURID #163. Closed in this
-milestone: receive rules #44, job after receipt #45, partner maintenance
+milestone: `MAXRETRY` cut off mid-file #51 (pending merge of PR #168), receive rules #44, job after receipt #45, partner maintenance
 #46, log to SYSOUT #47, `TRACE` #48, `TRACE` follow-ups #86,
 spool-thread recovery #49, SVC on TK5 #52, dialog on TK5 #53, no ACEE /
 no security product #54, SVC length check #55, session abort while
@@ -287,10 +287,11 @@ is not running.
 - ~~dev1 on the new names~~ — 2026-10-13 (STC00661, `OFTP004I
   AUTHORIZED BY SVC`, ISPF test green, `OFTP370.DEV.LINKLIB` scratched;
   `internals/dev1-changes.md`).
-- Retry limit (`MAXRETRY`, design 3.3): measured on dev1 2026-10-13
-  (`internals/interop.md`). Still untried there: a transfer cut off
-  mid-file, the wait after a call that failed before any file, a NERP
-  for a level 1.3 sender (#51, #50).
+- ~~Retry limit (`MAXRETRY`, design 3.3)~~ — measured on dev1 2026-10-13
+  and, for a transfer cut off mid-file and the wait after a call that
+  failed before any file, in a container 2026-10-21 (#51,
+  `internals/interop.md`). Still untried: a NERP for a level 1.3 sender
+  (#50) and a cut of the second file in a session whose first file went (#171).
 - Dialog: `S` (show) and Configure are driven by the TN3270 test (#62,
   TK5 container 2026-10-20), as is the partner maintenance. Panels for 80x43, measured on dev1 2026-10-13 at 80x43 and 160x62
   (s3270 `-model 3279-4-E`, `-model 3279-5-E -oversize 160x62`): on
