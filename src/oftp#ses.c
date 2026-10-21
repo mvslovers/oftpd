@@ -642,8 +642,9 @@ send_file(OFTP_SESS *s, OFTP_SFIDCMD *f, OFTP_FH *fh, int *turn)
     unsigned cap, n = 0, credit;
     unsigned long acnt;
     int rc, last = 0;
-    char cd, code;
+    char cd, code, shown[OFTP_DSNLEN + 1];
 
+    oftp_printable(shown, sizeof(shown), f->dsn);
     f->rest = 0;
     f->osiz = f->fsiz;
     f->sec = f->ciph = f->comp = f->env = 0;
@@ -652,7 +653,7 @@ send_file(OFTP_SESS *s, OFTP_SFIDCMD *f, OFTP_FH *fh, int *turn)
     f->desc = NULL;
     rc = oftp_enc_sfid(s->level, f, s->ob + 4, s->sdeb);
     if (rc < 0) {
-        slog(s, "%s: cannot be described in an SFID (%d)", f->dsn, rc);
+        slog(s, "%s: cannot be described in an SFID (%d)", shown, rc);
         s->f.out_done(s->f.ctx, fh, 99, 'N');
         return OK;
     }
@@ -664,7 +665,7 @@ send_file(OFTP_SESS *s, OFTP_SFIDCMD *f, OFTP_FH *fh, int *turn)
     if (code == OFTP_SFNA) {
         if (oftp_dec_reas(s->level, OFTP_SFNA, s->ib + 4, n, &r) != 0)
             return end_local(s, ESID_DATA);
-        slog(s, "%s refused, SFNA %02d retry %c", f->dsn, r.reas, r.retry);
+        slog(s, "%s refused, SFNA %02d retry %c", shown, r.reas, r.retry);
         s->f.out_done(s->f.ctx, fh, r.reas, r.retry);
         return OK;
     }
@@ -690,7 +691,7 @@ send_file(OFTP_SESS *s, OFTP_SFIDCMD *f, OFTP_FH *fh, int *turn)
         rc = s->f.read(s->f.ctx, fh, buf, cap, &n, &last);
         if (rc < 0) {
             drop_buf(s);
-            slog(s, "%s: read error, session ends", f->dsn);
+            slog(s, "%s: read error, session ends", shown);
             s->f.out_done(s->f.ctx, fh, 12, 'Y');
             return end_local(s, ESID_OTHER);
         }
@@ -724,7 +725,7 @@ send_file(OFTP_SESS *s, OFTP_SFIDCMD *f, OFTP_FH *fh, int *turn)
     if (code == OFTP_EFNA) {
         if (oftp_dec_reas(s->level, OFTP_EFNA, s->ib + 4, n, &r) != 0)
             return end_local(s, ESID_DATA);
-        slog(s, "%s not accepted, EFNA %02d", f->dsn, r.reas);
+        slog(s, "%s not accepted, EFNA %02d", shown, r.reas);
         s->f.out_done(s->f.ctx, fh, r.reas, 'N');
         return OK;
     }
@@ -732,7 +733,7 @@ send_file(OFTP_SESS *s, OFTP_SFIDCMD *f, OFTP_FH *fh, int *turn)
         return unexpected(s, n, "EFPA");
     if (oftp_dec_efpa(s->ib + 4, n, &cd) != 0)
         return end_local(s, ESID_DATA);
-    slog(s, "%s sent, %lu records, %lu octets", f->dsn, efid.rcnt, efid.ucnt);
+    slog(s, "%s sent, %lu records, %lu octets", shown, efid.rcnt, efid.ucnt);
     s->files_out++;
     s->f.out_done(s->f.ctx, fh, 0, 'N');
     *turn = cd == 'Y';
@@ -747,13 +748,13 @@ speak(OFTP_SESS *s)
     OFTP_SFIDCMD f;
     OFTP_FH *fh;
     int sent = 0, turn = 0, rc;
-    char code;
+    char code, shown[OFTP_DSNLEN + 1];
 
     while (s->f.next_erp(s->f.ctx, &s->peer, &code, &erp, &fh) == 1) {
         rc = oftp_enc_erp(s->level, code, &erp, s->ob + 4, s->sdeb);
         if (rc < 0) {
             slog(s, "%s: response '%c' not possible at this level",
-                 erp.dsn, code);
+                 oftp_printable(shown, sizeof(shown), erp.dsn), code);
             s->f.erp_sent(s->f.ctx, fh);
             continue;
         }
