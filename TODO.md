@@ -329,6 +329,11 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   `PASSWORD` answers `210` plus a `100 WARNING` row (batch RC 4). A
   partner from `OFTPPTN` without `PASSWORD` is open the same way and
   gets no warning (the member is not a command).
+  Review follow-up (#136): the warning says so when the partner has an
+  `ADDRESS` (the peer must still call from it); an answer the client
+  reads as incomplete no longer leaves the code of its last line in
+  `*code`. Still open: an `OFTPPTN` partner without `PASSWORD` gets
+  neither message nor refusal at load (needs a decision).
   ~~`PARTNER SHOW` shows ADDRESS and OURID to every user~~ (#129): for
   a caller without `ADMIN=` both print `-`, the line keeps its shape.
   Measured (container, 2026-10-21): `TSTPTM` A 69/69, P1 11/11, P2 4/4,
