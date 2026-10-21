@@ -38,4 +38,11 @@ extern int  oftp_cli_piece(const char *buf, unsigned len, OFTP_CLILINE line,
                            void *ctx, char *final, int cap, int *code)
                                                         asm("OFTPCLPC");
 
+/* An answer that does not end as one: final gets the text, *code (when not
+** NULL) is cleared so that no code of a half-read answer is taken for the
+** server's, and the return code 12 comes back.
+*/
+extern int  oftp_cli_broken(char *final, int cap, int *code)
+                                                        asm("OFTPCLBR");
+
 #endif /* OFTPCLI_H */

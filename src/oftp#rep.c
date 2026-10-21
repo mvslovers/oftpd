@@ -71,3 +71,12 @@ oftp_cli_piece(const char *buf, unsigned len, OFTP_CLILINE line, void *ctx,
     }
     return -1;
 }
+
+int
+oftp_cli_broken(char *final, int cap, int *code)
+{
+    snprintf(final, (size_t)cap, "incomplete answer from OFTPD");
+    if (code != NULL)
+        *code = 0;
+    return 12;
+}

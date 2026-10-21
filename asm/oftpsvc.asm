@@ -123,7 +123,8 @@ JSCBSSIB EQU   316                 JSCB+X'13C' -> SSIB
 SSIBJBID EQU   12                  SSIB+X'0C' JES job id, CL8
 ASXBSENV EQU   200                 ASXB+X'C8' -> ACEE
 ACEEUSER EQU   20                  ACEE+X'14', length-prefixed
-RBEXSAVE EQU   96                  SVRB+X'60'
+RBEXSAVE EQU   96                  SVRB+X'60', 48 bytes (IHARB)
+RBXCLAIM EQU   20                  our claim number, in that area
 * CVT0PT01 (CVT+X'98') comes from the CVT mapping macro at the end of
 * this file. A local EQU for it collides with the macro's own symbol
 * (IFO196) and makes CVT0PT01-CVTMAP a mixed absolute/relocatable
@@ -374,6 +375,8 @@ CAPOK    ST    R3,SLCAP(,R7)
          ST    R6,8(,R9)
          ST    R8,12(,R9)
          ST    R7,16(,R9)
+         L     R3,SLCLAIM(,R7)       our claim number
+         ST    R3,RBXCLAIM(,R9)
          L     R11,ANCECB(,R2)       OFTPD wake ECB (key 8)
          LTR   R11,R11
          BZ    POSTBAD
@@ -448,7 +451,29 @@ WAKECHK  TM    SLRECB(R7),X'40'    our own ECB posted?
          CS    R3,R4,SLRECB(R7)    take our wait bit back off
          BNE   WAKECHK             changed: a POST, look again
          B     WAITAGN
-WAKEOWN  L     R3,SLSTATE(,R7)
+*---------------------------------------------------------------------*
+* Is the slot still the one we claimed? The sweep frees a parked
+* caller's slot, and another caller can claim it before this one is
+* dispatched again (a swapped-out address space). The state alone says
+* nothing then: a foreign PENDING would be wiped and freed below, a
+* foreign DONE would be collected as our reply, and either takes the
+* in-flight count down a second time (#124).
+*
+* The claim number we stored at claim time sits in our SVRB, which
+* nobody else writes. A slot with another number is not ours, and one
+* in FREE or CLAIMED may still carry OUR number -- a new claimant sits
+* in CLAIMED until it stores its own -- so neither is ours.
+* All of them are SWEPT: touch nothing, decrement nothing.
+WAKEOWN  SLR   R9,R9
+         L     R9,PSATOLD(,R9)
+         L     R9,TCBRBP(,R9)
+         LA    R9,RBEXSAVE(,R9)
+         L     R3,SLSTATE(,R7)
+         C     R3,=A(STCLAIM)
+         BNH   SWEPT                 FREE or CLAIMED
+         L     R4,SLCLAIM(,R7)
+         C     R4,RBXCLAIM(,R9)
+         BNE   SWEPT                 claimed by someone else
          C     R3,=A(STDONE)
          BE    REPLYOK
          C     R3,=A(STSTOP)
@@ -469,10 +494,23 @@ WAKEOWN  L     R3,SLSTATE(,R7)
 * nothing -- it must not store into the slot and must not decrement,
 * because whoever freed the slot owns that decrement. SWEPT does
 * neither.
+*
+* The claim was compared before the CS; the sweep and a new claimant
+* can both run between that compare and the CS. In COPYOUT
+* nobody else touches the slot, so the number is read again; if it is
+* no longer ours the CS is undone and the slot is left as found.
 REPLYOK  LA    R3,STDONE
          LA    R4,STCPYO
          CS    R3,R4,SLSTATE(R7)
          BNE   SWEPT
+         L     R3,SLCLAIM(,R7)
+         C     R3,RBXCLAIM(,R9)
+         BE    CPYOWN
+         LA    R3,STCPYO
+         LA    R4,STDONE
+         CS    R3,R4,SLSTATE(R7)
+         B     SWEPT
+CPYOWN  DS    0H
          L     R10,SLREPLEN(,R7)
          LTR   R10,R10
          BM    BADREPLY
