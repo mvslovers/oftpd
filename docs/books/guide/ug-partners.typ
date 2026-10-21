@@ -166,8 +166,8 @@ addressed to the Odette IDs of its partners and passes them on unchanged. Withou
 == Putting the Partners in Use <ptn-use>
 
 Put the finished members in the library that the started task reads, by
-default #cmd("SYS2.PARMLIB"), with the members #cmd("OFTPPRM0") and
-#cmd("OFTPPTN0"). The procedure picks other members through its parameters.
+default #cmd("SYS2.PARMLIB"), with the members #cmd("OFTPPRM0"),
+#cmd("OFTPPTN0") and #cmd("OFTPRCV0"). The procedure picks other members through its parameters.
 Then start the monitor (see @ug-monitor).
 
 A change to the partner table does not need a restart. Edit #cmd("OFTPPTN"),
@@ -184,7 +184,8 @@ you took out of the member leaves the table and frees its place\; if a transfer
 in the spool still names it or a session of it is running, OFTPD disables it
 instead, and a later refresh takes it out. OFTPD answers with message
 #cmd("OFTP016I"), which gives the number of partners enabled, new, disabled
-and removed.
+and removed. The command reads the receive rules again too (see
+@xfer-rules).
 
 The table has 32 places. If it is full, OFTPD writes #cmd("OFTP015W") and does
 not add the partner\; remove a partner from the member and refresh again. A

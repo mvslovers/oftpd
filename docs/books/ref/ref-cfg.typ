@@ -16,8 +16,9 @@ How to set up a first partner is described in the _OFTPD User's Guide_.
 The OFTPD started task needs the data definitions in @cfg-dd-tab. The sample
 procedure that comes with OFTPD sets them up with the symbolic parameters
 #cmd("M") (the member of #cmd("OFTPPRM"), default #cmd("OFTPPRM0")), #cmd("P")
-(the member of #cmd("OFTPPTN"), default #cmd("OFTPPTN0")), #cmd("D") (the
-partitioned data set that holds both, default #cmd("SYS2.PARMLIB")) and
+(the member of #cmd("OFTPPTN"), default #cmd("OFTPPTN0")), #cmd("R") (the
+member of #cmd("OFTPRCV"), default #cmd("OFTPRCV0")), #cmd("D") (the
+partitioned data set that holds all three, default #cmd("SYS2.PARMLIB")) and
 #cmd("S") (the spool, default #cmd("OFTP.SPOOL")), and a region of 8 MB.
 
 #tab(caption: [Data definitions of the OFTPD started task])[
@@ -27,6 +28,12 @@ partitioned data set that holds both, default #cmd("SYS2.PARMLIB")) and
       @cfg-prm. Read once, when OFTPD starts.],
     [#cmd("OFTPPTN")], [The partner table, described in @cfg-ptn. Read when
       OFTPD starts, and again by the #cmd("REFRESH") command.],
+    [#cmd("OFTPRCV")], [The receive rules, described in @ref-rcv. Read when
+      OFTPD starts, and again by the #cmd("REFRESH") command. OFTPD does not
+      need this DD\; without it there are no rules. The sample procedure
+      has it. A member that is not in the library does not stop the job\;
+      OFTPD starts without rules and says nothing, so look for
+      #cmd("OFTP024I").],
     [#cmd("OFTPSPL")], [The spool, a VSAM data set that holds one record for
       each transfer. Allocate it with #cmd("DISP=OLD").],
     [#cmd("OFTPLOG")], [The log, a data set with fixed or fixed blocked
@@ -154,7 +161,7 @@ deletes the finished transfers from the spool whose last change is older than
 #cmd("DELIVERED"), #cmd("CONFIRMED"), #cmd("REJECTED") or #cmd("FAILED"). The
 operator command #cmd("F OFTPD,PURGE") and the utility command #cmd("PURGE")
 do the same on request. Only the spool records are deleted. The data sets of
-received files and the files that were sent are never deleted by OFTPD.
+received files and the files that were sent are never deleted by housekeeping.
 
 OFTPD writes message #cmd("OFTP235I") when the daily housekeeping has deleted
 something, and for every request. It writes #cmd("OFTP236E") if the spool
@@ -250,8 +257,10 @@ partner, and reports it with message #cmd("OFTP010W").
     15 characters. A call from another address is refused (message
     #cmd("OFTP201W")). Default: any address.],
   [#cmd("XLATE")], [#cmd("Y") translates the data of files of fixed, variable
-    and undefined format between EBCDIC and ASCII. Text files are always
-    translated. Default #cmd("N").],
+    and undefined format that OFTPD receives from this partner from ISO 8859-1
+    to EBCDIC. Text files are always translated. The entry does not change
+    what OFTPD sends\; for that, use the operand #cmd("XLATE") of #cmd("SEND").
+    A receive rule can override the entry (@rcv-kw-tab). Default #cmd("N").],
   [#cmd("VIA")], [The name of another partner, up to 8 characters, through
     which this partner is reached. See @cfg-via.],
   [#cmd("SESSIONS")], [The most sessions that run with this partner at the
@@ -279,8 +288,9 @@ OFTPD disables the partner with the #cmd("VIA").
 #idx("REFRESH")
 The operator command #cmd("F OFTPD,REFRESH") reads #cmd("OFTPPTN") again\; so
 does the #cmd("REFRESH") request of an administrator in the ISPF dialog. It
-does not read #cmd("OFTPPRM"). OFTPD reports the result with message
-#cmd("OFTP016I").
+does not read #cmd("OFTPPRM"). OFTPD reports the result for the partners with
+message #cmd("OFTP016I"). It then reads the receive rules again\; see
+@rcv-load.
 
 - A partner that is new is added. If the table is full, OFTPD skips it and
   writes #cmd("OFTP015W").
@@ -301,14 +311,17 @@ next refresh reads that partner again. A partner that was disabled and not
 removed keeps its slot until its transfers are deleted from the spool
 (commands #cmd("DELETE") and #cmd("PURGE")) and a refresh finds it free. If
 the member cannot be opened, OFTPD writes #cmd("OFTP017E") and goes on with
-the table it has.
+the table it has. It does not read the receive rules then.
+
+The rules are read after the partner table, so a rule may name a partner that
+the same refresh adds.
 
 == Names of Received Data Sets <cfg-dsn>
 
 #idx("received files", "data set names")
-A file that OFTPD receives is stored in a new cataloged data set. OFTPD
-builds its name from #cmd("INPREFIX") and the virtual file name of the
-transfer, one qualifier at a time:
+A file that OFTPD receives is stored in a new cataloged data set. Unless a
+receive rule gives the name (@ref-rcv), OFTPD builds it from #cmd("INPREFIX")
+and the virtual file name of the transfer, one qualifier at a time:
 
 - Letters are changed to upper case. Letters, digits, and the characters
   #cmd("@"), #cmd("#"), #cmd("$") and #cmd("-") are kept\; any other character
@@ -361,12 +374,16 @@ attributes of the data set, as @cfg-alloc-tab shows.
   )
 ] <cfg-alloc-tab>
 
-#cmd("UNIT") and #cmd("VOLSER") are passed to the allocation if they are set.
+#cmd("UNIT") and #cmd("VOLSER") are passed to the allocation if they are set\;
+a receive rule can set its own (@rcv-kw).
 The space is in tracks, with a primary and a secondary quantity derived from
 the size in kilobytes that the sender announces: 15 and 15 if the size is 0, otherwise a
 primary of the size divided by 15 plus 1, but at least 5, and a secondary of
-half the primary plus 1. The disposition is #cmd("NEW,CATLG,DELETE"). A name
-that is already cataloged is refused.
+half the primary plus 1. A receive rule can set the primary with
+#cmd("SPACE="), but only for a file whose size is announced as 0\; OFTPD
+announces 0 for a member of a partitioned data set, for example. The
+disposition is #cmd("NEW,CATLG,DELETE"). OFTPD allocates the temporary data
+set of the transfer, and the transfer key makes its name unique.
 
 == A Job After Receipt <cfg-job>
 
