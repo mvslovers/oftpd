@@ -13,9 +13,8 @@ Checked against the issues on this date; the issues win if they disagree.
 **1.0.0** (milestone `1.0.0`), open: levels 1.4 and 1.3 against a real
 peer #50, `docs/` #63, book area #64,
 release preparation #65, colon after the partner name in three messages
-#93, `LIST` over 150 transfers #101, books: partner password, VIA and
-OURID #163. Closed in this
-milestone: `MAXRETRY` cut off mid-file #51 (pending merge of PR #168), receive rules #44, job after receipt #45, partner maintenance
+#93, `LIST` over 150 transfers #101. Closed in this
+milestone: books: partner password, VIA and OURID #163 (PR #178, pending merge), `MAXRETRY` cut off mid-file #51 (pending merge of PR #168), receive rules #44, job after receipt #45, partner maintenance
 #46, log to SYSOUT #47, `TRACE` #48, `TRACE` follow-ups #86,
 spool-thread recovery #49, SVC on TK5 #52, dialog on TK5 #53, no ACEE /
 no security product #54, SVC length check #55, session abort while
@@ -399,7 +398,8 @@ is not running.
 - Books ML09-0001 (User's Guide) and ML09-0002 (Reference): ~~skeleton
   and CI~~ -- #64 (`docs/books`, `books.yml`); ~~chapters, the message
   reference with its check~~ -- #63, for the state of `main`, partner
-  maintenance and receive rules included. ~~Whether `docs/messages.md`
+  maintenance and receive rules included; ~~partner password, `VIA`,
+  `OURID` default, entry panel~~ -- #163 (PR #178). ~~Whether `docs/messages.md`
   goes~~ -- it went; the books replace it, and `tools/check-messages.py`
   checks `docs/books/ref/msg-*.typ`.
 - ~~GitHub repository, CI~~ — `mvslovers/oftpd` (2026-10-13).
