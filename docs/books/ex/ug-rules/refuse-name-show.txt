@@ -1,0 +1,7 @@
+OFTP SHOW T0000007
+T0000007 SEND REJECTED, partner MVS1, owner IBMUSER
+virtual file X.9ABC 20261021 0005400003, format F, LRECL 80
+data set IBMUSER.OFTP.SEND.OTHER
+from O0000000000MAC1 to O0000000000MVS1, 0 records, 1 attempts
+reason 01 (partner): refused by the partner, reason 01
+end

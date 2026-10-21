@@ -32,10 +32,12 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   the userids that see and change every transfer, including received ones
   (which belong to nobody), and that may `CALL` a partner and `PURGE`.
   Anyone else gets `not your transfer`.
-- **`SEND` checks the caller's authority.** The monitor asks the security
-  product (RAKF) whether the userid that queued the transfer may read the
-  data set, and refuses with `not authorized` when it may not, an
-  administrator included.
+- **`SEND` checks the caller's authority.** On a system with a security
+  product (RAKF or RACF) the monitor asks it whether the userid that queued
+  the transfer may read the data set (ALTER for `DISP(DELETE)`), and refuses
+  with `not authorized` when it may not, an administrator included, or when
+  the caller has no userid. Without a security product nothing is checked
+  and the send is accepted.
 - **Receive rules.** The new parmlib member `OFTPRCV0` (DD `OFTPRCV`) says,
   per partner and virtual file name, which data set a received file is
   written to: a name built from the virtual file name, the partner and the
@@ -46,17 +48,20 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   rules stay. `F OFTPD,REFRESH` reads it again.
 - **Partner maintenance at run time:** `OFTP PARTNER ADD|CHANGE|ENABLE|
   DISABLE|DELETE|SHOW|LIST` from TSO and batch, and the same in the ISPF
-  dialog (option 3), for the userids named in `ADMIN=`. No parmlib edit and
-  no restart; the partners are kept in the spool and survive a restart. A
+  dialog (option 3). `ADD`, `CHANGE`, `ENABLE`, `DISABLE` and `DELETE` are
+  for the userids named in `ADMIN=`; `SHOW` and `LIST` are open to every
+  caller. No parmlib edit and no restart; the partners are kept in the spool and survive a restart. A
   partner of the same name there wins over `OFTPPTN`, and `REFRESH` reads
   `OFTPPTN` only. A partner that has transfers in the spool is never
-  deleted: it is disabled and the delete is refused. The spool holds the
-  partner passwords in clear text, like `OFTPPTN`: protect it the same
-  way. OFTPD does not start when it cannot read the partner records
+  deleted: it is disabled and the delete is refused. A partner that is only
+  in `OFTPPTN` is not deleted by the command (remove it there and `REFRESH`);
+  deleting one that overrides an `OFTPPTN` entry brings that entry back. The
+  spool holds the partner passwords in clear text, like `OFTPPTN`: protect
+  it the same way. OFTPD does not start when it cannot read the partner records
   (`OFTP019E`). A partner without `PASSWORD` is allowed, but `ADD` and
   `CHANGE` answer with a warning (210). `SHOW` prints `-` for `OURID` and
   `ADDRESS` to a caller who is not an administrator. See `docs/partners.md`.
-- **A job after receipt.** a receive rule with `JOB=pds(member)` makes OFTPD
+- **A job after receipt.** A receive rule with `JOB=pds(member)` makes OFTPD
   read that member once the file is under its final name, put `?PFILE`
   (the data set), `?VFILE` (the virtual file name), `?ID` (the partner) and
   `?KEY` (the transfer) into it and give it to the internal reader of the
@@ -77,8 +82,8 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   start and end, and the start-up detail. The console receives only what an
   operator must act on. Every session message starts with the partner name.
   Without the DD, or if a write fails, everything goes to the console and
-  OFTPD says so once (`OFTP022W`, `OFTP023E`). `docs/messages.md` lists the
-  messages with their destination.
+  OFTPD says so once (`OFTP022W`, `OFTP023E`). Appendix A of the OFTPD
+  Reference (ML09-0002) lists the messages with their destination.
 - **`F OFTPD,TRACE ON|OFF [partner]`** logs the protocol commands of the
   sessions, running ones included, one `OFTP290P` line each; never a
   password and never file data.
@@ -104,8 +109,10 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
 - **`SEND ... STRTTIME(hh:mm) STRTDATE(*|*+n|ddd) SENDWIN(hh:mm-hh:mm)`**
   set the earliest start and a daily window in which a send may start,
   also across midnight.
-- **Documentation:** `docs/installation.md`, `docs/messages.md` (the
-  messages, their class and where they go) and `docs/partners.md`.
+- **Documentation:** `docs/installation.md`, `docs/partners.md` and two
+  books in `docs/books/`: the OFTPD User's Guide (ML09-0001) and the OFTPD
+  Reference (ML09-0002), whose Appendix A lists every message with its
+  class and where it goes. Both are first drafts.
 
 ### Changed
 
@@ -120,7 +127,8 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   `PASSWORD` can be written, an error text names the position of a bad word
   instead of the word, and the request and reply slots in common storage are
   erased as soon as they have been read.
-- The build toolchain is libc370 2.24.1 and cc370 1.6.1.
+- OFTPD is built with libc370 2.24.1 (the C library) and cc370 1.6.1 (the
+  C compiler).
 
 ### Removed
 
@@ -132,6 +140,15 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
 
 - A file of more than about 750 KB between two OFTPDs ended with `EFNA`
   reason 12, because the file description carried no usable size.
+- A file with fixed-length records of about 5 MB from a partner that
+  restarts its subrecord pattern at the head of every data buffer (mendelson
+  OFTP2 CE does) was refused with `EFNA` reason 05, although the payload and
+  the octet count were right: a record cut by the end of a buffer lost its
+  end-of-record flag, and the flags that followed fell inside the next record.
+  For fixed records OFTPD now cuts at the record length of the file
+  description, counts the flags only, and accepts a record count in the end
+  of file that matches either its own count or the flags seen. Variable
+  records are unchanged.
 - A spool that an abend or a `CANCEL` had left open could not be opened
   again. OFTPD now runs `VERIFY` itself and says so (`OFTP021W`).
 - A session that abended stayed counted as running: its partner was refused,

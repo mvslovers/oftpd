@@ -19,7 +19,9 @@ This package installs it through SMP 4, the SMP that comes with MVS 3.8j.
 - For the dialog: ISPF (Wally Mclaughlin's, as on TK5 and MVS/CE) and a
   screen of more than 24 rows: the main menu and the send panel do not
   fit on 24. The panels are made for 43 rows (3278/3279 model 4) and use
-  the width of a wider screen.
+  the width of a wider screen. On 24 rows TK5's ISPF does not say what is
+  wrong: it shows `ISPF SERVICE ERROR DISPLAY` with `SERVICE NAME DISPLAY`
+  and `RETURN CODE 20`. Ask your 3270 emulator for model 4.
 
 ## The package
 
@@ -112,7 +114,8 @@ space owned by your catalog, and submit it once. A finished transfer --
 delivered, confirmed, rejected or failed -- stays in the spool for
 `KEEPDAYS` days after its last change (7 by default); OFTPD deletes the
 older ones once a day. Size the spool for what arrives and leaves in that
-time. Only spool entries are deleted, never data sets.
+time. Only spool entries are deleted, never data sets. A short spool also
+keeps `LIST` fast (section 8).
 
 The spool belongs to OFTPD alone: the utilities and the dialog never open
 it, they ask OFTPD.
@@ -132,7 +135,8 @@ them. Each member describes its keywords at the top.
 - `OFTPPRM0`: this system's Odette ID (`ODETTEID`, required), the OFTP
   port (`PORT`, 3305), the SVC the utilities reach OFTPD through
   (`SVC=237`; without it they find no OFTPD), the userids that may manage
-  every transfer (`ADMIN=`, one per userid), and the prefixes for received files
+  every transfer (`ADMIN=`, one per userid; without a security product
+  nobody can be one, section 8), and the prefixes for received files
   (`INPREFIX`, `TMPPREFIX`). A received file is stored as
   `INPREFIX.<virtual file name>`. `RELAY=Y` makes this system a node that
   passes files on to its partners. `KEEPDAYS` is how long finished
@@ -164,9 +168,8 @@ comments changes nothing.
 
 OFTPD itself does not need the `OFTPRCV` DD: without it there are no rules,
 and the start says nothing about it. It is in the sample procedure, which
-points it at the parmlib member (`R=OFTPRCV0`); there a member that is not in
-the parmlib is a JCL error and OFTPD does not start. So either copy
-`OFTPRCV0` to the parmlib or delete the DD from your copy of the procedure.
+points it at the parmlib member (`R=OFTPRCV0`). So either copy `OFTPRCV0` to
+the parmlib or delete the DD from your copy of the procedure.
 
 ```
 RULE=ORDERS  FROM=PARTNER1  VFN=ORDERS.*
@@ -226,8 +229,8 @@ new file is complete and closed, then the new one takes its name and the old
 one is deleted (`OFTP229I`). A file that fails on the way costs nothing. A
 data set that is in use makes the replace fail: the file is refused at the
 end (reason 12, `OFTP221E` or `OFTP226E`) and the old data set stays.
-`REPLACE=Y` works on a plain sequential data set only: if the name is a PDS,
-a VSAM cluster or a member, the file is refused (reason 12, `OFTP234W`) and
+`REPLACE=Y` works on a plain sequential data set only: if the name is a PDS
+or a VSAM cluster, the file is refused (reason 12, `OFTP234W`) and
 nothing is touched.
 
 While a replace is running, the old content is under the name
@@ -341,7 +344,9 @@ Not (yet) part of the rules: passing a file on, GDGs, SYSOUT and tape.
 Copy `OFTPD.SAMPLIB(OFTPD)` to `SYS2.PROCLIB`. Its `STEPLIB` already names
 `OFTPD.LINKLIB`. Its defaults are `SYS2.PARMLIB` (members `OFTPPRM0`,
 `OFTPPTN0` and `OFTPRCV0`; `R=` names another rules member) and the spool `OFTP.SPOOL`; give your spool's name either in
-the procedure (`S=`) or when starting it.
+the procedure (`S=`) or when starting it. TK5 has no `SYS2.PARMLIB`: put
+the members into `SYS1.PARMLIB` and start with
+`S OFTPD,D='SYS1.PARMLIB'` (or change `D=` in the procedure).
 
 Under RAKF, the started task's userid may need update access to the
 spool and the authority to create data sets under `INPREFIX` and
@@ -371,7 +376,8 @@ stop, errors, a partner that is not authorized, a transfer held or given
 up. A message of class `P` (as in `OFTP211P`) goes to the log and never to
 the console; classes `I`, `W` and `E` go to both. Every session message
 begins with the partner's name, so a partner's lines can be picked out of
-the log. `docs/messages.md` lists every message with its destination.
+the log. Appendix A of the OFTPD Reference (ML09-0002) lists every message
+with its destination.
 
 - Give the DD `RECFM=F` or `FB` and say so in a `DCB=`, as the procedure
   does (`DCB=(RECFM=FB,LRECL=160,BLKSIZE=160)`). A SYSOUT DD without a DCB
@@ -404,7 +410,47 @@ included, one `OFTP290P` line each, such as
 the DATA buffers of a run are one line. With a partner name only that
 partner's sessions are traced; `TRACE OFF` without one ends all tracing.
 The lines carry the commands' fields, never a password and never file
-data. `F OFTPD,D` and `D P` show what is traced (`OFTP127I`).
+data. Wherever a message or a display shows a file name or an Odette ID
+that came from a partner -- the trace lines, the other `OFTP290P` and
+`OFTP290W` lines of a session, the monitor's transfer messages such as
+`OFTP240P`, the operator display `D Q` and the transfer list and detail
+display -- a character that cannot be printed shows as a dot. The spool keeps
+the name as received.
+`F OFTPD,D` and `D P` show what is traced (`OFTP127I`): `D` names the traced
+partners, at least ten of them (more when the names are short; a longer list
+is cut at the end of the line, marked with `>`), and `D P` marks every traced
+partner.
+
+Tracing is a diagnostic: switch it off when you are done. Every protocol
+command is a line in the log, and a session that moves three small files
+takes about 28 of them, so a busy partner fills the log data set quickly
+(there is no size limit). With `TRACE ON` for all sessions, the first two
+lines of a session a partner started, `SEND SSRM` and `RECV SSID`, carry the
+caller's address instead of the partner name, because OFTPD does not know the
+partner yet; a trace for one partner starts with the `RECV SSID` line for a
+session that partner started, and with `RECV SSRM` for one OFTPD started.
+
+The operator commands `PURGE`, `HOLD`, `RELEASE` and `CALL` take one
+operand at most. A second one, as in `F OFTPD,HOLD P1,P2`, is refused with
+`OFTP122E`; nothing is done for the first.
+
+### As a batch job
+
+`OFTPD.SAMPLIB(OFTPDJOB)` runs OFTPD as a batch job instead of a started
+task: a first step defines the spool if it does not exist yet, the second
+runs OFTPD until `P OFTPD`. Edit the names, the volume, the Odette ID and the
+partner in it, as its comments say; it takes the settings in-stream, not
+from the parmlib. **Its `STEPLIB` names `OFTPD.DEV.LINKLIB`, the library of
+development builds.** An SMP installation has only `OFTPD.LINKLIB`
+(section 3): change the `STEPLIB` to it, and authorize it as section 4
+says. A development library has no place on a production system.
+
+**Keep `TIME=1440` on the `EXEC` of OFTPD.** The step time limit of a batch
+job is a limit on CPU time, and OFTPD uses CPU when it works. With the JES2
+default (100 seconds of CPU on the system this was measured on) the step
+ends with `S322` once that is used up. OFTPD then reports `OFTP098E OFTPD ABEND, n SOCKETS CLOSED, SVC
+RESTORED`. The sample procedure `OFTPD` (section 7) has `TIME=1440` on its
+`EXEC` too; keep it in a procedure of your own.
 
 ## 8. The OFTP utility
 
@@ -450,15 +496,54 @@ data set, not a member.
 product (RAKF) whether your userid may read the data set, and refuses
 with `not authorized` (RC 8) when it may not -- an administrator
 included. So a data set needs the profile that protects it; under RAKF a
-data set no profile covers may be read by everyone.
+data set no profile covers may be read by everyone. On a system with a
+security product, a caller that has no userid at all, an address space
+without a security environment, is refused the same way, with
+`not authorized: the caller has no userid` (RC 8), also for
+`DISP(DELETE)`: there is no one whose authority could be checked.
 
-A transfer belongs to the userid that queued it. That userid sees and
-changes it; so does a userid named in `ADMIN=`, which sees and changes
-every transfer, including the received ones, which belong to nobody.
-Anyone else gets `not your transfer` (RC 8). `LIST` shows an
-administrator everything, and `LIST MINE` only their own. `CALL` and
-`PURGE` are for an administrator only; `PURGE DAYS(0)` deletes every
-finished transfer, however recent.
+### Who may see and change a transfer
+
+With a security product (RAKF or RACF), a transfer belongs to the userid
+that queued it. That userid sees and changes it; so does a userid named in
+`ADMIN=`, which sees and changes every transfer, including the received
+ones, which belong to nobody. Anyone else gets `not your transfer`
+(RC 8). `LIST` shows an administrator everything, and `LIST MINE` only
+their own.
+
+Without a security product (the system has neither RAKF nor RACF) there is
+no userid to tell callers apart, and OFTPD does not try: **every caller sees
+and changes every transfer**. `LIST`, `SHOW`, `HOLD`, `RELEASE`, `RETRY`
+and `DELETE` work on any transfer, whoever queued it, the received ones
+included, and `LIST MINE` lists them all. A `SEND` is not checked against
+a data set profile, since there is none. So on such a system give OFTPD
+only to people who may touch each other's transfers.
+
+`CALL`, `PURGE`, `REFRESH` and the `PARTNER` commands that change the
+partner table (`ADD`, `CHANGE`, `ENABLE`, `DISABLE`, `DELETE`) need a userid
+in `ADMIN=`. Without a security product no caller has a userid, so OFTPD
+refuses all of them with `needs ADMIN= in OFTPPRM` (RC 8). `CALL`, `PURGE`
+and the `PARTNER` commands come from the `OFTP` utility or from the ISPF
+dialog (its `C` line command on the partner list sends a `CALL`; its `M`,
+`E`, `X` and `D` send the `PARTNER` commands). `REFRESH` comes from the
+dialog only, after you edit the partner member (section 9). `PARTNER LIST`
+and `SHOW` work for anyone. So on a system without a security product
+partners are maintained in one way only: edit `OFTPPTN0` and give the
+operator command `F OFTPD,REFRESH`. The operator's `F OFTPD,CALL`,
+`F OFTPD,PURGE` and `F OFTPD,REFRESH` (section 7) are not affected.
+
+`PURGE DAYS(0)` deletes every finished transfer, however recent.
+
+> **A defect** (oftpd#101): `LIST` and `LIST MINE`, in `OFTP` and in the
+> dialog's transfer list, get slower than the number of transfers
+> suggests. A long answer comes in pieces, and for every piece OFTPD reads
+> the whole spool again, so the time grows with the square of the number of
+> transfers in the spool. On a short spool the delay is small. On a
+> long one a `LIST` can take seconds, and longer while the system is busy.
+> `SHOW`, `DELETE` and `STATUS` do not grow with the spool the way `LIST`
+> does. Until this is fixed, keep the spool short:
+> `KEEPDAYS` (section 5) bounds how long finished transfers stay, and
+> `PURGE` (an administrator's command) deletes them at once.
 
 ## 9. The ISPF dialog
 
@@ -470,6 +555,13 @@ allocates them, usually in the CLIST that starts ISPF:
 - `OFTPD.ISPPLIB` to the `ISPPLIB` allocation,
 - `OFTPD.LINKLIB` to the `ISPLLIB` allocation.
 
+Add both at the end of the concatenation. Measured on TK5: with
+`OFTPD.ISPPLIB` (block size 3120) in front of `HERC01.ISP.PLIB` (block
+size 27920), ISPF ended with `FUNCTION HAS ABENDED` on the next panel it
+read. The cause is not known (no dump was analysed); with the library at
+the end the dialog ran. `LISTDS 'name'` shows the block sizes of your
+libraries. `OFTPD.LINKLIB` in `ISPLLIB` was only ever tried at the end.
+
 Then start it with
 
 ```
@@ -480,7 +572,8 @@ for example as an entry in a menu panel: a line for the option in the
 body, and `O,'CMD(OFTPI) NEWAPPL(OFTP)'` in its `TRANS` (replace `O` with
 the option you choose). The dialog reaches OFTPD the way `OFTP` does,
 through the SVC and with the same rules. Reading the partner member
-again after option 4 is for an administrator. Option 3 maintains the
+again after option 4 is for an administrator; on a system without a
+security product nobody is one, and OFTPD refuses it (section 8). Option 3 maintains the
 partner table (`docs/partners.md`).
 
 ## Upgrading
@@ -501,8 +594,56 @@ all.
 
 **The procedure:** the sample procedure now has an `OFTPRCV` DD for the
 receive rules (section 6). If you take the new procedure over your old one,
-copy `OFTPRCV0` to your parmlib first, or delete the DD from your copy;
-otherwise the start fails with a JCL error for the missing member.
+copy `OFTPRCV0` to your parmlib first, or delete the DD from your copy.
+
+### On TK5
+
+TK5 builds the allocations at logon, in `SYS1.CMDPROC(ISPLOGON)`, with the
+REXX exec `$CONCAT` (ddname, data set, and `BOT` to add at the end). The
+same procedure then runs `userid.CMDPROC(MYLOGON)` if there is one. Create
+it:
+
+```
+PROC 0
+CONTROL NOMSG,NOLIST,NOSYMLIST,NOCONLIST,NOFLUSH
+RX $CONCAT ISPPLIB OFTPD.ISPPLIB BOT
+RX $CONCAT ISPLLIB OFTPD.LINKLIB BOT
+EXIT
+```
+
+and log on again. The menu entry goes into the "Additional applications"
+panel (option `M` of the primary menu), `TSOAPPLS` in `SYS2.ISP.PLIB`. Do
+not change that library: copy the member to a panel library of your own that
+comes before `SYS2.ISP.PLIB` in `ISPPLIB` (check with `LISTA STATUS`),
+and add the line and the `TRANS` entry there:
+
+```
+%   O @OFTPD       + Odette file transfer
+...
+                O,'CMD(OFTPI) NEWAPPL(OFTP)'
+```
+
+The line is the one of another entry with the name changed. Then
+`ISPF`, `M`, `O` opens the dialog. Without the entry, option `6` of the primary
+menu and `ISPEXEC SELECT CMD(OFTPI) NEWAPPL(OFTP)` do the same.
+
+Option 4 asks for the partner member and keeps it in your ISPF profile.
+The first time it offers `SYS2.PARMLIB(OFTPPTN0)`: on TK5 type the member
+you use, for example `SYS1.PARMLIB(OFTPPTN0)`. The editor is TK5's
+`REVEDIT`; leaving it with PF3 makes OFTPD read the member again.
+
+### The test
+
+`mbt test --tso --only ispf --target NAME` (`test/tso/ispf.lua`) goes
+through the dialog over TN3270 on an 80x43 screen: the monitor, the
+partner list, a held send, show, hold and delete in the transfer list,
+the partner pick for the send panel, the maintenance of a partner (new,
+modify, disable, enable, delete, and the two refusals of a delete), and
+an edit of a copy of the partner member, which it opens again to see the
+change kept. It needs OFTPD running with the test user in `ADMIN=`, the
+entry `O` in the "Additional applications" panel, and the data set
+`userid.OFTPD.SAMPLE` (any sequential data set, empty is enough; the
+transfers are held and deleted again). It passes on TK5.
 
 ## Removing it
 

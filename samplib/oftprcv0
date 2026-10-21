@@ -40,8 +40,8 @@
 * replace any data set this started task may write. The member is then not
 * used (OFTP010W). Start with a fixed qualifier: DSN=ACCT.IN.%VFN. A DSN=
 * that can name a data set under TMPPREFIX is refused as well.
-* REPLACE=Y works on a plain sequential data set; a PDS, a VSAM cluster or
-* a member is refused (SFNA 12, OFTP234W) and left alone. While a file is
+* REPLACE=Y works on a plain sequential data set; a PDS or a VSAM cluster
+* is refused (SFNA 12, OFTP234W) and left alone. While a file is
 * replaced the old one waits under TMPPREFIX.B and the 7 digits of the spool
 * key (OFTP.TMP.B0000012); see docs/installation.md for what to do after a
 * crash.
