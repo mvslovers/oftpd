@@ -38,18 +38,9 @@ This glossary defines the terms of OFTPD and of OFTP as this book uses them.
     #cmd("F OFTPD") and #cmd("P OFTPD").],
   [partner], [A system that exchanges files with OFTPD, described by an entry in
     the partner table.],
-  [partner kept by command], [A partner that an administrator added or changed
-    with the #cmd("OFTP PARTNER") command or in the ISPF dialog. OFTPD keeps it
-    in the spool. If the member #cmd("OFTPPTN") has a partner of the same name,
-    the partner kept by command is used.],
-  [partner table], [The partners that OFTPD knows: those of the member
-    #cmd("OFTPPTN"), and those kept by command. It has 32 places.],
+  [partner table], [The member #cmd("OFTPPTN"), which describes the partners.],
   [receipt], [The answer of the receiving side that says it has a file (an EERP)
     or has refused it (a NERP).],
-  [receive rule], [An entry of the member #cmd("OFTPRCV"). It says where the
-    files that match a partner and a virtual file name pattern are stored: the
-    name of the data set, and optionally the volume, the space, replacement
-    of an existing data set, and a job to start.],
   [session], [A connection between two systems, in which the two sides identify
     themselves and then exchange files and receipts.],
   [settings], [The member #cmd("OFTPPRM"), which describes the system on which

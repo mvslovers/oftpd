@@ -165,7 +165,7 @@ OFTP206P MAC1: CALLING AT 192.0.2.10 PORT 3305
 OFTP290P MAC1: session with MAC1: level 5, buffer 4096, credit 99, mode B
 OFTP211P MAC1: T0000012 REPORT.TXT SENT, 120 RECORDS
 OFTP213P MAC1: T0000012 REPORT.TXT DELIVERED
-OFTP203P MAC1: SESSION ENDED, ESID 00 (OURS), FILES 1 OUT 0 IN
+OFTP203P MAC1: SESSION ENDED, ESID 00 (PARTNER), FILES 1 OUT 0 IN
 ```)
 
 A file that arrives leaves a shorter story.
@@ -178,9 +178,7 @@ OFTP203P MAC1: SESSION ENDED, ESID 00 (PARTNER), FILES 0 OUT 1 IN
 ```)
 
 The receipt for the file is sent in this session or the next one. The line
-#cmd("OFTP203P") ends the story of a session. It tells who sent the end-of-session
-code, #cmd("(OURS)") or #cmd("(PARTNER)"), and counts the files sent and received
-in the session, not the receipts. A session ends normally with 00. When something
+#cmd("OFTP203P") counts the files and responses of the session. When something
 goes wrong, the line before the failure is usually the best clue. For a closer
 look, switch the trace on for the partner with #cmd("F OFTPD,TRACE ON name").
 
@@ -228,11 +226,9 @@ messages are in the Reference.
     [A partner is refused when it calls (#cmd("OFTP290W"), #cmd("OFTP201W"))],
       [Its Odette ID is not in the table, its password is wrong, or it calls from
       another address than #cmd("ADDRESS"). See @ug-partners.],
-    [A partner is refused with the reason 08 (#cmd("OFTP202W"))], [It has as many
-      sessions as #cmd("SESSIONS") allows. Raise the limit if it is regular.],
-    [A call is closed without a word (#cmd("OFTP204W"))], [OFTPD has as many
-      sessions as #cmd("MAXSESS") allows. It closes the connection before it knows
-      the caller. Raise the limit if it is regular.],
+    [A partner is refused with the reason 08 (#cmd("OFTP202W"), #cmd("OFTP204W"))],
+      [It has as many sessions as #cmd("SESSIONS") allows, or OFTPD has as many as
+      #cmd("MAXSESS"). Raise the limit if it is regular.],
     [A received file is not in the list], [A received file belongs to nobody, so
       only an administrator sees it. Look at the data sets under
       #cmd("INPREFIX").],
@@ -240,10 +236,8 @@ messages are in the Reference.
       #cmd("OFTP223W"))], [The data set could not be created or renamed, or the file
       is for another Odette ID. Check the space and the name, and #cmd("RELAY")
       for files in transit.],
-    [A change to a partner does not take effect], [A partner of the member
-      changes with #cmd("F OFTPD,REFRESH"). A partner kept by command changes
-      only by command, never by an edit of the member (see @ptn-maint). The
-      settings change only after a restart. If the
+    [A change to a partner does not take effect], [Partners change with
+      #cmd("F OFTPD,REFRESH"). The settings change only after a restart. If the
       table is full (#cmd("OFTP015W")), take partners out of the member and
       refresh again\; a partner that a transfer in the spool still names stays in
       the table until that transfer is deleted.],

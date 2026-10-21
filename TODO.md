@@ -303,7 +303,7 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   in the SFID.
 - ~~Log to a SYSOUT data set instead of every line by WTO; a log-only
   message class (design 8)~~ -- #47: `DD OFTPLOG`, class `P`,
-  the message appendix of the Reference. Not done: a log viewer, log switching, size limits.
+  `docs/messages.md`. Not done: a log viewer, log switching, size limits.
 - ~~`docs/`: a configuration guide beside `docs/installation.md`~~ -- in the
   books (#63).
 - ~~Partner maintenance by command and ISPF~~ (#46): `PARTNER
@@ -338,10 +338,9 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   driven**: nothing in `test/` runs the dialog.
 - Books ML09-0001 (User's Guide) and ML09-0002 (Reference): ~~skeleton
   and CI~~ -- #64 (`docs/books`, `books.yml`); ~~chapters, the message
-  reference with its check~~ -- #63, for the state of `main`, partner
-  maintenance and receive rules included. To add when they are merged: the
-  trace follow-ups (#86). ~~Whether `docs/messages.md` goes~~ -- it went;
-  the books replace it, and `tools/check-messages.py` checks `msg-*.typ`.
+  reference with its check~~ -- #63, for the state of `main`. To add when
+  they are merged: partner maintenance and receive rules. To settle with
+  the maintainer: whether `docs/messages.md` goes (the books replace it).
 - ~~GitHub repository, CI~~ — `mvslovers/oftpd` (2026-10-13).
 
 - ~~#13: about 520 bytes per session abend~~ -- libc370's `try()`

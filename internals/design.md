@@ -777,7 +777,7 @@ How it is built (#47, `src/oftp#log.c`, `src/mvs/oftp#mon.c`):
   now `OFTP211P`); a number is never reused for something else.
   `OFTP215`, `OFTP216` and `OFTP233` exist with two letters because the
   two messages of one number differ in who needs to see them. The list is
-  Appendix A of the OFTPD Reference (`docs/books/ref/msg-*.typ`).
+  `docs/messages.md`.
 
 ## 9. Phases
 

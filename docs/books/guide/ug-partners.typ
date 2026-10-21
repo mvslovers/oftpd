@@ -182,11 +182,9 @@ which reads the member again when the edit ends. OFTPD adds new partners and
 replaces every partner that is still in the member by its entry. A partner that
 you took out of the member leaves the table and frees its place\; if a transfer
 in the spool still names it or a session of it is running, OFTPD disables it
-instead, and a later refresh takes it out. A refresh does not touch a partner
-that is kept by command (see @ptn-maint): its entry stays, whatever the member
-says. OFTPD answers with message #cmd("OFTP016I"), which gives the number of
-partners enabled in the whole table, and the number of new, disabled and
-removed partners of the member.
+instead, and a later refresh takes it out. OFTPD answers with message
+#cmd("OFTP016I"), which gives the number of partners enabled, new, disabled
+and removed.
 
 The table has 32 places. If it is full, OFTPD writes #cmd("OFTP015W") and does
 not add the partner\; remove a partner from the member and refresh again. A
@@ -196,160 +194,6 @@ case\; a further #cmd("PARTNER=") is refused, but the keywords after it still go
 to the last partner.
 
 A change to #cmd("OFTPPRM") needs a restart.
-
-== Maintaining Partners While OFTPD Runs <ptn-maint>
-
-#idx("partner kept by command")#idx("PARTNER")
-You can also add, change, disable and delete a partner while OFTPD runs, without
-an edit of #cmd("OFTPPTN") and without a refresh. An administrator does this
-with the #cmd("OFTP PARTNER") command or in the ISPF dialog. OFTPD keeps a
-partner that you add or change this way in its spool, so the partner is there
-after a restart too. This guide calls it a partner kept by command.
-
-=== The Member or the Command <ptn-maint-which>
-
-The partner table has two layers. The member #cmd("OFTPPTN") is the first. The
-partners kept by command are the second. Both share the 32 places of the table.
-If a name is in both, the entry kept by command is the partner, and OFTPD
-ignores the entry of the member. The _OFTPD Reference_ describes the layers in
-the chapter “Configuration and the Partner Table”.
-
-Use the member for the partners that you set up once and keep with the rest of
-your configuration. Use the command for a change that cannot wait for an edit,
-such as a new password that the partner has just agreed, or a partner to switch
-off for a day. A refresh does not touch a partner kept by command, and an edit
-of the member does not change one. To change such a partner, use the command
-again.
-
-A partner that is only in the member changes by command too. The first change
-copies the whole entry to the spool, and from then on the partner is kept by
-command. The member stays as it was.
-
-=== Adding a Partner <ptn-maint-add>
-
-Give the name of the partner and its Odette ID. Add the other keywords of the
-entry as you need them. They are the keywords of the member, with the same
-values. This job adds a partner that calls you and that you call.
-
-#screen(```
-//PARTNER  EXEC PGM=OFTP
-//STEPLIB  DD  DISP=SHR,DSN=OFTPD.LINKLIB
-//SYSPRINT DD  SYSOUT=*
-//SYSIN    DD  *
-PARTNER ADD PARTNER2 ODETTEID(O0000000000PARTNER2) -
-     PASSWORD(SECRET7) OURPASSWORD(SECRET8) HOST(192.0.2.20)
-/*
-```)
-
-OFTPD answers #cmd("partner PARTNER2 added") and writes message
-#cmd("OFTP243I") to the console and the log. The partner is in use at once. A
-keyword that you leave out takes its default, as in the member. The partner is
-enabled, unless you say #cmd("ENABLED(N)").
-
-If you give a name or an Odette ID that another partner has, or the table is
-full, OFTPD refuses the command and changes nothing. A request is at most 255
-characters long. If the keywords do not fit, add the partner with the ones it
-needs and give the others in a #cmd("PARTNER CHANGE").
-
-#note[A partner without a #cmd("PASSWORD") accepts every caller that knows its
-Odette ID. If you add or change an enabled partner without one, OFTPD does the
-work, and tells you in two lines: #cmd("WARNING: without a PASSWORD every peer
-that knows the Odette ID of the partner can log on"), and
-#cmd("partner PARTNER2 added, but it has no PASSWORD"). The utility ends with the
-return code 4. These lines have no message id.]
-
-=== Changing a Partner <ptn-maint-change>
-
-Name the partner and the keywords to change. The others stay as they are.
-
-#screen(```
-OFTP PARTNER CHANGE PARTNER2 PASSWORD(NEWPASS1)
-OFTP PARTNER CHANGE PARTNER2 HOST()
-```)
-
-An empty value, as in #cmd("HOST()"), removes the value of #cmd("PASSWORD"),
-#cmd("OURPASSWORD"), #cmd("HOST"), #cmd("ADDRESS") or #cmd("VIA"). For
-#cmd("OURID") it brings back the default. If nothing changes, OFTPD says
-#cmd("partner PARTNER2 unchanged"). Otherwise it answers
-#cmd("partner PARTNER2 changed") and writes #cmd("OFTP244I").
-
-While a session with the partner runs, or OFTPD is calling it, the command can
-change only #cmd("ENABLED"). Any other change is refused with the answer
-#cmd("the partner has a session now, try again")\; give the command again when
-the session has ended. OFTPD does not wait for you and does not change half of
-the entry.
-
-=== Disabling and Enabling a Partner <ptn-maint-ena>
-
-#screen(```
-OFTP PARTNER DISABLE PARTNER2
-OFTP PARTNER ENABLE PARTNER2
-```)
-
-A disabled partner stays in the table with all its values. OFTPD refuses its
-calls, does not call it, and takes no new send for it. Both commands work while
-a session runs. A partner that other partners are reached through (see
-@ptn-via) cannot be disabled until you have disabled those partners.
-
-=== Deleting a Partner <ptn-maint-delete>
-
-#screen(```
-OFTP PARTNER DELETE PARTNER2
-```)
-
-The command removes the partner from the spool and the table, and frees its
-place. The definition, with the passwords, is gone. OFTPD writes
-#cmd("OFTP245I"). OFTPD refuses the command in these cases.
-
-- A session with the partner runs, or OFTPD is calling it. Try again later.
-- Another partner is reached through it. Delete or change that partner first.
-- A transfer in the spool names the partner, in any state, the finished ones
-  too. The answer says how many. OFTPD has disabled the partner by then, so that
-  nothing new arrives. Delete the transfers with #cmd("OFTP DELETE") or
-  #cmd("OFTP PURGE"), and give the command again.
-- The partner is in the member only. Remove it from #cmd("OFTPPTN"), and
-  refresh.
-
-If the partner is in the member as well, the entry of the member is the partner
-again after the delete, and the answer says so.
-
-=== What to Protect <ptn-maint-safe>
-
-OFTPD keeps the passwords of a partner kept by command in the spool, as clear
-text, just as the member holds them. Protect the spool data set as you protect
-the member, and guard every copy of it that you make.
-
-#cmd("OFTP PARTNER SHOW name") never shows a password. It says #cmd("SET") or
-#cmd("NONE"). When the utility reads its commands from #cmd("SYSIN"), it echoes
-them to #cmd("SYSPRINT") with the value of #cmd("PASSWORD") and
-#cmd("OURPASSWORD") replaced by eight asterisks. The job itself still holds the
-password, in the job that you submitted. A
-command in a PARM string or typed at a terminal is not echoed, but it is no safer
-where it is kept. Keep a job that holds a password where only you can read it,
-and do not leave it in a library that others read.
-
-The request waits in a slot of common storage (CSA) until OFTPD takes it, and a
-program in key 8 can read that storage. The wait is short. OFTPD clears the
-request in the slot as soon as it has copied it, and the SVC routine clears the
-slot when the caller takes its answer. If the caller is gone before OFTPD takes
-the request, OFTPD clears the request and does not carry it out. When OFTPD
-stops, it clears all slots.
-
-=== The ISPF Dialog <ptn-maint-ispf>
-
-Option 3, Partners, of the ISPF dialog does the same. Type #cmd("M") to change a
-partner, #cmd("E") to enable, #cmd("X") to disable and #cmd("D") to delete, in
-front of the partner. Type a new name in the field #cmd("New partner") to add a
-partner. The panel of the entry shows the passwords only as #cmd("(set)") or
-#cmd("(none)"), and does not show what you type for a password. When you change a
-partner, a field that you leave blank keeps its value, and a blank password is
-never sent. Only #cmd("Host"), #cmd("Address") and #cmd("Via") become empty when
-you blank them. When you add a partner, a blank field takes its default. The
-dialog sends the same requests as the utility, so the same rules and refusals
-apply, and only an administrator may use these functions.
-
-Option 4, Configure, edits the member. When the edit ends, the dialog asks OFTPD
-to refresh the table. That changes the partners of the member only.
 
 == Checking a Partner <ptn-check>
 
@@ -362,9 +206,8 @@ After the start or a refresh, check the following.
   other partners work.
 + *The partners.* Enter #cmd("F OFTPD,D P"). OFTPD writes a line
   (#cmd("OFTP100I")) for every partner, with its Odette ID, whether it is
-  enabled, the protocol level and the host and port (for a partner that is
-  reached through another, the word #cmd("VIA") and the name of the other),
-  then the number of partners. The message #cmd("OFTP014P") in the log, written at the start, says
+  enabled, the protocol level and the host and port, then the number of
+  partners. The message #cmd("OFTP014P") in the log, written at the start, says
   how many of the partners in the member are enabled. The #cmd("OFTP") command
   #cmd("PARTNERS") shows the same table to a user.
 + *A call.* Enter #cmd("F OFTPD,CALL name"), or, as an administrator, the
@@ -414,11 +257,12 @@ For a closer look, switch the protocol trace on for that partner with
 #cmd("F OFTPD,TRACE ON name"). Every command of the sessions of the partner is
 then written to the log, as #cmd("OFTP290P") lines. The lines carry the fields
 of the commands, never a password and never file data. Switch the trace off
-when you have what you need, with #cmd("F OFTPD,TRACE OFF"). After it OFTPD
-writes no more lines for the commands of a session.
+when you have what you need, with #cmd("F OFTPD,TRACE OFF"). After it no
+trace line follows.
 
 The trace is a diagnostic, not a standing setting. Every command is a line in
-the log. The trace has no size limit, so a busy partner fills the log quickly. When the
+the log, and a session that moves three small files writes about 28 of them.
+The trace has no size limit, so a busy partner fills the log quickly. When the
 log is full, OFTPD writes every further message to the console, trace lines
 included.
 
@@ -426,3 +270,6 @@ With the trace on for all partners, the first two lines of a session that a
 partner started carry the caller's address instead of the partner name,
 because OFTPD does not know the partner yet. For a caller that is refused or
 unknown, every line carries the address.
+
+A character of an Odette ID or a file name from the partner that cannot be
+printed shows as a dot in the trace and in the session lines.

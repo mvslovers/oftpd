@@ -43,7 +43,6 @@ messages. How to use them together is the subject of the companion volume, the _
   [Chapter 1], [“The OFTP Command”.],
   [Chapter 2], [“Operator Commands”.],
   [Chapter 3], [“Configuration and the Partner Table”.],
-  [Chapter 4], [“Receive Rules”.],
   [Appendix A], [“Messages”.],
 )
 
@@ -61,7 +60,6 @@ messages. How to use them together is the subject of the companion volume, the _
 #part("ref-cmd.html", include "ref/ref-cmd.typ")
 #part("ref-op.html", include "ref/ref-op.typ")
 #part("ref-cfg.html", include "ref/ref-cfg.typ")
-#part("ref-rcv.html", include "ref/ref-rcv.typ")
 
 #show: appendices
 #part("apx-messages.html", include "ref/apx-messages.typ")
