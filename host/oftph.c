@@ -17,6 +17,9 @@
 **              the RTR: a session cut while the other side waits for it
 **   -D ID      address the files to ID (SFIDDEST), not to the partner:
 **              for a partner reached through the one called
+**   -x N       fault injection: when a file being received has delivered
+**              N octets, reset the connection and end (a transfer cut off
+**              in the middle of a file)
 **
 ** A file is sent under its base name, upper-cased and cut to 26
 ** characters. Received files are written to DIR under their virtual file
@@ -94,6 +97,9 @@ typedef struct hfiles {
     const char *dir;
     const char *dest;           /* -D: the final recipient */
     FILE       *in;
+    unsigned long inocts;       /* octets of the file being received */
+    unsigned long cutat;        /* -x: reset the connection there, 0 off */
+    int         fd;
     char        inname[OFTP_DSNLEN + 1];
     char        infmt;
     char        erp_dsn[OFTP_DSNLEN + 1];   /* one EERP owed at a time */
@@ -238,6 +244,7 @@ h_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
         return 12;
     }
     strcpy(h->inname, f->dsn);
+    h->inocts = 0;
     h->infmt = f->fmt;
     strcpy(h->erp_dsn, f->dsn);
     strcpy(h->erp_date, f->date);
@@ -256,6 +263,19 @@ h_write(void *ctx, OFTP_FH *fh, const unsigned char *b, unsigned n, int eor)
     (void)fh;
     if (fwrite(b, 1, n, h->in) != n)
         return 12;
+    h->inocts += n;
+    if (h->cutat != 0 && h->inocts >= h->cutat) {
+        struct linger lg;
+
+        fflush(h->in);
+        lg.l_onoff = 1;
+        lg.l_linger = 0;
+        setsockopt(h->fd, SOL_SOCKET, SO_LINGER, &lg, sizeof(lg));
+        close(h->fd);
+        printf("cut       %s after %lu octets\n", h->inname, h->inocts);
+        fflush(stdout);
+        _exit(3);
+    }
     if (eor && fputc('\n', h->in) == EOF)
         return 12;
     return 0;
@@ -353,7 +373,8 @@ usage(void)
             "usage: oftph call HOST PORT [options] [FILE ...]\n"
             "       oftph listen PORT [options]\n"
             "options: -i ourID -I partnerID -p ourPW -P partnerPW -l level\n"
-            "         -b sdeb -c credit -z -d dir -f T|U|F|V -r lrecl -D destID -X\n");
+            "         -b sdeb -c credit -z -d dir -f T|U|F|V -r lrecl -D destID -X\n"
+            "         -x octets (reset the connection in a received file)\n");
     exit(2);
 }
 
@@ -401,7 +422,7 @@ main(int argc, char **argv)
     h.dir = ".";
 
     optind = argi;
-    while ((opt = getopt(argc, argv, "i:I:p:P:l:b:c:zd:f:r:D:X")) != -1) {
+    while ((opt = getopt(argc, argv, "i:I:p:P:l:b:c:zd:f:r:D:Xx:")) != -1) {
         switch (opt) {
         case 'i': copy(config.ourcode, optarg, sizeof(config.ourcode)); break;
         case 'I': copy(config.code, optarg, sizeof(config.code)); break;
@@ -416,6 +437,7 @@ main(int argc, char **argv)
         case 'r': h.lrecl = (unsigned)atoi(optarg); break;
         case 'D': h.dest = optarg; break;
         case 'X': h.cut = 1; break;
+        case 'x': h.cutat = strtoul(optarg, NULL, 10); break;
         default: usage();
         }
     }
@@ -462,6 +484,7 @@ main(int argc, char **argv)
         close(ls);
     }
 
+    h.fd = fd;
     s.x.ctx = &fd;
     s.x.send = x_send;
     s.x.recv = x_recv;
