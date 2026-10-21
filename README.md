@@ -8,7 +8,7 @@ It speaks OFTP 2.0 without its security features, and OFTP 1.4 and 1.3,
 over plain TCP/IP. It is meant for hobbyist and test systems, not for
 production use.
 
-Status: early development, heading for a first prerelease (0.1.0).
+Status: 1.0.0, the first final release. Release notes: `CHANGELOG.md`.
 
 ## Building
 

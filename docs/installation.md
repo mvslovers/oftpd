@@ -27,22 +27,22 @@ This package installs it through SMP 4, the SMP that comes with MVS 3.8j.
 
 | File | What it is |
 |---|---|
-| `oftpd-<v>-load.xmit` | the load modules `OFTPD`, `OFTP` and `OFTPI` |
+| `oftpd-<v>-load.xmit` | the load modules `OFTPD`, `OFTP`, `OFTPI` and `OFTPSVC` |
 | `oftpd-<v>-samplib.xmit` | `OFTPD.SAMPLIB`: the procedure, sample settings and jobs |
 | `oftpd-<v>-ispplib.xmit` | `OFTPD.ISPPLIB`: the dialog's panels |
 | `oftpd-<v>-alloc.jcl` | allocates the SMP target and distribution libraries, once |
 | `oftpd-<v>-inst.jcl` | receives the three files and installs the SYSMOD |
 
 The SYSMOD is a `++FUNCTION` with the FMID `TOFT` + version digits:
-0.1.0 is `TOFT010`.
+1.0.0 is `TOFT100`.
 
 ## 1. Check that the FMID is free
 
 ```
 //LIST    EXEC SMPAPP
 //SMPCNTL  DD  *
- LIST CDS SYSMOD(TOFT010) .
- LIST ACDS SYSMOD(TOFT010) .
+ LIST CDS SYSMOD(TOFT100) .
+ LIST ACDS SYSMOD(TOFT100) .
 /*
 ```
 
@@ -60,7 +60,8 @@ REST API).
 
 ## 3. Allocate and install
 
-1. Submit `oftpd-<v>-alloc.jcl` once. It allocates `OFTPD.LINKLIB` and
+1. Submit `oftpd-<v>-alloc.jcl` once (not on an upgrade from 0.1.0, see
+   "Upgrading"). It allocates `OFTPD.LINKLIB` and
    `OFTPD.AOFTPLOD`; edit `UNIT=` or add a `VOL=SER=` if `SYSDA` is not
    what you want.
 2. In `oftpd-<v>-inst.jcl`, replace the three `CHANGE.ME...` names with
@@ -87,8 +88,8 @@ of `APPLY`, look for
 HMA2380 COPY SUCCESSFUL - MOD=OFTPD ...
 ```
 
-for each of `OFTP`, `OFTPD` and `OFTPI`, and list the members of
-`OFTPD.LINKLIB`: all three must be there.
+for each of `OFTP`, `OFTPD`, `OFTPI` and `OFTPSVC`, and list the members of
+`OFTPD.LINKLIB`: all four must be there.
 
 ## 4. Authorization
 
@@ -99,9 +100,11 @@ add it with its volume to `SYS1.PARMLIB(IEAAPF00)`; MVS 3.8j reads that
 member only at IPL.
 
 The log (section 7) says which route it took: `OFTP004P AUTHORIZED BY
-LIBRARY` or `OFTP004P AUTHORIZED BY SVC`. This release needs no
-authorization yet, so `OFTP005W NOT AUTHORIZED, RC=n, CONTINUING` (on the
-console as well) is a warning only; later releases will need it.
+LIBRARY` or `OFTP004P AUTHORIZED BY SVC`. The cross-memory transport
+(`SVC=` in `OFTPPRM0`) needs the authorization: without it OFTPD still
+starts, and says `OFTP005W NOT AUTHORIZED, RC=n, CONTINUING` and
+`OFTP035W NO CROSS MEMORY, NOT AUTHORIZED` (both on the console as well),
+but the `OFTP` command and the dialog cannot reach it.
 
 ## 5. The spool
 
@@ -575,7 +578,16 @@ partner table (`docs/partners.md`).
 
 ## Upgrading
 
-**From 0.1.0:** the TCP control port is gone. Remove `CONTROLPORT=` from
+**From 0.1.0: this is not a drop-in.** 0.1.0 was a prerelease, and no
+upgrade path has been tested. `TOFT100` deletes `TOFT010`
+(`++VER(Z038) DELETE(TOFT010)`), so the SYSMOD installs over the prerelease,
+but it takes no configuration with it: set an existing 0.1.0 installation up
+again: the authorization (section 4), a spool of its own (section 5), the
+settings (section 6) and the procedure (section 7). Section 1 still applies
+to `TOFT100`. Skip the allocation job: it allocates `OFTPD.LINKLIB` and
+`OFTPD.AOFTPLOD` with `DISP=(NEW,CATLG,DELETE)`, and the prerelease
+already created both, so a second run fails. Stop OFTPD, then run the
+install job. The TCP control port is gone. Remove `CONTROLPORT=` from
 `OFTPPRM0` (OFTPD reports it as an unknown keyword with `OFTP010W`) and add
 `SVC=237`, without which the utilities and the dialog cannot reach OFTPD at
 all.

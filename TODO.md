@@ -69,11 +69,13 @@ is not running.
   SMP from the release assets on m38l, m38x, m38b and m38r
   (`internals/m38-changes.md`), `OFTP004I AUTHORIZED BY SVC` on all four;
   test network steps 1-5 passed over up to four hops, EERP and NERP back
-  (`internals/testnet.md`, Results). The first final release is 0.2.0
-  (`TOFT020`, deletes `TOFT010`). `TOFT010` is spent (REC APP ACC on all
+  (`internals/testnet.md`, Results). The first final release is 1.0.0
+  (`TOFT100`, deletes `TOFT010`; #65: `mbt.toml` and `CHANGELOG.md` are
+  ready, `TOFT100` is not yet checked on any stand, tag and release are
+  the maintainer's). `TOFT010` is spent (REC APP ACC on all
   four, `internals/m38-changes.md`; burned in the workspace SMP table
-  since 2026-10-19). ~~Before 0.2.0 is cut: `LIST CDS/ACDS
-  SYSMOD(TOFT020)` on the four stands~~ -- done 2026-10-19, free on
+  since 2026-10-19). ~~`LIST CDS/ACDS
+  SYSMOD(TOFT020)` on the four stands~~ (TOFT020 and TOFT050 are never spent) -- done 2026-10-19, free on
   all four (m38l JOB01801, m38x JOB00654, m38b JOB02734, m38r JOB00923). ~~Each stand on `main`
   with `SVC=237`~~ -- done 2026-10-19 on all five, a DEV build ahead of
   TOFT010 on the M38 stands, network retest passed
