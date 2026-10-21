@@ -221,7 +221,11 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   the SFID now carries the tracks used at the volume's track length, and
   a size of 0 gets `TRK(15,15)` instead of `TRK(5,3)`. Measured in two
   MVS/CE containers: 64 000 records (5 MB) delivered with the EERP and
-  identical; `TSTDSF` 40/40. A file from mendelson is not checked.
+  identical; `TSTDSF` 40/40. A file from mendelson over 750 KB: U and T
+  arrived identical, F failed with EFNA 05 because mendelson sets the
+  end-of-record flags wrongly at buffer ends -- fixed in #58 (F records
+  are cut at the LRECL), 5 MB identical with the EERP back both ways
+  (`internals/interop.md`). V from mendelson is not measured.
 - ~~The control port answers one of several requests that arrive at
   once~~ -- moot, the port is gone (#32).
 - `F OFTPD,D P`: name the `VIA` partner instead of `-:3305`.

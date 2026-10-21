@@ -820,8 +820,8 @@ recv_file(OFTP_SESS *s, unsigned n)
     unsigned char *rec = NULL;
     unsigned char rep[OFTP_SR_MAX];
     unsigned rlen = 0, credit;
-    unsigned long rcnt = 0, ucnt = 0;
-    int recfmt, fail = 0, rc, reas;
+    unsigned long rcnt = 0, ucnt = 0, eors = 0;
+    int recfmt, fixed, fail = 0, rc, reas;
     char retry = 'N', code;
 
     rc = oftp_dec_sfid(s->level, s->ib + 4, n, &f);
@@ -834,6 +834,7 @@ recv_file(OFTP_SESS *s, unsigned n)
         return put_reas(s, OFTP_SFNA, reas, 'N');
     }
     recfmt = f.fmt == 'F' || f.fmt == 'V';
+    fixed = f.fmt == 'F' && f.lrecl > 0;
     if (recfmt && (rec = s->xbuf = malloc(f.lrecl)) == NULL)
         return put_reas(s, OFTP_SFNA, 99, 'Y');
     if ((reas = s->f.open_in(s->f.ctx, &s->peer, &f, &fh, &retry)) != 0) {
@@ -874,7 +875,32 @@ recv_file(OFTP_SESS *s, unsigned n)
                 p = rep;
             }
             ucnt += sub.n;
-            if (recfmt) {
+            if (fixed) {
+                /* Records are cut at the LRECL; the flags are only
+                ** counted. mendelson OFTP2 CE sets them wrongly at
+                ** every buffer end.
+                */
+                unsigned left = sub.n;
+
+                if (sub.eor)
+                    eors++;
+                while (left > 0) {
+                    unsigned k = f.lrecl - rlen;
+
+                    if (k > left)
+                        k = left;
+                    memcpy(rec + rlen, p, k);
+                    rlen += k;
+                    p += k;
+                    left -= k;
+                    if (rlen == f.lrecl) {
+                        if (!fail && (rc = s->f.write(s->f.ctx, fh, rec, rlen, 1)))
+                            fail = rc;
+                        rcnt++;
+                        rlen = 0;
+                    }
+                }
+            } else if (recfmt) {
                 if (rlen + sub.n > f.lrecl) {
                     if (!fail)
                         fail = 5;
@@ -886,6 +912,7 @@ recv_file(OFTP_SESS *s, unsigned n)
                     if (!fail && (rc = s->f.write(s->f.ctx, fh, rec, rlen, 1)))
                         fail = rc;
                     rcnt++;
+                    eors++;
                     rlen = 0;
                 }
             } else if (sub.n > 0 && !fail
@@ -910,7 +937,8 @@ recv_file(OFTP_SESS *s, unsigned n)
         end_local(s, ESID_DATA);
         goto lost;
     }
-    if (!fail && recfmt && (rlen != 0 || efid.rcnt != rcnt))
+    if (!fail && recfmt
+        && (rlen != 0 || (efid.rcnt != rcnt && (!fixed || efid.rcnt != eors))))
         fail = 10;
     if (!fail && efid.ucnt != ucnt)
         fail = 11;
