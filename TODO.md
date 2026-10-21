@@ -264,37 +264,37 @@ the source of truth. The MVP scope is `internals/design.md` section 0.
   connect() and closesocket() through DYN75) -- moot, the port is gone
   (#32). How long a dialog request takes over the SVC is not measured.
 
-- ~~Spool housekeeping~~ (from rvsMVS's cleanup job): `KEEPDAYS=n`
+- ~~Spool housekeeping~~ (from The Other's cleanup job): `KEEPDAYS=n`
   (default 7) deletes finished transfers once a day, `PURGE [DAYS(n)]`
   and `F OFTPD,PURGE [n]` on request (design 3.3.1). Measured in two
   MVS/CE containers and `TSTSPL` 27/27; the daily run itself deleting
   transfers really older than `KEEPDAYS` is observed too (#59,
   2026-10-20, `TSTKEEP`, design 3.3.1). Later: purge by partner or name,
   a spool backup job.
-- ~~HOLD/RELEASE per partner~~ (rvsMVS `H-ALL`/`S-sid`): `HOLD|RELEASE
+- ~~HOLD/RELEASE per partner~~ (The Other `H-ALL`/`S-sid`): `HOLD|RELEASE
   PARTNER(name|*) [VFN(prefix*)]` from the utility (what the caller may
   change) and `F OFTPD,HOLD|RELEASE name|ALL`; the changes and the
   single-key HOLD/RELEASE/RETRY are conditional puts now
   (`oftp_spl_putif()`). Measured in an MVS/CE container, `TSTSPL` 33/33.
   Still open from design 8: `STOP partner`, the three stop
-  strengths, and rvs `C-sid` (cancel the running transfer into HELD).
+  strengths, and the other's `C-sid` (cancel the running transfer into HELD).
   The session's own claim (`claim_out`) is still a plain get and put.
-- ~~Delete after EERP~~ (rvs `DISP=DELETE`): `SEND ... DISP(DELETE)`,
+- ~~Delete after EERP~~ (the other's `DISP=DELETE`): `SEND ... DISP(DELETE)`,
   over the SVC, ALTER checked at queue time, the data set deleted when the
   EERP arrives (design 3.2). Measured between two MVS/CE containers; the
   NERP case (source kept) and an ALTER refusal are read, not run. Later:
-  `DISP=COPY`, and rvs's rename of the source at queue time.
-- ~~Earliest start and a sending window~~ (rvs `STRTDATE`/`STRTTIME`/
+  `DISP=COPY`, and the other's rename of the source at queue time.
+- ~~Earliest start and a sending window~~ (the other's `STRTDATE`/`STRTTIME`/
   `SENDWIN`): measured between two MVS/CE containers (a send due at 17:03
   was called at 17:03:02, not before); `TSTSCH` 32/32. libc370#392
-  (`mktime()` ignores the zone) is worked around. Later from rvs: a
+  (`mktime()` ignores the zone) is worked around. Later from The Other: a
   deadline (`ENDDATE`/`ENDTIME`) and `ERRJOB`.
 - ~~Receive rules, names and REPLACE~~ (#44, `internals/receive-rules.md`
   sections 6 and 7): member `OFTPRCV0`, first match wins, `DSN=` symbols,
   `REPLACE=Y` by renaming the old data set aside, unit/volume/space/XLATE;
   measured between two OFTPDs in a container (`TSTRCVM`). Open from it:
   ~~the job after receipt~~ (#45, `JOB=`, section 8 of the same file; not
-  built: `?QDATE ?QTIME` and the other rvs date symbols, a job after a
+  built: `?QDATE ?QTIME` and the rest of The Other's date symbols, a job after a
   send, `ERRJOB=`; open: libc370's `rread()` cannot tell a read error from
   the end of the member, so the record count of the second pass catches
   only a read that fails differently from the first), `TO=` forwarding, GDG, SYSOUT, tape; security review fixes (first qualifier fixed, `%CTR`,
