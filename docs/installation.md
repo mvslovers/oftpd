@@ -653,35 +653,69 @@ and log on again. The menu entry goes into the "Additional applications"
 panel (option `M` of the primary menu), `TSOAPPLS` in `SYS2.ISP.PLIB`. Do
 not change that library: copy the member to a panel library of your own that
 comes before `SYS2.ISP.PLIB` in `ISPPLIB` (check with `LISTA STATUS`),
-and add the line and the `TRANS` entry there:
+and add two lines there. The first goes into the body, below the last
+entry. Copy the line of another entry and change the option and the name:
 
 ```
 %   O @OFTPD       + Odette file transfer
-...
+```
+
+The second goes into the `TRANS` list, beside the others:
+
+```
                 O,'CMD(OFTPI) NEWAPPL(OFTP)'
 ```
 
-The line is the one of another entry with the name changed. Then
-`ISPF`, `M`, `O` opens the dialog. Without the entry, option `6` of the primary
-menu and `ISPEXEC SELECT CMD(OFTPI) NEWAPPL(OFTP)` do the same.
+Then `ISPF`, `M`, `O` opens the dialog. Without the entry, enter
+`ISPEXEC SELECT CMD(OFTPI) NEWAPPL(OFTP)` in option `6` (COMMAND) of the
+primary menu.
 
 Option 4 asks for the partner member and keeps it in your ISPF profile.
 The first time it offers `SYS2.PARMLIB(OFTPPTN0)`: on TK5 type the member
 you use, for example `SYS1.PARMLIB(OFTPPTN0)`. The editor is TK5's
-`REVEDIT`; leaving it with PF3 makes OFTPD read the member again.
+`REVEDIT`. When it ends, the dialog asks OFTPD to read its partner member
+again. That is the member of the `OFTPPTN` DD of the started task,
+whichever member you edited.
 
 ### The test
 
-`mbt test --tso --only ispf --target NAME` (`test/tso/ispf.lua`) goes
-through the dialog over TN3270 on an 80x43 screen: the monitor, the
-partner list, a held send, show, hold and delete in the transfer list,
-the partner pick for the send panel, the maintenance of a partner (new,
-modify, disable, enable, delete, and the two refusals of a delete), and
-an edit of a copy of the partner member, which it opens again to see the
-change kept. It needs OFTPD running with the test user in `ADMIN=`, the
-entry `O` in the "Additional applications" panel, and the data set
-`userid.OFTPD.SAMPLE` (any sequential data set, empty is enough; the
-transfers are held and deleted again). It passes on TK5.
+`mbt test --tso --only ispf --target NAME` runs `test/tso/ispf.lua`. It logs
+on over TN3270 to a screen of 80x43 and goes through the dialog:
+
+- the monitor (option 5);
+- a send queued held (option 1), and the partner pick with `?` and `S`;
+- the transfer list (option 2), filtered to `HELD`: `S` shows the transfer,
+  `H` on it is refused (`only a queued or waiting send can be held`), `D`
+  deletes it;
+- the partner list (option 3): a new partner with a blank Odette ID, with
+  an ID, with a name that exists and with an ID another partner has; `M`
+  with nothing changed and with `Sessions` set to 2; `X`, `E` and an
+  unknown line command; `D` refused for a partner of `OFTPPTN`, `D` refused
+  for a partner a held transfer names (the partner is disabled then), and
+  `D` after that transfer is deleted;
+- Configure (option 4): the test edits a partner member that `mbt` loads
+  from `test/tso/oftpptn0`, ends the editor with PF3, expects the message
+  `partners reloaded`, and opens the member again to see the change kept.
+
+The edit in Configure does not change OFTPD's partner table: OFTPD reads its
+own `OFTPPTN`, not the member that was edited. The test shows that the
+editor starts, that the edit is kept and that OFTPD answers the reload.
+
+It needs:
+
+- OFTPD running, with the userid of the test in `ADMIN=`;
+- the partner `MAC1` in `OFTPPTN`;
+- the entry `O` in the "Additional applications" panel (see above);
+- the data set `userid.OFTPD.SAMPLE`, where `userid` is the test's userid.
+  It can be empty, and OFTPD queues an empty file all the same. The
+  transfers are held and deleted again.
+
+A run that stops early can leave held transfers named `ISPF.TEST` or
+`DLG.HELD` and the partner `DLGPTN`. The next run removes them first.
+
+The test does not drive `R` (release), `T` (retry) and `C` (call) in the
+lists, nor the dialog as a userid that is not in `ADMIN=`. It has been run
+on TK5 only.
 
 ## Removing it
 
