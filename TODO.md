@@ -408,6 +408,11 @@ is not running.
   (`ref/ref-proto.typ`). The captures show the version `1.0.0-dev (b45dbac)`:
   run them again against the 1.0.0 release. Not shown for want of a run: APF
   and IPL, a PC peer, a refused log-on.
+- ~~Read the Docs project and PDFs on the release~~ (#188): the site is
+  `mvslovers.readthedocs.io/projects/oftpd/`, and `release.yml` has a `books` job
+  that attaches `ml09-0001-*.pdf`, `ml09-0002-*.pdf` and their `SHA256SUMS`
+  lines. Open: the bookmaster register row ("attached to releases from
+  v1.0.0"), and the Draft paragraph of the edition notices at release.
 - ~~GitHub repository, CI~~ — `mvslovers/oftpd` (2026-10-13).
 
 - ~~#13: about 520 bytes per session abend~~ -- libc370's `try()`
