@@ -6,6 +6,7 @@ result can be checked rather than believed.
 
 | Date | Partner | Who called | Level | What ran | Result |
 |---|---|---|---|---|---|
+| 2026-11-05 | Oftp4Net (same image), partner OFTPD at `ProtocolLevel` 2, then 1, then 4; receive rule `VFN=CTR.*  DSN=IBMUSER.CTR.C%CTR` | OFTPD called Oftp4Net; Oftp4Net called OFTPD (OFTPD `df8f2c9`, with the fixes of #190 and #191; fresh MVS/CE container) | 2 (1.3), 1 (1.2), 4 (1.4) | a T file of 3 lines from OFTPD at each level; at level 1 also a U file of 34 octets and `CTR.A` from Oftp4Net | OFTPD to Oftp4Net: all three `SENT`, then `DELIVERED` within the same session (`OFTP213P`), at 2, 1 and 4; Oftp4Net `CONFIRMED`. Oftp4Net to OFTPD at level 1: delivered, md5 of the data set identical to the source. `CTR.A` at level 1: `OFTP224W ... RULE CTR MAKES NO VALID DATA SET NAME`, SFNA 01 retry N, Oftp4Net `FAILED`, "Refused by partner (01)" |
 | 2026-11-05 | Oftp4Net (image `ghcr.io/jskrobak/oftp4net:latest`, revision `f9ca21d`, built 2026-10-14), partner OFTPD set to `ProtocolLevel` 1 | both, one after the other (OFTPD `03f7fba`, MVS/CE container) | 1 (1.2) | a T file of 3 lines from OFTPD; a U file of 34 octets from Oftp4Net | Oftp4Net to OFTPD: delivered, EERP back, the data set identical to the source (md5). OFTPD to Oftp4Net: Oftp4Net stored the 44 octets and sent its EERP, but OFTPD logged `OFTP214P ... EERP FOR UNKNOWN FILE` and the transfer stayed `SENT` (#190) |
 | 2026-11-05 | same, refusals at level 2 with receive rules `VFN=BADQ.*  DSN=IBMUSER.IN.%Q2` and `VFN=CTR.*  DSN=IBMUSER.CTR.C%CTR` | Oftp4Net called OFTPD | 2 (1.3) | `BADQ.9ABC` (qualifier starts with a digit), `CTR.A` | `BADQ.9ABC`: OFTPD `OFTP224W ... RULE BADQ MAKES NO VALID DATA SET NAME`, SFNA 01 retry N; Oftp4Net marked it `FAILED`, "Refused by partner (01)", and did not retry. `CTR.A` was accepted as `...C0000` although the text promises a refusal without a counter (#191) |
 | 2026-11-05 | same, OFTPD as a node (`RELAY=Y`, a second Oftp4Net listener as partner D, route `X` `VIA=D` that D does not know) | Oftp4Net called OFTPD (sender S); OFTPD called D, then S | 2 (1.3) | U file `R2.TO.X` for X | OFTPD took it as a relay, D refused it with SFNA 02 (retry N); OFTPD logged `OFTP212P ... REFUSED, REASON 02 RETRY N` and queued a NERP for S, then called S: `response 'N' not possible at this level`, nothing sent. The record for S reads `NERP passed on, or dropped below 1.4`; Oftp4Net's item stays `SENT`, S is never told |
@@ -73,9 +74,12 @@ result can be checked rather than believed.
   `HHMMSScccc` (OFTPD's last four digits are its counter, `0001`, `0002`,
   ...); at 1.3 and 1.2 both send `YYMMDD` and `HHMMSS`, which is what
   Oftp4Net showed for OFTPD's files.
-- **The EERP of a 1.3 or 1.2 partner is not matched** (#190). The spool
-  record keeps `HHMMSScccc`, the EERP gives `HHMMSS`, padded with `0000`.
-  Everything else at those levels passed.
+- **The EERP of a 1.3 or 1.2 partner was not matched** (#190, fixed in
+  #193). The spool record keeps `HHMMSScccc`, the EERP gives `HHMMSS`,
+  padded with `0000`; the first rows of the table above show the
+  transfer staying `SENT`, the newest row the result after the fix.
+  Everything else at those levels passed. `%CTR` below 1.4 (#191) is
+  refused with SFNA 01 since the same change.
 - **There is no NERP below 1.4.** A refusal inside a session is an SFNA or
   EFNA and works at every level. A NERP is something a *later* node
   sends. OFTPD sends one only as a relay; below 1.4 it cannot (the log
