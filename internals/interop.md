@@ -6,6 +6,13 @@ result can be checked rather than believed.
 
 | Date | Partner | Who called | Level | What ran | Result |
 |---|---|---|---|---|---|
+| 2026-11-05 | Oftp4Net (image `ghcr.io/jskrobak/oftp4net:latest`, revision `f9ca21d`, built 2026-10-14), partner OFTPD set to `ProtocolLevel` 1 | both, one after the other (OFTPD `03f7fba`, MVS/CE container) | 1 (1.2) | a T file of 3 lines from OFTPD; a U file of 34 octets from Oftp4Net | Oftp4Net to OFTPD: delivered, EERP back, the data set identical to the source (md5). OFTPD to Oftp4Net: Oftp4Net stored the 44 octets and sent its EERP, but OFTPD logged `OFTP214P ... EERP FOR UNKNOWN FILE` and the transfer stayed `SENT` (#190) |
+| 2026-11-05 | same, refusals at level 2 with receive rules `VFN=BADQ.*  DSN=IBMUSER.IN.%Q2` and `VFN=CTR.*  DSN=IBMUSER.CTR.C%CTR` | Oftp4Net called OFTPD | 2 (1.3) | `BADQ.9ABC` (qualifier starts with a digit), `CTR.A` | `BADQ.9ABC`: OFTPD `OFTP224W ... RULE BADQ MAKES NO VALID DATA SET NAME`, SFNA 01 retry N; Oftp4Net marked it `FAILED`, "Refused by partner (01)", and did not retry. `CTR.A` was accepted as `...C0000` although the text promises a refusal without a counter (#191) |
+| 2026-11-05 | same, OFTPD as a node (`RELAY=Y`, a second Oftp4Net listener as partner D, route `X` `VIA=D` that D does not know) | Oftp4Net called OFTPD (sender S); OFTPD called D, then S | 2 (1.3) | U file `R2.TO.X` for X | OFTPD took it as a relay, D refused it with SFNA 02 (retry N); OFTPD logged `OFTP212P ... REFUSED, REASON 02 RETRY N` and queued a NERP for S, then called S: `response 'N' not possible at this level`, nothing sent. The record for S reads `NERP passed on, or dropped below 1.4`; Oftp4Net's item stays `SENT`, S is never told |
+| 2026-11-05 | same, OFTPD as a node, same route | Oftp4Net called OFTPD (sender S); OFTPD called D, then S | 4 (1.4) | U file `R4.TO.X` for X | D refused with SFNA 02; OFTPD sent a NERP (reason 02) to S in a new session; Oftp4Net: item `NOT_DELIVERED`, "NERP from ... (02)", event `NerpReceived`. OFTPD as a node sends the correct NERP to a 1.4 sender |
+| 2026-11-05 | same, Oftp4Net `POST /inbox/{id}/not-delivered` with reason 05 | OFTPD called Oftp4Net for the file; Oftp4Net called back with the NERP in the next session | 4 (1.4) | T file `N4.FROM.OFTPD`; Oftp4Net had already sent its EERP, then reported the file as not delivered (the REST call is allowed only while no end response has gone, so the status was put back by hand in its database) | OFTPD matched the NERP to the file: `OFTP213P ... NOT DELIVERED (NERP)`, the transfer became `REJECTED`, "NERP received, reason 05" (it was `DELIVERED` before). A NERP after an EERP flips the state; no other check |
+| 2026-11-05 | same, partner OFTPD at `ProtocolLevel` 2 | OFTPD called Oftp4Net; Oftp4Net called OFTPD | 2 (1.3) | a T file of 3 lines from OFTPD; a T file from Oftp4Net (44 octets, CR-LF) | Oftp4Net to OFTPD: delivered, EERP back, identical content. OFTPD to Oftp4Net: file stored (short stamps `YYMMDD`/`HHMMSS` seen by Oftp4Net), EERP sent, but OFTPD did not match it, transfer `SENT` (#190) |
+| 2026-11-05 | same, partner OFTPD at `ProtocolLevel` 4 | OFTPD called Oftp4Net; Oftp4Net called OFTPD | 4 (1.4) | T file of 3 lines and a U file, both ways | all four delivered with the EERP: OFTPD's records `DELIVERED` / `CONFIRMED`; Oftp4Net `CONFIRMED` / `DELIVERED`; content identical (md5) for the file from Oftp4Net, the T file arrives at Oftp4Net with CR-LF |
 | 2026-10-21 | `host/oftph listen -x 10000` as partner CUT (resets the connection once a received file has delivered 10 000 octets) | OFTPD called CUT (MVS/CE container, OFTPD `9d854d1`, `RETRY=30 MAXRETRY=3`) | 5 | a T file of 500 lines queued for CUT; the connection is cut in the middle of the file every time | three calls, at +0 s, +31 s and +61 s after the previous one (`RETRY` times the attempts so far, 30 s then 60 s, up to the 10-second scheduler tick); the partner saw the file from the first octet each time ("cut CUT.TEST1 after 10019 octets" three times); each ended with `send failed`, ESID 99 (ours), `FILES 0 OUT`; after the third `OFTP215W ... HELD AFTER 3 ATTEMPTS`, the transfer is `S H`, no fourth call within five minutes |
 | 2026-10-21 | `host/oftph listen` with a wrong password as partner BADPW | OFTPD called BADPW (same set-up) | 5 | a T file queued for BADPW; the partner's password does not match, so every call fails before any file | `OFTP290W partner password does not match`, ESID 04 (ours), `FILES 0 OUT 0 IN`; five calls, each 30 s after the previous one (`RETRY`, not growing with the number of calls); five is more than `MAXRETRY=3`, and the transfer stayed `S Q`: a call that fails before a file is claimed is not an attempt, so it is never HELD for it. `HOLD BADPW` ended it |
 | 2026-10-21 | same partner CUT | OFTPD called CUT | 5 | two T files queued for CUT: a 3-line file, then the 500-line one. `oftph` takes one file per session and refuses the second with SFNA 99, retry | session 1: the small file sent and DELIVERED (EERP back), the big one `REFUSED, REASON 99 RETRY Y`, which counts as attempt 1; the next call came 38 s later (30 s, then the tick); the connection was cut in the middle of the file in calls 2 and 3 (the second wait 61 s); `OFTP215W ... HELD AFTER 3 ATTEMPTS`; the small file stayed DELIVERED. A cut of the second file *in the same session* was not measured (`oftph` refuses it); `TSTSESS` covers the engine's side |
@@ -52,3 +59,42 @@ result can be checked rather than believed.
 - A U or T file from mendelson of 5 MB needed no change; the size problem
   of #21 (the space estimate from the SFID) does not bite there, the SFID
   size being right.
+
+- **Oftp4Net** (free, MIT, .NET; run as a container with its database) is
+  the 1.x partner: the release is set per partner (`ProtocolLevel` 5, 4, 2
+  or 1) and the session runs at the lower of the two levels. Plain TCP is
+  a listener without TLS. It was set up with its database and driven with
+  its REST API (`POST /api/v1/outbox`, `GET /api/v1/inbox`); the OFTPD side
+  used `PARTNER CHANGE ... LEVEL(n)` to change the level between runs.
+  OFTPD's `LEVEL=` is the highest level it offers: the lower of the two
+  wins, and the SSID is 61 bytes at every level, so one set of partner
+  entries serves all of them.
+- **Date and time per level.** At 1.4 both sides send `CCYYMMDD` and
+  `HHMMSScccc` (OFTPD's last four digits are its counter, `0001`, `0002`,
+  ...); at 1.3 and 1.2 both send `YYMMDD` and `HHMMSS`, which is what
+  Oftp4Net showed for OFTPD's files.
+- **The EERP of a 1.3 or 1.2 partner is not matched** (#190). The spool
+  record keeps `HHMMSScccc`, the EERP gives `HHMMSS`, padded with `0000`.
+  Everything else at those levels passed.
+- **There is no NERP below 1.4.** A refusal inside a session is an SFNA or
+  EFNA and works at every level. A NERP is something a *later* node
+  sends. OFTPD sends one only as a relay; below 1.4 it cannot (the log
+  says `response 'N' not possible at this level`), so a 1.3 sender of a
+  relayed file that fails further on is never told, and the item stays
+  `SENT` on its side. The requirement "a failed file from a 1.3 sender gets
+  a correct NERP" is therefore met at level 4 (the sender was at 1.4) and
+  can only be "dropped, and recorded" at 1.3.
+- **Oftp4Net answers with the identity of the listener** (unless the
+  partner has an inbound identity set; then a call to the other listener
+  is answered with the wrong Odette ID and OFTPD ends it, ESID 03). It
+  sends the one password of the partner entry on every listener, so
+  OFTPD's entry for the second listener needs that password, not the
+  identity's own (otherwise `partner password does not match`, ESID 04).
+- Oftp4Net's `not-delivered` call is accepted only while no end response
+  has been sent, and it sends the NERP in the next session. In a normal
+  run the EERP leaves in the same session as the file, so the call comes
+  too late; the test had to put the status back in the database first.
+- A virtual file name over 8 characters per qualifier is shortened by
+  OFTPD to 8 (`TOOLONGQUALIFIER.X` is stored as `...TOOLONGQ.X`) and a
+  hyphen is kept: both are valid data set names, so no SFNA arises there.
+  A rule with `%Qn` is where an invalid name comes from (see the table).
