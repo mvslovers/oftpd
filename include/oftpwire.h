@@ -89,6 +89,7 @@ typedef struct oftp_sfid {
     char        dest[OFTP_IDLEN + 1];
     char        orig[OFTP_IDLEN + 1];
     char        fmt;                    /* 'F', 'V', 'U', 'T'            */
+    int         level;                  /* decoded at; time has no counter below 1.4 */
     unsigned    lrecl;
     unsigned long fsiz;                 /* 1K blocks                     */
     unsigned long osiz;                 /* 2.0; = fsiz below 2.0         */
@@ -129,6 +130,7 @@ typedef struct oftp_erp {
     char        orig[OFTP_IDLEN + 1];
     char        crea[OFTP_IDLEN + 1];   /* NERP only                     */
     int         reas;                   /* NERP only                     */
+    int         level;                  /* the level it was decoded at   */
     unsigned    textl;                  /* NERP, 2.0                     */
     const unsigned char *text;
     unsigned    hshl;                   /* 2.0                           */
@@ -191,5 +193,12 @@ extern int  oftp_enc_erp(int level, char code, const OFTP_ERPCMD *c,
                          unsigned char *b, unsigned cap) asm("OFTPEERP");
 extern int  oftp_dec_erp(int level, char code, const unsigned char *b,
                          unsigned len, OFTP_ERPCMD *c)  asm("OFTPDERP");
+
+/* 1 when the time of a decoded EERP/NERP is the time stored for the file
+** (HHMMSScccc). Below 1.4 the wire carries HHMMSS only, so only those six
+** digits are compared; the counter is ours and the partner cannot return it.
+*/
+extern int  oftp_erp_timeq(const OFTP_ERPCMD *c, const char *time)
+                                                        asm("OFTPETEQ");
 
 #endif /* OFTPWIRE_H */

@@ -269,7 +269,9 @@ m_erp_recv(void *ctx, const OFTP_PEER *peer, char code, const OFTP_ERPCMD *e)
         return;
     }
     for (i = 0; i < m->nout; i++)
-        if (strcmp(m->out[i].dsn, e->dsn) == 0)
+        if (strcmp(m->out[i].dsn, e->dsn) == 0
+            && strcmp(e->date, "20261012") == 0
+            && oftp_erp_timeq(e, "1200000001"))
             m->eerps++;
 }
 

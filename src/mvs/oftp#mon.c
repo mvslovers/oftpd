@@ -597,7 +597,8 @@ f_open_in(void *ctx, const OFTP_PEER *peer, const OFTP_SFIDCMD *f,
         x.partner = c->pt->peer.name;
         x.key = key;
         x.arrival = arrival;
-        x.sfidtime = f->time;
+        /* below 1.4 the wire has no counter, %CTR has no value (#191) */
+        x.sfidtime = f->level >= OFTP_LEV14 ? f->time : "";
         if (oftp_rcv_name(rule, &x, final) != 0) {
             oftp_spl_del(c->m->spool, r.key);
             oftp_mon_msg("OFTP224W %s: %s REFUSED, RULE %s MAKES NO VALID"
@@ -909,7 +910,7 @@ f_erp_recv(void *ctx, const OFTP_PEER *peer, char code, const OFTP_ERPCMD *e)
         memcpy(last, r.key, 8);
         if (r.dir != SPL_SEND || strcmp(r.partner, c->pt->peer.name) != 0
             || strcmp(r.dsn, e->dsn) != 0 || strcmp(r.date, e->date) != 0
-            || strcmp(r.time, e->time) != 0
+            || !oftp_erp_timeq(e, r.time)
             || (r.dest[0] && strcmp(r.dest, e->orig) != 0))
             continue;
         r.erp = code;
