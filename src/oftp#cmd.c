@@ -315,6 +315,7 @@ oftp_dec_sfid(int level, const unsigned char *b, unsigned len,
     oftp_get_x(b + 48, OFTP_USRLEN, c->user);
     oftp_get_x(b + 56, OFTP_IDLEN, c->dest);
     oftp_get_x(b + 81, OFTP_IDLEN, c->orig);
+    c->level = level;
     c->fmt = oftp_get_c(b + 106);
     if (c->fmt != 'F' && c->fmt != 'V' && c->fmt != 'U' && c->fmt != 'T')
         return OFTP_EFIELD;
@@ -619,6 +620,7 @@ oftp_dec_erp(int level, char code, const unsigned char *b, unsigned len,
         return OFTP_ECMD;
     c->user[0] = c->crea[0] = '\0';
     c->reas = 0;
+    c->level = level;
     c->textl = c->hshl = c->sigl = 0;
     c->text = c->hsh = c->sig = NULL;
 
@@ -661,4 +663,10 @@ oftp_dec_erp(int level, char code, const unsigned char *b, unsigned len,
         pos += (unsigned)rc;
     }
     return pos == len ? 0 : OFTP_ELEN;
+}
+
+int
+oftp_erp_timeq(const OFTP_ERPCMD *c, const char *time)
+{
+    return strncmp(c->time, time, is14(c->level) ? OFTP_TIMLEN : 6) == 0;
 }

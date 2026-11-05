@@ -106,12 +106,14 @@ t_sfid(void)
 
     memset(&f, 0, sizeof(f));
     CHECK_EQ(oftp_dec_sfid(OFTP_LEV13, v_sfid13, sizeof(v_sfid13), &f), 0, "SFID 1.3 decodes");
+    CHECK_EQ(f.level, OFTP_LEV13, "SFID remembers its level (LEV13)");
     CHECK(strcmp(f.date, "20261012") == 0, "SFID 1.3: century by window");
     CHECK(strcmp(f.time, "1745010000") == 0, "SFID 1.3: counter 0000");
     CHECK(f.fmt == 'F' && f.lrecl == 80, "SFID 1.3: format and LRECL");
 
     memset(&f, 0, sizeof(f));
     CHECK_EQ(oftp_dec_sfid(OFTP_LEV14, v_sfid14, sizeof(v_sfid14), &f), 0, "SFID 1.4 decodes");
+    CHECK_EQ(f.level, OFTP_LEV14, "SFID remembers its level (LEV14)");
     CHECK(strcmp(f.dsn, "PAYROLL.DATA") == 0, "SFID 1.4: name");
     CHECK(strcmp(f.time, "1745010001") == 0, "SFID 1.4: time");
     CHECK(strcmp(f.dest, "O0013000000MVS2") == 0 && strcmp(f.orig, "O0013000000MVS1") == 0,
@@ -120,6 +122,7 @@ t_sfid(void)
 
     memset(&f, 0, sizeof(f));
     CHECK_EQ(oftp_dec_sfid(OFTP_LEV20, v_sfid20, sizeof(v_sfid20), &f), 0, "SFID 2.0 decodes");
+    CHECK_EQ(f.level, OFTP_LEV20, "SFID remembers its level (LEV20)");
     CHECK(f.fmt == 'T' && f.osiz == 12 && f.sec == 0 && f.sign == 'N', "SFID 2.0 fields");
     CHECK(f.descl == 4 && f.desc == v_sfid20 + 165, "SFID 2.0: description points into the buffer");
 
@@ -222,6 +225,13 @@ t_erp(void)
              "EERP 1.3 decodes");
     CHECK(strcmp(c.date, "20261012") == 0 && strcmp(c.time, "1745010000") == 0,
           "EERP 1.3: date and time in the 1.4 form");
+    CHECK(oftp_erp_timeq(&c, "1745010001") && oftp_erp_timeq(&c, "1745019999"),
+          "EERP 1.3: the file counter is not compared");
+    CHECK(!oftp_erp_timeq(&c, "1745020001"), "EERP 1.3: the seconds are");
+    fill_erp(&c);
+    c.level = OFTP_LEV14;
+    CHECK(oftp_erp_timeq(&c, "1745010001") && !oftp_erp_timeq(&c, "1745010002"),
+          "EERP 1.4: the file counter is compared");
 
     fill_erp(&c);
     strcpy(c.crea, "O0013000000MVS2");
