@@ -564,17 +564,6 @@ operator command `F OFTPD,REFRESH`. The operator's `F OFTPD,CALL`,
 
 `PURGE DAYS(0)` deletes every finished transfer, however recent.
 
-> **A defect** (oftpd#101): `LIST` and `LIST MINE`, in `OFTP` and in the
-> dialog's transfer list, get slower than the number of transfers
-> suggests. A long answer comes in pieces, and for every piece OFTPD reads
-> the whole spool again, so the time grows with the square of the number of
-> transfers in the spool. On a short spool the delay is small. On a
-> long one a `LIST` can take seconds, and longer while the system is busy.
-> `SHOW`, `DELETE` and `STATUS` do not grow with the spool the way `LIST`
-> does. Until this is fixed, keep the spool short:
-> `KEEPDAYS` (section 5) bounds how long finished transfers stay, and
-> `PURGE` (an administrator's command) deletes them at once.
-
 ## 9. The ISPF dialog
 
 The dialog `OFTPI` needs its panels in the `ISPPLIB` concatenation and

@@ -12,8 +12,8 @@ Checked against the issues on this date; the issues win if they disagree.
 
 **1.0.0** (milestone `1.0.0`), open: `docs/` #63, book area #64,
 release preparation #65, colon after the partner name in three messages
-#93, `LIST` over 150 transfers #101. Closed in this
-milestone: levels 1.4 and 1.3 against a real peer #50 (Oftp4Net, with #190 and #191 found and fixed), books: partner password, VIA and OURID #163 (PR #178, pending merge), `MAXRETRY` cut off mid-file #51 (pending merge of PR #168), receive rules #44, job after receipt #45, partner maintenance
+#93. Closed in this
+milestone: `LIST` over 150 transfers #101 (resumes by spool key; PR pending merge), levels 1.4 and 1.3 against a real peer #50 (Oftp4Net, with #190 and #191 found and fixed), books: partner password, VIA and OURID #163 (PR #178, pending merge), `MAXRETRY` cut off mid-file #51 (pending merge of PR #168), receive rules #44, job after receipt #45, partner maintenance
 #46, log to SYSOUT #47, `TRACE` #48, `TRACE` follow-ups #86,
 spool-thread recovery #49, SVC on TK5 #52, dialog on TK5 #53, no ACEE /
 no security product #54, SVC length check #55, session abort while
@@ -432,8 +432,12 @@ is not running.
   `SHOW`, `DELETE` 1-5 ms idle and under 100 ms loaded, `SEND` 27-143 ms
   by spool size, `LIST` over a second from about 150 transfers idle and
   from 50 loaded. Cause (every piece scans the whole spool again) and
-  the fix are #101; a batch OFTPD needs `TIME=1440` (sample updated).
-- #101: `LIST` is quadratic in the number of transfers.
+  the fix are #101 (fixed, `internals/xmem.md` section 20); a batch OFTPD
+  needs `TIME=1440` (sample updated).
+- ~~#101: `LIST` is quadratic in the number of transfers~~ -- resumes by
+  the spool key of the last row; idle 200 rows 2.2 s -> 0.35 s, flat per
+  row (`internals/xmem.md` section 20). Loaded it can still pass a second
+  at 100 rows and more (one SVC round trip per piece).
 
 ## After the MVP
 

@@ -190,6 +190,26 @@ main(int argc, char **argv)
         n++;
     }
     CHECK_EQ(n, 2, "next walks the two left");
+
+    /* LIST resumes from the key of the last row it gave (#101), and that
+    ** row may be gone by the next piece: next must position at the next
+    ** higher key, not fail, and read on in order after it
+    */
+    memset(&g, 0, sizeof(g));
+    CHECK_EQ(oftp_spl_next(sp, keys[0], &g), 0,
+             "next from a deleted key: the following record");
+    CHECK(memcmp(g.key, keys[1], 8) == 0, "and it is T0000002");
+    memcpy(last, g.key, 8);
+    CHECK_EQ(oftp_spl_next(sp, last, &g), 0, "and on from there");
+    CHECK(memcmp(g.key, keys[2], 8) == 0, "T0000003 follows");
+    memcpy(last, g.key, 8);
+    CHECK_EQ(oftp_spl_next(sp, last, &g), OFTP_SPL_NOTFOUND,
+             "nothing after the last");
+    CHECK_EQ(oftp_spl_next(sp, "T0000009", &g), OFTP_SPL_NOTFOUND,
+             "next from a missing key above all: NOTFOUND");
+    CHECK_EQ(oftp_spl_next(sp, keys[0], &g), 0,
+             "and the spool reads on after a positioning that found nothing");
+    CHECK(memcmp(g.key, keys[1], 8) == 0, "from the start of the transfers");
     oftp_spl_close(sp);
 
     /* the number goes on after a reopen */
