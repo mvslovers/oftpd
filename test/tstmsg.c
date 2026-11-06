@@ -17,14 +17,15 @@ static int  texts_ok[4];
 static void
 note(int num, char cls)
 {
-    char *l;
+    size_t k;
 
     if (num < 200 || num > 299)
         return;
-    l = letters[num];
-
-    if (strchr(l, cls) == NULL && strlen(l) < sizeof(letters[0]) - 1)
-        l[strlen(l)] = cls;
+    k = strlen(letters[num]);
+    if (strchr(letters[num], cls) == NULL && k + 1 < sizeof(letters[num])) {
+        letters[num][k] = cls;
+        letters[num][k + 1] = '\0';
+    }
 }
 
 static void
