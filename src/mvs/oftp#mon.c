@@ -923,7 +923,7 @@ f_erp_recv(void *ctx, const OFTP_PEER *peer, char code, const OFTP_ERPCMD *e)
             if (r.disp == 'D' && r.relay != 'Y') {
                 if (remove(r.local) == 0) {
                     settext(&r, "delivered, EERP received, data set deleted");
-                    oftp_mon_msg("OFTP215P %s: %.8s %s DELETED (DISP=DELETE)",
+                    oftp_mon_msg("OFTP249P %s: %.8s %s DELETED (DISP=DELETE)",
                                  r.partner, r.key, r.local);
                 } else {
                     settext(&r, "delivered, EERP received, data set NOT deleted");
@@ -981,7 +981,7 @@ p_lookup(void *ctx, const char *code, OFTP_PEER *peer)
         snprintf(name, sizeof(name), "%s", p->peer.name);
         snprintf(addr, sizeof(addr), "%s", p->address);
         unlock(c->m, 0);
-        oftp_mon_msg("OFTP201W %s CALLED FROM %s, NOT %s", name, c->ip, addr);
+        oftp_mon_msg("OFTP201W %s: CALLED FROM %s, NOT %s", name, c->ip, addr);
         return -1;
     }
     i = ptn_index(c->m, p);
@@ -989,7 +989,7 @@ p_lookup(void *ctx, const char *code, OFTP_PEER *peer)
         snprintf(name, sizeof(name), "%s", p->peer.name);
         i = p->sessions;
         unlock(c->m, 0);
-        oftp_mon_msg("OFTP202W %s REFUSED, %d SESSIONS RUNNING, SESSIONS=%d",
+        oftp_mon_msg("OFTP202W %s: REFUSED, %d SESSIONS RUNNING, SESSIONS=%d",
                      name, n, i);
         return 8;                       /* ESID 08: retry later (#18)   */
     }
@@ -1159,7 +1159,7 @@ session_thread(void *arg1, void *arg2)
             end_files(c);
         else if (fab > 0) {
             abend_text((unsigned)fab, abt, sizeof(abt));
-            oftp_mon_msg("OFTP216E %s: ABEND %s CLOSING THE FILES OF THE SESSION",
+            oftp_mon_msg("OFTP250E %s: ABEND %s CLOSING THE FILES OF THE SESSION",
                          c->pt ? c->pt->peer.name : c->ip, abt);
         }
     }
@@ -1190,7 +1190,7 @@ session_thread(void *arg1, void *arg2)
         && c->s.files_out == 0 && c->s.files_in == 0) {
         long w = busy_pause();
 
-        oftp_mon_msg("OFTP218P %s BUSY, CALLED AGAIN IN %ld S",
+        oftp_mon_msg("OFTP218P %s: BUSY, CALLED AGAIN IN %ld S",
                      c->pt->peer.name, w);
         m->tcall[ptn_index(m, c->pt)] = (long)time(NULL) + w;
     } else if (c->initiator && (ab != 0 || (c->rc != 0 && c->s.files_out == 0
