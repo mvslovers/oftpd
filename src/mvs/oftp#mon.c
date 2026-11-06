@@ -36,6 +36,7 @@
 #include "oftpsec.h"
 #include "oftpnet.h"
 #include "oftpopr.h"
+#include "oftppag.h"
 #include "oftpsess.h"
 
 /* ---- messages ---------------------------------------------------- */
@@ -1547,6 +1548,8 @@ struct ctlout {
                                         ** product (CVTRAC 0): nobody
                                         ** to tell apart               */
     char        user[9];                /* "" when nobody is known       */
+    OFTP_PAGE  *pg;                     /* a long answer's pieces, or
+                                        ** NULL for the whole of it    */
 };
 
 /* May the asker see and change transfer r: an administrator, or the
@@ -1781,59 +1784,49 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
     ecb_post(&m->wake, 0);
 }
 
-static const char *
-state_name(char st)
+static int
+list_next(void *ctx, const char *key, OFTP_SPREC *rec)
 {
-    switch (st) {
-    case SPL_QUEUED:    return "QUEUED";
-    case SPL_ACTIVE:    return "ACTIVE";
-    case SPL_WAITING:   return "WAITING";
-    case SPL_HELD:      return "HELD";
-    case SPL_SENT:      return "SENT";
-    case SPL_DELIVERED: return "DELIVERED";
-    case SPL_REJECTED:  return "REJECTED";
-    case SPL_FAILED:    return "FAILED";
-    case SPL_RECEIVED:  return "RECEIVED";
-    case SPL_CONFIRMED: return "CONFIRMED";
-    default:            return "?";
-    }
+    return oftp_spl_next(((OFTP_MON *)ctx)->spool, key, rec);
 }
 
 static void
+list_put(void *ctx, const char *line)
+{
+    ctl_put((CTLOUT *)ctx, line);
+}
+
+/* LIST. An answer in pieces resumes by the spool key of the last row it
+** gave, so each piece reads the rows it returns and not the spool from the
+** start (oftp#pag.c). The caller's DONE= is how many rows it has had, for
+** the total in the final line.
+*/
+static void
 ctl_list(OFTP_MON *m, CTLOUT *o, const char *line)
 {
-    OFTP_SPREC r;
-    char last[8], partner[16], status[16], mine[4], out[200];
-    char sd[OFTP_DSNLEN + 1];
-    int n = 0, own;
+    OFTP_LSTREQ q;
+    char partner[16], status[16], mine[4], done[12];
 
     kw(line, "PARTNER", partner, sizeof(partner));
     kw(line, "STATUS", status, sizeof(status));
     kw(line, "MINE", mine, sizeof(mine));
+    kw(line, "DONE", done, sizeof(done));
+    memset(&q, 0, sizeof(q));
+    q.next    = list_next;
+    q.nctx    = m;
+    q.put     = list_put;
+    q.pctx    = o;
+    q.pg      = o->pg;
+    q.partner = partner;
+    q.status  = status;
+    q.user    = o->user;
     /* Only one's own: asked for with MINE=Y, and all there is for
     ** anyone but an administrator -- or anyone at all, on a system
     ** without a security product, where "one's own" cannot be told
     */
-    own = !o->nosec && (mine[0] == 'Y' || !o->admin);
-    last[0] = '\0';
-    while (oftp_spl_next(m->spool, last, &r) == 0) {
-        memcpy(last, r.key, 8);
-        if (partner[0] && strcmp(partner, r.partner) != 0
-            && strcmp(partner, r.target) != 0)
-            continue;
-        if (status[0] && strncmp(status, state_name(r.state), strlen(status)) != 0)
-            continue;
-        if (own && !(o->user[0] && strcmp(o->user, r.owner) == 0))
-            continue;
-        snprintf(out, sizeof(out), "100 %.8s %-4s %-9s %-8s %-26s %s",
-                 r.key, r.dir == SPL_SEND ? "SEND" : "RECV",
-                 state_name(r.state), r.target[0] ? r.target : r.partner,
-                 oftp_printable(sd, sizeof(sd), r.dsn), r.local);
-        ctl_put(o, out);
-        n++;
-    }
-    snprintf(out, sizeof(out), "200 %d transfers", n);
-    ctl_put(o, out);
+    q.own     = !o->nosec && (mine[0] == 'Y' || !o->admin);
+    q.done    = (unsigned)strtoul(done, NULL, 10);
+    oftp_lst_run(&q);
 }
 
 static void
@@ -1854,7 +1847,7 @@ ctl_show(OFTP_MON *m, CTLOUT *o, const char *line)
     }
     snprintf(out, sizeof(out), "100 %.8s %s %s, partner %s%s%s, owner %s",
              r.key, r.dir == SPL_SEND ? "SEND" : "RECEIVE",
-             state_name(r.state), r.target[0] ? r.target : r.partner,
+             oftp_spl_statename(r.state), r.target[0] ? r.target : r.partner,
              r.target[0] ? " via " : "", r.target[0] ? r.partner : "",
              r.owner[0] ? r.owner : "-");
     ctl_put(o, out);
@@ -2055,7 +2048,7 @@ ctl_change(OFTP_MON *m, CTLOUT *o, const char *verb, const char *line)
         ctl_put(o, "451 spool not available");
         return;
     }
-    snprintf(out, sizeof(out), "200 %.8s %s", r.key, state_name(r.state));
+    snprintf(out, sizeof(out), "200 %.8s %s", r.key, oftp_spl_statename(r.state));
     ctl_put(o, out);
     oftp_mon_msg("OFTP232P %.8s %s BY %s", r.key, verb, ctl_by(o));
     ecb_post(&m->wake, 0);
@@ -2682,51 +2675,18 @@ static void join(CTHDTASK **t);
 ** this casts it down again.
 */
 typedef struct slotout {
-    CTLOUT   o;
-    char    *buf;
-    unsigned cap;
-    unsigned len;
-    unsigned sent;      /* 1xx lines the caller has after this piece  */
-    unsigned skip;      /* 1xx lines it already had: the resume index */
-    int      more;      /* the buffer ran out: this is a piece        */
+    CTLOUT    o;
+    OFTP_PAGE pg;       /* the reply area and where the answer stands   */
 } SLOTOUT;
 
-/* One line into the reply area.
-**
-** Long answers come in pieces, and the boundary is counted in 1xx
-** lines and nothing else. A 1xx line is a row of the answer; the
-** single 2xx/4xx/5xx line that ends one is its status, belongs to
-** every piece that ends, and counting it would make the resume index
-** mean two different things on the two sides of the SVC.
-**
-** A piece never ends inside a line. The client reads whole lines, and
-** half of one is indistinguishable from a short one -- so when the
-** next line does not fit, the piece ends before it.
+/* One line into the reply area (oftp#pag.c): a piece never ends inside a
+** line, and the boundary between two pieces is counted in 1xx lines or,
+** for LIST, is a spool key.
 */
 static void
 put_slot(CTLOUT *co, const char *line)
 {
-    SLOTOUT *o = (SLOTOUT *)co;
-    unsigned n;
-
-    if (line == NULL)
-        return;
-    if (line[0] == '1' && o->sent < o->skip) {
-        o->sent++;                      /* the caller has this row    */
-        return;
-    }
-    if (o->more)
-        return;
-    n = (unsigned)strlen(line);
-    if (o->len + n + 1 > o->cap) {
-        o->more = 1;
-        return;
-    }
-    memcpy(o->buf + o->len, line, n);
-    o->len += n;
-    o->buf[o->len++] = '\n';
-    if (line[0] == '1')
-        o->sent++;
+    oftp_page_put(&((SLOTOUT *)co)->pg, line);
 }
 
 /* The request line as the handlers will see it, and who sent it.
@@ -2822,9 +2782,8 @@ svc_thread(void *arg1, void *arg2)
                 continue;
             memset(&o, 0, sizeof(o));
             o.o.put  = put_slot;
-            o.buf    = buf;
-            o.cap    = j.cap;
-            o.skip   = j.resume;
+            oftp_page_init(&o.pg, buf, j.cap, j.resume);
+            o.o.pg   = &o.pg;
             svc_line(m, &j, line, sizeof(line), &o.o);
 #ifdef OFTP_DEBUG_SLOW
             /* Test builds only (-DOFTP_DEBUG_SLOW), never shipped: a
@@ -2874,17 +2833,18 @@ svc_thread(void *arg1, void *arg2)
             ** buffer past 255 breaks that, which is why this says so
             ** instead of guarding silently.
             */
-            if (o.more && o.len == 0) {
+            if (o.pg.more && o.pg.len == 0) {
                 const char *e = "552 reply does not fit in the buffer\n";
 
-                o.len = (unsigned)strlen(e);
-                if (o.len > o.cap)
-                    o.len = o.cap;
-                memcpy(buf, e, o.len);
-                o.more = 0;
+                o.pg.len = (unsigned)strlen(e);
+                if (o.pg.len > o.pg.cap)
+                    o.pg.len = o.pg.cap;
+                memcpy(buf, e, o.pg.len);
+                o.pg.more = 0;
             }
-            if (!oftp_svc_answer(m, i, buf, o.len, o.sent,
-                                 o.more ? OFTP_SVC_MORE : OFTP_SVC_OK))
+            if (!oftp_svc_answer(m, i, buf, o.pg.len,
+                                 oftp_page_resume(&o.pg),
+                                 o.pg.more ? OFTP_SVC_MORE : OFTP_SVC_OK))
                 oftp_mon_msg("OFTP064W CROSS MEMORY: THE OWNER OF SLOT %u"
                              " IS GONE, ANSWER DISCARDED", i);
         }

@@ -48,7 +48,8 @@
                                         ** and died" from "not woken
                                         ** yet" -- see xmem.md s6     */
 
-/* the routine's R15 (R0 = reply bytes, R1 = resume index for rc 4) */
+/* the routine's R15 (R0 = reply bytes, R1 = resume word for rc 4; the
+** routine only carries the word, oftppag.h says what it means) */
 #define OFTP_SVC_OK       0             /* complete answer               */
 #define OFTP_SVC_MORE     4             /* ask again with R1 as resume   */
 #define OFTP_SVC_BUSY     8             /* every slot taken              */
@@ -83,10 +84,10 @@ typedef struct oftp_slot {
     unsigned    recb;                   /* 0C reply ECB, key 0           */
     char        user[8];                /* 10 ACEEUSER, blank if none    */
     unsigned    reqlen;                 /* 18                            */
-    unsigned    resume;                 /* 1C lines already received     */
+    unsigned    resume;                 /* 1C resume word (oftppag.h)    */
     unsigned    cap;                    /* 20 caller's reply buffer      */
     unsigned    replen;                 /* 24 bytes in reply[]           */
-    unsigned    next;                   /* 28 resume index, rc MORE      */
+    unsigned    next;                   /* 28 resume word, rc MORE       */
     unsigned    rc;                     /* 2C OFTP_SVC_*                 */
     unsigned    stamp;                  /* 30 OFTPD's time of the answer */
     unsigned    rplyptr;                /* 34 caller's reply buffer, set
@@ -154,7 +155,7 @@ typedef struct oftp_svcreq {
 */
 typedef struct oftp_svcjob {
     unsigned    slot;                   /* index in the pool             */
-    unsigned    resume;                 /* lines the caller already has  */
+    unsigned    resume;                 /* the resume word (oftppag.h)   */
     unsigned    cap;                    /* the caller's buffer           */
     char        user[9];                /* NUL-terminated, may be blank  */
     char        req[OFTP_SVC_REQMAX + 1];
@@ -166,7 +167,7 @@ typedef struct oftp_svcjob {
 ** OFTP_SVC_BADREQ, without issuing the SVC, for a request that is empty
 ** or longer than OFTP_SVC_REQMAX.
 ** *outlen gets R0 (bytes placed in reply) and *outnext R1 (the resume
-** index to pass back when the answer was OFTP_SVC_MORE).
+** word to pass back when the answer was OFTP_SVC_MORE).
 */
 extern int oftp_svc_call(const char *req, char *reply, unsigned cap,
                          unsigned resume, unsigned *outlen,

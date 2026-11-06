@@ -55,3 +55,21 @@ oftp_spl_match(const OFTP_SPREC *r, const char *partner, const char *vfn)
         return strncmp(r->dsn, vfn, n - 1) == 0;
     return strcmp(r->dsn, vfn) == 0;
 }
+
+const char *
+oftp_spl_statename(char st)
+{
+    switch (st) {
+    case SPL_QUEUED:    return "QUEUED";
+    case SPL_ACTIVE:    return "ACTIVE";
+    case SPL_WAITING:   return "WAITING";
+    case SPL_HELD:      return "HELD";
+    case SPL_SENT:      return "SENT";
+    case SPL_DELIVERED: return "DELIVERED";
+    case SPL_REJECTED:  return "REJECTED";
+    case SPL_FAILED:    return "FAILED";
+    case SPL_RECEIVED:  return "RECEIVED";
+    case SPL_CONFIRMED: return "CONFIRMED";
+    default:            return "?";
+    }
+}

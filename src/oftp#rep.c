@@ -80,3 +80,11 @@ oftp_cli_broken(char *final, int cap, int *code)
         *code = 0;
     return 12;
 }
+
+int
+oftp_cli_continue(const char *req, unsigned done, char *out, size_t cap)
+{
+    int n = snprintf(out, cap, "%s DONE=%u", req, done);
+
+    return n > 0 && (size_t)n < cap ? 0 : -1;
+}
