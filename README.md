@@ -12,7 +12,8 @@ Status: 1.0.0, the first final release. Release notes: `CHANGELOG.md`.
 
 ## Building
 
-Needs [mbt](https://github.com/mvslovers/mbt) 3 and the cc370 toolchain.
+Needs [mbt](https://github.com/mvslovers/mbt) 3 and the cc370 toolchain:
+cc370 1.6.3 and libc370 2.28 or later.
 
 ```
 mbt build

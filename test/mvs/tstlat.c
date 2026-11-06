@@ -123,14 +123,23 @@ add(unsigned us)
         slow++;
 }
 
-static int rows;
+static int  rows;
+static int  disorder;
+static char prevkey[9];
 
+/* Counts the rows and checks that they come once each, in key order,
+** across the pieces of one request
+*/
 static void
 count_row(void *ctx, const char *text)
 {
     (void)ctx;
-    (void)text;
     rows++;
+    if (strncmp(text, "100 T", 5) == 0) {
+        if (prevkey[0] != '\0' && memcmp(text + 4, prevkey, 8) <= 0)
+            disorder++;
+        memcpy(prevkey, text + 4, 8);
+    }
 }
 
 /* One request through the path the dialog takes, timed. Returns the
@@ -143,6 +152,7 @@ timed(const char *req, char *fin, int cap)
     int rc;
 
     rows = 0;
+    prevkey[0] = '\0';
     t0 = now_us();
     rc = oftp_cli_request(req, count_row, NULL, fin, cap, NULL);
     t1 = now_us();
@@ -300,6 +310,14 @@ main(int argc, char **argv)
         printf("    LIST comes in %d piece(s), slowest %s ms\n", np,
                ms(worst));
         CHECK(target == 0 || rows >= target, "LIST shows every held send");
+        CHECK_EQ(disorder, 0, "LIST rows come once each, in key order");
+        {
+            int total = -1;
+
+            sscanf(fin, "%d transfers", &total);
+            printf("    final line: %s\n", fin);
+            CHECK_EQ(total, rows, "the final line counts every row, not the last piece");
+        }
 
         start();
         for (i = 0; i < 10; i++) {

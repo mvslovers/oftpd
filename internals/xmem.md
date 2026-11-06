@@ -157,13 +157,17 @@ OFTPD (the control-port thread becomes the slot thread):
     alive, ADR-0040). Gone: free the slot, no POST -- a POST into a
     reused ASID would wake a stranger.
 
-**Long answers** (`LIST`, `PARTNERS`) come in pieces: when the reply area
-is full, OFTPD stops, sets the resume index to the number of `1xx` lines
-sent and marks the answer incomplete. The client issues the same request
-again with that index; OFTPD regenerates the answer and skips what was
-sent. That keeps OFTPD free of per-client state, as `design.md` section 7
-asks, at the price of regenerating the list once per piece -- accepted for
-the MVP (a spool LIST is a VSAM read, not a scan of anything large).
+**Long answers** (`LIST`, `PARTNERS`) come in pieces: when the
+reply area is full, OFTPD stops, sets the resume word and marks the answer
+incomplete. The client issues the same request again with that word.
+That keeps OFTPD free of per-client state, as `design.md` section 7 asks.
+What the word means depends on the request. For `PARTNERS`
+it is the number of `1xx` lines sent: OFTPD regenerates the answer and
+skips what was sent, at the price of regenerating it once per piece (a
+short answer). For `LIST` it is the number of the spool key of the last
+row sent, and the next piece starts at the next higher key, so a piece
+reads only the rows it returns (section 20; before #101 it was a count
+and the work grew with the square of the spool).
 
 ## 5. CSA
 
@@ -2054,7 +2058,7 @@ here. The one 7.1 s `SEND` of the loaded run is a single sample among the 100 se
 **`LIST` is the request over a second, and it is the number of rows that
 decides.** Idle it passes a second between 100 and 200 transfers; with
 the system loaded already at 50. The cause is in the code and the numbers
-fit it (opened as #101):
+fit it (opened as #101, fixed: section 20):
 
 - an answer comes in pieces of about 22 rows (the reply area is 2048
   bytes) and OFTPD keeps nothing between them: the client sends the request
@@ -2210,3 +2214,175 @@ two rows together show that the exit ran on a CANCEL.
 system off for as long as the call waits: the program belongs in a library
 of its own in a throwaway container, never in LNKLST or `SYS2.LINKLIB`,
 and `tstsec.jcl` says so.
+
+## 20. LIST resumes by the spool key (2026-11-06, #101)
+
+Section 18 found the cause of the slow `LIST`: a long answer comes in
+pieces, OFTPD keeps nothing between them, and every piece read and
+formatted the whole spool to throw most of it away. The resume word is now
+the spool key of the last row delivered, and the next piece starts at the
+next higher key, so a piece reads the rows it returns.
+
+### What changed
+
+- The resume word is opaque to the routine and the assembler (R1 in, R1
+  out, 32 bits), so nothing in the SVC layout changed. For `LIST` it is
+  the number after the `T` in the key of the last row delivered (`T0000042`
+  is 42), 0 meaning "from the start". `PARTNERS` and the other long answers keep
+  the count of `1xx` lines.
+- The paging moved out of `src/mvs/oftp#mon.c` (MVS only) into
+  `src/oftp#pag.c` (`oftppag.h`), so the host tests can run it:
+  `oftp_page_put()` is the line writer that fills the piece and
+  `oftp_lst_run()` is the `LIST` handler. The next-transfer call and the
+  line writer are function pointers, and `test/tstpag.c` (`TSTPAG`)
+  stands an in-memory spool in for the first.
+- `oftp_spl_next(key)` is `vsstge()` on the key (the first record >= key)
+  and then reads on, dropping a record that equals the key. So the mark
+  need not exist: see below.
+- **The total.** `LIST` ends with `200 N transfers`. A piece that starts
+  at a mark cannot count the rows before it, so the client says how many
+  it has: every further request carries `DONE=<rows so far>`
+  (`oftp_cli_continue()`, `src/oftp#rep.c`), and the final line adds this
+  piece's rows to it. A request already so long that `DONE=` no longer fits in the
+  255 bytes the transport takes and ends with RC 8 ("request too long to go on
+  in a further piece"). Clients other than `oftp#cli.c` that page by hand
+  (`TSTSVC`, `TSTLAT`'s piece counter) send the word back without `DONE=`
+  and only the total in the last line is wrong.
+
+### Behaviour that did not change
+
+A piece never ends inside a line; a row that does not fit is dropped whole
+and is the first of the next piece. The one `2xx/4xx/5xx` status line belongs to each
+piece that ends the answer.
+`PARTNER=`, `STATUS=`, `MINE` and the ownership rule (not `ADMIN`, or
+`MINE`, on a system with a security product) pick the same rows as before:
+they are applied to each record after it is read, and only a row that is
+delivered moves the mark. A filtered row therefore never moves the mark,
+and a piece cannot come back empty while a matching row is left: it reads
+on until one does not fit or the spool ends. (What it costs: a selective
+filter makes a piece read the rows it skips; each record is still read
+once per run, plus the one that did not fit.)
+
+### When the spool changes between pieces
+
+The mark is a key, not a position, so it survives what a count did not:
+
+- **The mark's record is deleted** (purge, `DELETE`, the daily cleaning):
+  the next piece starts at the next higher key. Nothing is repeated and
+  nothing above the mark is lost. A count would have shifted by one and
+  repeated or lost a row. Measured on MVS (`TSTSPL`, 72/72 on MVS/CE):
+  `oftp_spl_next()` from a deleted key gives the following record, from a
+  key above all gives not found, and the next call from the start works
+  after that, so a failed positioning leaves nothing behind.
+- **A transfer is deleted elsewhere**: it is not shown if it was above the
+  mark and shown once if it was below; no row appears twice.
+- **A transfer is added**: keys only grow, so it lands above every mark
+  and a later piece shows it. The one exception is the key wrapping at
+  9999999: a transfer that gets a lower key after the wrap, while a `LIST`
+  is between pieces, is not shown by that `LIST`. It is never shown twice.
+- The count in the last line is the rows the caller was given, which
+  after such a change need not equal the spool.
+
+### The VSAM call
+
+Positioning on a key that is missing and reading on was not covered
+before. `vsstge()` (libc370 2.10.1 or later, as for the rest of the
+spool) is a keyed START, GE: it positions at the next higher key and the
+sequential `vsread()` after it returns that record, in the same call
+sequence the spool already used for `oftp_spl_next()`. Cases added to
+`TSTSPL`: from the deleted `T0000001` to `T0000002`, on to `T0000003`,
+past the last (not found), from `T0000009` that is not there (not found),
+and from the start again after it.
+
+### Tests, first
+
+`TSTPAG` (host, in `mbt test`): 60 rows in a buffer for a few rows, with
+and without `PARTNER=`/`STATUS=`/ownership filters, with the mark row
+deleted between pieces, with rows deleted and inserted between pieces, and
+a limit on the records one piece reads (the rows it returns plus two) and
+on all pieces together (rows plus two per piece). Run against the old
+counted algorithm first, 6 of its 43 assertions failed; after the change
+all 43 pass.
+`TSTLAT` now also checks on MVS that the rows of a `LIST` come once each in
+key order across the pieces and that the final line counts every row.
+
+### Measured: the same runs as section 18
+
+Same method as section 18: `TSTLAT` against OFTPD running as a batch job
+(`TIME=1440`, `SVC=237`), `PARTNER1` with `CALL=N` so a held `SEND` is only
+queued, up to 200 held transfers, `LIST` 10 times at each size, in a
+throwaway MVS/CE container on a shared host (the milliseconds are not
+portable). The build of `main` at `b056aa7` ("before") and the build with
+this change ("after") were deployed into the same container one after the
+other and run the same way. Idle: three runs each. Loaded: two runs each,
+with `TSTLOD` as in section 18 (two jobs spinning the processor in classes
+D and E, one doing I/O in class F, started 20 s before `TSTLAT`). The
+clock check passed in every run (the TOD clock and `time()` within a
+second over runs of 31-424 s). Every request answered 0. The 200-row size
+appears twice in the `TSTLAT` output; the first block is used.
+
+**Idle, `LIST`, median per run (ms), the median of the three, and the
+time per row.** The median of a run is the middle of its 10 samples, as
+`TSTLAT` prints it.
+
+| Rows | Pieces | Before: three runs | Median | ms/row | After: three runs | Median | ms/row |
+|---|---|---|---|---|---|---|---|
+| 10 | 1 | 13.3 / 10.6 / 17.4 | 13.3 | 1.33 | 19.0 / 33.5 / 23.2 | 23.2 | 2.32 |
+| 50 | 3 | 186 / 153 / 194 | 186 | 3.72 | 60.7 / 76.9 / 89.6 | 76.9 | 1.54 |
+| 100 | 5 | 582 / 780 / 510 | 582 | 5.82 | 204 / 156 / 158 | 158 | 1.58 |
+| 200 | 9 | 2168 / 2256 / 1922 | 2168 | 10.84 | 303 / 398 / 347 | 347 | 1.73 |
+
+The time per row rises with the number of rows before (1.3, 3.7, 5.8,
+10.8 ms: the n^2 of section 18) and is flat after (1.5-1.7 ms from 50
+rows; 2.3 at 10 rows, where the fixed cost of the request, 2-15 ms from
+run to run, is a third of it). Largest single sample of the three runs
+(ms), before / after: 10 rows 34 / 61, 50 rows 324 / 174, 100 rows 1346 /
+334, 200 rows 2829 / 966. The slowest single piece (one `oftp_svc_call()`
+per run; largest of the three runs, ms), before / after: 10 rows 14.9 /
+22.6, 50 rows 79 / 45.5, 100 rows 171 / 105, 200 rows 1077 / 109. (The
+1077 ms is one sample, the other two runs had 204 and 350.)
+
+Samples over one second in a whole `TSTLAT` run, idle: 40, 46 and 40
+before, all of them in `LIST` and `LIST MINE` at 100 and 200 rows;
+**0, 0 and 0 after**. A run took 117-148 s before and 31-43 s after. The
+requests this change does not touch did not move: the median of `SHOW`
+was 1.2-3.2 ms before and 1.3-2.3 ms after, of `DELETE` 2.7-3.9 ms and
+3.7-4.1 ms. `STATUS` and `LIST` of 0 rows (the first requests after the
+clock check) differ more, 1.6-6.6 ms before and 6.1-15 ms after for a
+`LIST` of 0 rows, and vary from run to run in both builds; the single
+piece of a `LIST` of 10 rows is slower after by about 10 ms, and I did not
+find out why (the fixed cost of the request is of that size and moves
+with the run).
+
+**Loaded, `LIST`, median (max) in ms, the two runs of each build.** The
+two loaded runs of one build differ by a factor of ten in what the same
+request costs (`STATUS`, which this change does not touch: median 17 and
+2.5 ms before, 186 and 20 ms after), so a loaded run says how bad it can
+get, not what it is:
+
+| Rows | Before: run 1 | run 2 | After: run 1 | run 2 |
+|---|---|---|---|---|
+| 10 | 46 (196) | 13 (14) | 333 (789) | 80 (159) |
+| 50 | 386 (605) | 175 (276) | 988 (2214) | 79 (167) |
+| 100 | 1140 (2395) | 1167 (4574) | 1628 (2163) | 419 (847) |
+| 200 | 6329 (7364) | 11125 (14683) | 3059 (5214) | 786 (7514) |
+
+Samples over a second: 56 and 61 before, 56 and 5 after, all of them in
+`LIST` and `LIST MINE`. In the second "after" run the 7.5 s maximum and the 6.2 s slowest
+piece are one sample each. In the first "after" run the loaded floor was
+high (`STATUS` 186 ms median, 560 ms at most): nine pieces of a 200-row
+`LIST` at 186 ms is 1.7 s of the 3.1 s. So a loaded system can still pass
+a second at 100 rows and more, because every piece is a request through
+the SVC and the slot thread has to be dispatched among the spinning jobs;
+what is gone is the work that grew with the square of the rows.
+
+### What this does not show
+
+- Several callers at once, a spool with transfers of several owners, a
+  filtered `LIST` on the real system (the filters are host-tested).
+- A spool that changes while a `LIST` is paged, on MVS. The deletion case
+  is the host test and the `TSTSPL` positioning cases above.
+- TK5, a real stand, the ISPF side.
+- `PARTNERS` is still counted. A partner list is short (at most a few
+  dozen entries); the same change would apply if it ever is not.
+

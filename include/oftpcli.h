@@ -10,6 +10,8 @@
 ** caller's to say. Used by the OFTP utility and the ISPF dialog.
 */
 
+#include <stddef.h>
+
 /* Called for each 1xx line, text without the code */
 typedef void (*OFTP_CLILINE)(void *ctx, const char *text);
 
@@ -37,6 +39,14 @@ extern int  oftp_cli_rc(const char *line)               asm("OFTPCLRC");
 extern int  oftp_cli_piece(const char *buf, unsigned len, OFTP_CLILINE line,
                            void *ctx, char *final, int cap, int *code)
                                                         asm("OFTPCLPC");
+
+/* The request for a further piece: req, and DONE=n after it, n the 1xx
+** lines the caller has had so far. LIST resumes by key and cannot count
+** the rows before it, so its final line "200 n transfers" takes n from
+** here. Returns 0, or -1 when out[cap] cannot hold it.
+*/
+extern int  oftp_cli_continue(const char *req, unsigned done, char *out,
+                              size_t cap)               asm("OFTPCLCO");
 
 /* An answer that does not end as one: final gets the text, *code (when not
 ** NULL) is cleared so that no code of a half-read answer is taken for the
