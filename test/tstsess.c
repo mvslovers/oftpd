@@ -1100,6 +1100,56 @@ printable_scenario(void)
     g_traced = NULL;
 }
 
+/* A client that is nobody yet sends one stray command as its first
+** command (#156): the responder logs it as unexpected, and the byte goes
+** through the same filter as every other byte of the network
+*/
+static void
+stray_cmd_scenario(unsigned char cmd, const char *want, const char *name)
+{
+    unsigned char hdr[5] = { 0x10, 0, 0, 5, 0 };
+    MFILES m;
+    int sv[2], rc;
+    char msg[120];
+
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) != 0) {
+        CHECK(0, "socketpair");
+        return;
+    }
+    hdr[4] = cmd;
+    CHECK(write(sv[0], hdr, sizeof(hdr)) == (ssize_t)sizeof(hdr),
+          "stray command: written");
+    resp_files(&m);
+    peer_init(&resp_view, "MVS1", "O0013000000MVS1", "O0013000000MVS2",
+              5, 4096, 99, 0);
+    g_log = capture_all;
+    nal = 0;
+    sess_init(&sess, &sv[1], &m, 0);
+    strcpy(sess.localcode, "O0013000000MVS2");
+    rc = oftp_sess_run(&sess);
+    g_log = quiet;
+    close(sv[0]);
+    close(sv[1]);
+    snprintf(msg, sizeof(msg), "%s: the session ends with a protocol error",
+             name);
+    CHECK(rc != 0, msg);
+    snprintf(msg, sizeof(msg), "%s: logged as \"%s\"", name, want);
+    CHECK(al_count(want) == 1, msg);
+    snprintf(msg, sizeof(msg), "%s: no control byte in the log", name);
+    CHECK(!al_dirty(), msg);
+}
+
+static void
+stray_scenarios(void)
+{
+    stray_cmd_scenario('Q', "expected SSID, received command 'Q'",
+                       "stray command Q");
+    stray_cmd_scenario(0x00, "received command '.'", "stray command 00");
+    stray_cmd_scenario(0x01, "received command '.'", "stray command 01");
+    stray_cmd_scenario(0x1b, "received command '.'", "stray command 1B");
+    stray_cmd_scenario(0xe9, "received command '.'", "stray command E9");
+}
+
 /* A partner without PASSWORD expects an empty password and sends one: the
 ** check is an exact comparison in both directions of a call, and an empty
 ** password is no wildcard (the books say so: ref-cfg, "A Partner Without a
@@ -1169,5 +1219,6 @@ main(void)
     mendelson_scenario();
     switchoff_scenario();
     printable_scenario();
+    stray_scenarios();
     return mbt_test_summary("TSTSESS");
 }
