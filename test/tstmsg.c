@@ -9,7 +9,7 @@
 
 #define SRC "src/mvs/oftp#mon.c"
 
-static char letters[1000][8];   /* classes seen per OFTPnnn, nnn 200-299 */
+static char letters[300][8];    /* classes seen per OFTPnnn */
 static int  texts_ok[4];
 
 #define HAS(p, lit) (strncmp((p), (lit), sizeof(lit) - 1) == 0)
@@ -17,7 +17,11 @@ static int  texts_ok[4];
 static void
 note(int num, char cls)
 {
-    char *l = letters[num];
+    char *l;
+
+    if (num < 200 || num > 299)
+        return;
+    l = letters[num];
 
     if (strchr(l, cls) == NULL && strlen(l) < sizeof(letters[0]) - 1)
         l[strlen(l)] = cls;
@@ -57,7 +61,6 @@ main(void)
 {
     static char line[512];
     FILE *f = fopen(SRC, "r");
-    int n;
 
     CHECK(f != NULL, SRC " can be read");
     if (f == NULL)
@@ -78,7 +81,7 @@ main(void)
 
     /* two letters on one number: only where it is one event (233), or
     ** the engine's own line with the class as the letter (290) */
-    for (n = 201; n <= 299; n++) {
+    for (int n = 201; n <= 299; n++) {
         if (strlen(letters[n]) > 1 && n != 233 && n != 290) {
             printf("    OFTP%d has the classes %s\n", n, letters[n]);
             CHECK(0, "a number carries one meaning");
