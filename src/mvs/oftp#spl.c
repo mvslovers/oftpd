@@ -336,7 +336,7 @@ serve_safely(OFTP_SPOOL *sp, SPL_REQ *r)
     c.r = r;
     if ((ab = try(serve_req, &c)) < 0) {
         /* no ESTAE: run it as before, unprotected */
-        wto("OFTP219W SPOOL THREAD WITHOUT ABEND RECOVERY");
+        wto("OFTP251W SPOOL THREAD WITHOUT ABEND RECOVERY");
         serve(sp, r);
         return;
     }
