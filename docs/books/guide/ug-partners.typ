@@ -396,4 +396,7 @@ because OFTPD does not know the partner yet. For a caller that is refused or
 unknown, every line carries the address.
 
 A character of an Odette ID or a file name from the partner that cannot be
-printed shows as a dot in the trace and in the session lines.
+printed shows as a dot in the trace and in the session lines. So does the
+command byte in the line #cmd("expected …, received command") that names an
+unexpected command\; the byte can come from any client that connects to the
+port, not only from a partner.
