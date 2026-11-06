@@ -18,10 +18,11 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
 
 ### Added
 
-- **Removal.** `docs/uninstall.md` and chapter 7 of the User's Guide take
+- **Removal.** `docs/uninstall.md` and chapter 10 of the User's Guide take
   OFTPD off a system: a dummy SMP function deletes every release and its load
   modules, a `UCLIN` job frees the ids, and a `LIST` proves it. `RESTORE` and
-  `REJECT` do not work on an accepted release, and the text says why.
+  `REJECT` do not work after the install job's accept, on the systems
+  measured, and the text says why.
 - **Cross-memory transport.** The `OFTP` command and the ISPF dialog reach
   the monitor through an SVC of its own, so the monitor knows which job or
   TSO user is asking. `SVC=` in `OFTPPRM0` names the number (200 to 255,
@@ -30,12 +31,18 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   load module `OFTPSVC`. The monitor must run authorized for this (from an
   APF-authorized library, or through SVC 244 where the security product
   permits it); without that OFTPD still starts and carries files, but the
-  utilities and the dialog find no monitor (`OFTP005W`, `OFTP035W`).
+  utilities and the dialog find no monitor. The monitor says why:
+  `OFTP005W` (not authorized), `OFTP035W` (`SVC=` set, but no cross-memory
+  without authorization) or `OFTP038P` (no `SVC=`).
 - **Owners and administrators.** A transfer belongs to the userid that
   queued it. That userid sees and changes it. `ADMIN=` in `OFTPPRM0` names
   the userids that see and change every transfer, including received ones
-  (which belong to nobody), and that may `CALL` a partner and `PURGE`.
-  Anyone else gets `not your transfer`.
+  (which belong to nobody), and that may `CALL` a partner, `PURGE`, `REFRESH`
+  and change the partner table; anyone else gets `needs ADMIN= in OFTPPRM`
+  for those. With a security product, a user who is not an administrator
+  sees only their own transfers in `LIST` and gets `not your transfer` for
+  another's. Without a security product every caller sees and changes every
+  transfer.
 - **`SEND` checks the caller's authority.** On a system with a security
   product (RAKF or RACF) the monitor asks it whether the userid that queued
   the transfer may read the data set (ALTER for `DISP(DELETE)`), and refuses
@@ -49,7 +56,9 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   `REPLACE=Y` to replace an existing sequential data set once the new file
   is complete and closed, and unit, volume, space and translation. The first
   matching rule decides; a member with an error is not used and the old
-  rules stay. `F OFTPD,REFRESH` reads it again.
+  rules stay. `F OFTPD,REFRESH` reads it again. `%CTR` (the sender's file
+  counter) needs a partner at OFTP 1.4 or higher: a 1.3 or 1.2 file has no
+  counter, so a rule that uses it refuses the file (reason 01, `OFTP224W`).
 - **Partner maintenance at run time:** `OFTP PARTNER ADD|CHANGE|ENABLE|
   DISABLE|DELETE|SHOW|LIST` from TSO and batch, and the same in the ISPF
   dialog (option 3). `ADD`, `CHANGE`, `ENABLE`, `DISABLE` and `DELETE` are
@@ -63,7 +72,7 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   spool holds the partner passwords in clear text, like `OFTPPTN`: protect
   it the same way. OFTPD does not start when it cannot read the partner records
   (`OFTP019E`). A partner without `PASSWORD` is allowed, but `ADD` and
-  `CHANGE` answer with a warning (210). `SHOW` prints `-` for `OURID` and
+  `CHANGE` answer with a warning (210) when the partner is enabled. `SHOW` prints `-` for `OURID` and
   `ADDRESS` to a caller who is not an administrator. See `docs/partners.md`.
 - **A job after receipt.** A receive rule with `JOB=pds(member)` makes OFTPD
   read that member once the file is under its final name, put `?PFILE`
@@ -83,14 +92,16 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
 - **Operator log.** OFTPD writes its messages to a SYSOUT data set,
   `DD OFTPLOG` of the started task, each line with its date and time. A new
   message class `P` goes to the log only: every single transfer, session
-  start and end, and the start-up detail. The console receives only what an
-  operator must act on. Every session message starts with the partner name.
+  start and end, and the start-up detail. The console receives far fewer lines:
+  the start and stop, warnings and errors, and a few notices. Every session
+  message starts with the partner name (with the caller's address while the
+  partner is not yet known).
   Without the DD, or if a write fails, everything goes to the console and
   OFTPD says so once (`OFTP022W`, `OFTP023E`). Appendix A of the OFTPD
   Reference (ML09-0002) lists the messages with their destination.
 - **`F OFTPD,TRACE ON|OFF [partner]`** logs the protocol commands of the
-  sessions, running ones included, one `OFTP290P` line each; never a
-  password and never file data.
+  sessions, running ones included, one `OFTP290P` line per command (a run of
+  DATA buffers is one line); never a password and never file data.
 - **Several sessions per partner.** `SESSIONS=n` (1 to 16, default 1) in the
   partner entry lets up to n sessions with a partner run at once. A call
   beyond the limit is refused with ESID 08, and a refused call is made again
@@ -110,29 +121,47 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
 - **`SEND ... DISP(DELETE)`** deletes the data set once the partner's EERP
   (end-to-end receipt) has arrived, never earlier; a refusal (NERP) keeps it.
   It needs ALTER on the data set and takes a whole data set, not a member.
+  When the delete itself fails the data set stays and `OFTP216W` says so.
 - **`SEND ... STRTTIME(hh:mm) STRTDATE(*|*+n|ddd) SENDWIN(hh:mm-hh:mm)`**
   set the earliest start and a daily window in which a send may start,
   also across midnight.
 - **Documentation:** `docs/installation.md`, `docs/partners.md` and two
   books in `docs/books/`: the OFTPD User's Guide (ML09-0001) and the OFTPD
   Reference (ML09-0002), whose Appendix A lists every message with its
-  class and where it goes. Both are first drafts.
+  class and where it goes. Both are first drafts. `docs/installation.md`
+  has a section for TK5 (where the dialog's libraries go in the
+  concatenation, and the logon procedure).
 
 ### Changed
 
 - The messages that moved to the log only changed their class letter (for
-  example `OFTP211I` is now `OFTP211P`) and, where the key came first,
-  now begin with the partner name. A message number is never given to
-  another message.
-- A file sent by OFTPD now states its size, taken from the volume's table of
-  contents. A sender that states no size gets 15 tracks of primary and 15 of
+  example `OFTP211I` is now `OFTP211P`) and, where the key came first in a
+  session message, now begin with the partner name; `OFTP201W` and `OFTP202W` put a colon
+  after it. No monitor message has a different meaning under its number than
+  in 0.1.0-dev. The utility's `OFTP004E` shares its number with the monitor's
+  `OFTP004P`, as `OFTP001E` to `OFTP003E` and `OFTP010E` already did.
+- A byte that is not printable is shown as a dot wherever a partner's bytes
+  reach the log or the screen: the log line for a command that does not fit
+  the protocol state (`OFTP290P`, whose first byte comes from any client on
+  port 3305 before it is authenticated), the Odette ID and file name in the
+  caller, answer and receive lines, the date and time in `OFTP SHOW` and the
+  names in `OFTP230P`. The spool keeps the values as received.
+- `F OFTPD,CALL name,x` refuses a second operand with `OFTP122E`; it used to
+  call the first partner and ignore the rest. `HOLD`, `RELEASE` and `PURGE`
+  refuse it the same way.
+- The Configure panel of the ISPF dialog offers the partner member OFTPD
+  read at start (the data set and member of its `OFTPPTN` DD) instead of a
+  fixed `SYS2.PARMLIB(OFTPPTN0)`, which TK5 does not have. A name already in
+  the ISPF profile still wins; with OFTPD not running the field is empty.
+- A data set sent by OFTPD now states its size, taken from the volume's
+  table of contents (a member states none). A sender that states no size gets 15 tracks of primary and 15 of
   secondary space on the receiving side, unless a receive rule gives `SPACE`.
-- Passwords are kept out of more places: the echo of `SYSIN` masks every way
-  `PASSWORD` can be written, an error text names the position of a bad word
+- Passwords are kept out of more places: the echo of `SYSIN` masks the value after
+  `PASSWORD` and `OURPASSWORD` as `(x)`, `=x`, a blank, or quoted, an error text names the position of a bad word
   instead of the word, and the request and reply slots in common storage are
   erased as soon as they have been read.
 - OFTPD is built with libc370 2.28 (the C library) and cc370 1.6.3 (the
-  C compiler); these are the lowest levels a build from source accepts.
+  C compiler); these are the lowest levels OFTPD is built and tested with.
 
 ### Removed
 
@@ -153,6 +182,10 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   description, counts the flags only, and accepts a record count in the end
   of file that matches either its own count or the flags seen. Variable
   records are unchanged.
+- The EERP or NERP of a partner at OFTP 1.3 or 1.2 was not matched to the
+  transfer when the file counter of the sent file was not `0000`: those levels
+  carry the time as `HHMMSS` only, OFTPD compared all ten digits, and the
+  transfer stayed `SENT`. Below 1.4 it now compares the six digits.
 - A spool that an abend or a `CANCEL` had left open could not be opened
   again. OFTPD now runs `VERIFY` itself and says so (`OFTP021W`).
 - A session that abended stayed counted as running: its partner was refused,

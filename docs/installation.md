@@ -716,7 +716,7 @@ on TK5 only.
 ## Removing it
 
 The steps are in [`docs/uninstall.md`](https://github.com/mvslovers/oftpd/blob/main/docs/uninstall.md),
-and in the User's Guide as chapter 7, "Removing OFTPD". In short: stop OFTPD,
+and in the User's Guide as chapter 10, "Removing OFTPD". In short: stop OFTPD,
 then run a job that receives, applies and accepts a dummy function,
 `TOFTDEL`, with no elements and a `++VER` that deletes every OFTPD id to date.
 SMP removes the load modules from `OFTPD.LINKLIB` and `OFTPD.AOFTPLOD` on the
