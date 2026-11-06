@@ -1607,6 +1607,7 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
     OFTP_PARTNER *p;
     char partner[16], dsn[60], vfn[40], fmt[4], xl[4], user[12];
     char hold[4], disp[8], reply[100], sdate[8], stime[8], swin[16];
+    char sv[OFTP_DSNLEN + 1], sl[sizeof(dsn)];
     int empty, live, rc;
     char *lp;
     struct tm *tm;
@@ -1776,11 +1777,12 @@ ctl_send(OFTP_MON *m, CTLOUT *o, const char *line)
              empty ? "210" : "200", r.key,
              r.state == SPL_HELD ? "queued and held" : "queued",
              r.target[0] ? r.target : r.partner, r.target[0] ? " via " : "",
-             r.target[0] ? r.partner : "", r.dsn,
+             r.target[0] ? r.partner : "",
+             oftp_printable(sv, sizeof(sv), r.dsn),
              empty ? " -- the data set is empty" : "");
     ctl_put(o, reply);
     oftp_mon_msg("OFTP230P %.8s QUEUED FOR %s: %s AS %s", r.key, r.partner,
-                 dsn, r.dsn);
+                 oftp_printable(sl, sizeof(sl), dsn), sv);
     ecb_post(&m->wake, 0);
 }
 
@@ -1834,7 +1836,7 @@ ctl_show(OFTP_MON *m, CTLOUT *o, const char *line)
 {
     OFTP_SPREC r;
     char key[12], out[200];
-    char sd[OFTP_DSNLEN + 1], sf[OFTP_IDLEN + 1], sx[OFTP_IDLEN + 1];
+    char sf[OFTP_IDLEN + 1], sx[OFTP_IDLEN + 1];
 
     kw(line, "KEY", key, sizeof(key));
     if (strlen(key) != 8 || oftp_spl_get(m->spool, key, &r) != 0) {
@@ -1851,10 +1853,8 @@ ctl_show(OFTP_MON *m, CTLOUT *o, const char *line)
              r.target[0] ? " via " : "", r.target[0] ? r.partner : "",
              r.owner[0] ? r.owner : "-");
     ctl_put(o, out);
-    snprintf(out, sizeof(out), "100 virtual file %s %s %s, format %c, LRECL %u",
-             oftp_printable(sd, sizeof(sd), r.dsn), r.date, r.time,
-             r.fmt ? r.fmt : '-', r.lrecl);
-    ctl_put(o, out);
+    ctl_put(o, oftp_vfn_line(out, sizeof(out), r.dsn, r.date, r.time, r.fmt,
+                             r.lrecl));
     snprintf(out, sizeof(out), "100 data set %s%s%s%s%s", r.local,
              r.member[0] ? "(" : "", r.member, r.member[0] ? ")" : "",
              r.disp == 'D' ? ", deleted once the EERP is in" : "");

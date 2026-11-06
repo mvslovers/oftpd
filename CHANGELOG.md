@@ -131,8 +131,8 @@ It replaces the prerelease 0.1.0-dev. The SMP function `TOFT100` deletes
   `PASSWORD` can be written, an error text names the position of a bad word
   instead of the word, and the request and reply slots in common storage are
   erased as soon as they have been read.
-- OFTPD is built with libc370 2.24.1 (the C library) and cc370 1.6.1 (the
-  C compiler).
+- OFTPD is built with libc370 2.28 (the C library) and cc370 1.6.3 (the
+  C compiler); these are the lowest levels a build from source accepts.
 
 ### Removed
 

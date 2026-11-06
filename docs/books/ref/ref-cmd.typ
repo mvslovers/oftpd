@@ -188,7 +188,9 @@ OFTP SHOW key
 and owner\; the virtual file, its date and time, format and record length\;
 the data set\; the Odette IDs of the originator and the destination, the
 records and the attempts\; the start time and the window, if there are
-any\; and the last reason or text. If the receive rule of a file has a
+any\; and the last reason or text. A character of the virtual file name, its
+date or its time that cannot be printed shows as a dot in the display\; the
+spool keeps name, date and time as received. If the receive rule of a file has a
 #cmd("JOB="), a further line gives the result: #cmd("job submitted JOBnnnnn (JES job id)") or
 #cmd("job not submitted:") and the reason (see @cfg-job-report).
 

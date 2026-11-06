@@ -1,8 +1,10 @@
 /* oftp#opr.c - the operator command line of F OFTPD,... */
 #include <ctype.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "oftpopr.h"
+#include "oftpwire.h"
 
 static const char *
 field(const char *p, char *d, size_t sz)
@@ -41,6 +43,19 @@ oftp_printable(char *d, size_t sz, const char *s)
         d[i] = isprint((unsigned char)s[i]) ? s[i] : '.';
     d[i] = '\0';
     return d;
+}
+
+const char *
+oftp_vfn_line(char *out, size_t sz, const char *dsn, const char *date,
+              const char *time, char fmt, unsigned lrecl)
+{
+    char sd[OFTP_DSNLEN + 1], sdt[OFTP_DATLEN + 1], stm[OFTP_TIMLEN + 1];
+
+    snprintf(out, sz, "100 virtual file %s %s %s, format %c, LRECL %u",
+             oftp_printable(sd, sizeof(sd), dsn),
+             oftp_printable(sdt, sizeof(sdt), date),
+             oftp_printable(stm, sizeof(stm), time), fmt ? fmt : '-', lrecl);
+    return out;
 }
 
 int

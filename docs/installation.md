@@ -16,6 +16,9 @@ This package installs it through SMP 4, the SMP that comes with MVS 3.8j.
   instruction, as TK4-, TK5 and MVS/CE have it), and SMP usable through
   the `SMPREC` and `SMPAPP` procedures.
 - A userid that may create the data sets below and submit jobs.
+- Nothing else on the system for the programs themselves: they are linked
+  statically. The package is built with libc370 2.28 and cc370 1.6.3, which
+  matter only if you build OFTPD from source.
 - For the dialog: ISPF (Wally Mclaughlin's, as on TK5 and MVS/CE) and a
   screen of more than 24 rows: the main menu and the send panel do not
   fit on 24. The panels are made for 43 rows (3278/3279 model 4) and use
@@ -439,12 +442,14 @@ included, one `OFTP290P` line each, such as
 the DATA buffers of a run are one line. With a partner name only that
 partner's sessions are traced; `TRACE OFF` without one ends all tracing.
 The lines carry the commands' fields, never a password and never file
-data. Wherever a message or a display shows a file name or an Odette ID
-that came from a partner -- the trace lines, the other `OFTP290P` and
-`OFTP290W` lines of a session, the monitor's transfer messages such as
-`OFTP240P`, the operator display `D Q` and the transfer list and detail
-display -- a character that cannot be printed shows as a dot. The spool keeps
-the name as received.
+data. Wherever a message or a display shows a file name, an Odette ID, a
+file date or time or a command byte that came from a partner (or from any
+client that connected to the port) -- the trace lines, the other `OFTP290P`
+and `OFTP290W` lines of a session, including the one that names an
+unexpected command, the monitor's transfer messages such as `OFTP240P`, the
+operator display `D Q` and the transfer list and detail display -- a
+character that cannot be printed shows as a dot. The spool keeps the name,
+date and time as received.
 `F OFTPD,D` and `D P` show what is traced (`OFTP127I`): `D` names the traced
 partners, at least ten of them (more when the names are short; a longer list
 is cut at the end of the line, marked with `>`), and `D P` marks every traced
