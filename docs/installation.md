@@ -474,10 +474,9 @@ operand at most. A second one, as in `F OFTPD,HOLD P1,P2`, is refused with
 task: a first step defines the spool if it does not exist yet, the second
 runs OFTPD until `P OFTPD`. Edit the names, the volume, the Odette ID and the
 partner in it, as its comments say; it takes the settings in-stream, not
-from the parmlib. **Its `STEPLIB` names `OFTPD.DEV.LINKLIB`, the library of
-development builds.** An SMP installation has only `OFTPD.LINKLIB`
-(section 3): change the `STEPLIB` to it, and authorize it as section 4
-says. A development library has no place on a production system.
+from the parmlib. Its `STEPLIB` names `OFTPD.LINKLIB` (section 3), which
+must be authorized as section 4 says; change it if you keep the load
+modules elsewhere.
 
 **Keep `TIME=1440` on the `EXEC` of OFTPD.** The step time limit of a batch
 job is a limit on CPU time, and OFTPD uses CPU when it works. With the JES2
