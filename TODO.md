@@ -11,9 +11,8 @@ state. The MVP scope is `internals/design.md` section 0.
 Checked against the issues on this date; the issues win if they disagree.
 
 **1.0.0** (milestone `1.0.0`), open: `docs/` #63, book area #64,
-release preparation #65, colon after the partner name in three messages
-#93. Closed in this
-milestone: `LIST` over 150 transfers #101 (resumes by spool key; PR pending merge), levels 1.4 and 1.3 against a real peer #50 (Oftp4Net, with #190 and #191 found and fixed), books: partner password, VIA and OURID #163 (PR #178, pending merge), `MAXRETRY` cut off mid-file #51 (pending merge of PR #168), receive rules #44, job after receipt #45, partner maintenance
+release preparation #65. Closed in this
+milestone: message texts, `OFTP215`/`OFTP216` split #93 (pending merge), `LIST` over 150 transfers #101 (resumes by spool key; PR pending merge), levels 1.4 and 1.3 against a real peer #50 (Oftp4Net, with #190 and #191 found and fixed), books: partner password, VIA and OURID #163 (PR #178, pending merge), `MAXRETRY` cut off mid-file #51 (pending merge of PR #168), receive rules #44, job after receipt #45, partner maintenance
 #46, log to SYSOUT #47, `TRACE` #48, `TRACE` follow-ups #86,
 spool-thread recovery #49, SVC on TK5 #52, dialog on TK5 #53, no ACEE /
 no security product #54, SVC length check #55, session abort while

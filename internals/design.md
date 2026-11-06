@@ -801,8 +801,13 @@ How it is built (#47, `src/oftp#log.c`, `src/mvs/oftp#mon.c`):
   limits.
 - **Class changes keep the number and change the letter** (`OFTP211I` is
   now `OFTP211P`); a number is never reused for something else.
-  `OFTP215`, `OFTP216` and `OFTP233` exist with two letters because the
-  two messages of one number differ in who needs to see them. The list is
+  `OFTP233` exists with two letters because the two messages of that
+  number are one event that differs in who needs to see it (the utility
+  or the operator asked); `OFTP290` is a protocol-engine line, the letter
+  is its class. `OFTP215` and `OFTP216` had two different events each and
+  were split before 1.0.0: `OFTP215W` (held) and `OFTP216W` (data set not
+  deleted) keep their numbers, the other two events are `OFTP249P` (data
+  set deleted) and `OFTP250E` (abend closing the files). The list is
   Appendix A of the OFTPD Reference (`docs/books/ref/msg-*.typ`).
 
 ## 9. Phases

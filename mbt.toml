@@ -69,6 +69,10 @@ sources = ["test/tstpag.c"]
 [test.TSTPTN]            # maintaining the partner table in memory
 sources = ["test/tstptn.c"]
 
+[test.TSTMSG]            # one meaning per message number in src/mvs/oftp#mon.c (reads the source)
+sources = ["test/tstmsg.c"]
+mvs = false
+
 [test.TSTJOB]            # src/mvs/oftp#job.c against test doubles of rfile and the internal reader
 sources = ["test/tstjob.c", "src/mvs/oftp#job.c"]
 mvs = false

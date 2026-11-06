@@ -179,7 +179,7 @@ buffer allocated.
 
 - Debug build of main, banner `e20dfc3-dirty`, STC00781: 50 sessions,
   50 x `OFTP209E` and 50 x `OFTP203I ... ENDED BY ABEND S0C4`, no
-  `OFTP216E`, no `OFTP096W`. `D M` largest free block: 7532 KB at the
+  `OFTP216E` (since renamed `OFTP250E`), no `OFTP096W`. `D M` largest free block: 7532 KB at the
   start, 7412 after the first, 6728 / 6372 / 5980 / 5624 after the 20th
   / 30th / 40th / 50th (the read after the 10th is missing): about 38 KB
   per abend, against a 32760-byte buffer. The 6 KB above the buffer are
