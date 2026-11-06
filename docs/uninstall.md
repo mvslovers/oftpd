@@ -1,7 +1,7 @@
 # Removing OFTPD
 
 This is the supported way to take OFTPD back off an MVS 3.8j system and free
-its FMID for a re-install. The same procedure is chapter 7, "Removing OFTPD",
+its FMID for a re-install. The same procedure is chapter 10, "Removing OFTPD",
 of the _OFTPD User's Guide_ (ML09-0001).
 
 The main way lets SMP do the work: a dummy function, `TOFTDEL`, deletes every
