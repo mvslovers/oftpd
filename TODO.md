@@ -19,7 +19,7 @@ spool-thread recovery #49, SVC on TK5 #52, dialog on TK5 #53, no ACEE /
 no security product #54, SVC length check #55, session abort while
 queued #56, EERP claim #57, file over 750 KB from mendelson #58, daily
 `KEEPDAYS` run #59, dialog response time #60, `D P` VIA partner #61,
-TN3270 test for Show and Configure #62, libc370 2.24.1 #66.
+TN3270 test for Show and Configure #62, libc370 2.24.1 #66, libc370 2.28 and cc370 1.6.3 #197.
 
 **1.1** (milestone `1.1`): user exit after receipt #67, restart #68,
 NERPs beyond the relay case #69, buffer compression #70, per-send
@@ -424,6 +424,13 @@ is not running.
   the same output as on 2.23.0. `TSTSCH` fails 8 of 32 assertions on
   MVS/CE with 2.23.0 and with 2.24.1 alike, so the bump did not cause it
   (the test reads the zone through `localtime_r()`); not yet understood.
+- ~~#197: toolchain for the 1.0.0 acceptance~~ -- floor now libc370 **2.28**
+  and cc370 **1.6.3**. Measured in a container 2026-11-06: host tests
+  915/915, `mbt test --mvs` 1342/1342 (batch and TSO), `TSTKSDS` 18/18,
+  `TSTSPL` 64/64, `module-data` with no `writable data in` line for the
+  product modules (only the test modules, as before). `TSTSCH`, which
+  failed 8 of 32 on 2.23.0 and 2.24.1, passes on 2.28. `TSTRCV` read a
+  host file on MVS since #150; that part is host only now.
 - ~~#60: how long a request takes over the SVC~~ -- measured in a
   container 2026-10-20 (`internals/xmem.md` section 18): `STATUS`,
   `SHOW`, `DELETE` 1-5 ms idle and under 100 ms loaded, `SEND` 27-143 ms

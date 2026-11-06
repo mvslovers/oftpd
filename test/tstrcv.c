@@ -82,6 +82,7 @@ named(const char *rule, const char *vfn)
 ** its examples, comment marker removed, are rules that load and that each
 ** win for a file the example is meant for.
 */
+#ifndef __MVS__
 static void
 sample(void)
 {
@@ -123,6 +124,7 @@ sample(void)
     CHECK(strcmp(rule_for("PARTNER2", "INV12345.DATA"), "INVOICE") == 0,
           "INV?????.DATA from anyone by INVOICE");
 }
+#endif
 
 int
 main(void)
@@ -316,6 +318,8 @@ main(void)
         nx.arrival = "2026";
         CHECK_EQ(oftp_rcv_name(&rs.r[1], &nx, out), -1, "a short arrival time is refused too");
     }
-    sample();
+#ifndef __MVS__
+    sample();    /* reads the member from the source tree: host only */
+#endif
     return mbt_test_summary("TSTRCV");
 }

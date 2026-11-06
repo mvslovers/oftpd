@@ -16,6 +16,9 @@ This package installs it through SMP 4, the SMP that comes with MVS 3.8j.
   instruction, as TK4-, TK5 and MVS/CE have it), and SMP usable through
   the `SMPREC` and `SMPAPP` procedures.
 - A userid that may create the data sets below and submit jobs.
+- Nothing else on the system for the programs themselves: they are linked
+  statically. The package is built with libc370 2.28 and cc370 1.6.3, which
+  matter only if you build OFTPD from source.
 - For the dialog: ISPF (Wally Mclaughlin's, as on TK5 and MVS/CE) and a
   screen of more than 24 rows: the main menu and the send panel do not
   fit on 24. The panels are made for 43 rows (3278/3279 model 4) and use
