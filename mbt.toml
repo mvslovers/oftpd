@@ -63,6 +63,9 @@ reus = false
 [test.TSTVER]
 sources = ["test/tstver.c"]
 
+[test.TSTPAG]            # a long answer in pieces: LIST resuming by spool key
+sources = ["test/tstpag.c"]
+
 [test.TSTPTN]            # maintaining the partner table in memory
 sources = ["test/tstptn.c"]
 

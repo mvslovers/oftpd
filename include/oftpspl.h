@@ -164,6 +164,9 @@ extern int  oftp_spl_finished(const OFTP_SPREC *r)      asm("OFTPSPFI");
 extern long oftp_spl_changed(const OFTP_SPREC *r)       asm("OFTPSPCH");
 extern int  oftp_spl_purgeable(const OFTP_SPREC *r, long before)
                                                         asm("OFTPSPPB");
+/* The state as LIST shows it ("QUEUED", ...; "?" for none of them) */
+extern const char *oftp_spl_statename(char state)        asm("OFTPSPSN");
+
 /* A HOLD or RELEASE by partner and name (portable as well): partner "*"
 ** or "" is any, vfn "" any, "ABC*" a prefix, else the exact name.
 */
