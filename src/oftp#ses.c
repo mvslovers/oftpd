@@ -5,6 +5,7 @@
 ** ends the session with ESID 02, except an ESID, which ends it with the
 ** partner's reason. Rules: internals/protocol.md section 1.
 */
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -378,7 +379,8 @@ unexpected(OFTP_SESS *s, unsigned n, const char *want)
         slog(s, "session ended by partner, ESID %02d", r.reas);
         return END;
     }
-    slog(s, "expected %s, received command '%c'", want, code);
+    slog(s, "expected %s, received command '%c'", want,
+         isprint((unsigned char)code) ? code : '.');
     return end_local(s, code == '\0' ? ESID_UNKNOWN : ESID_PROTOCOL);
 }
 

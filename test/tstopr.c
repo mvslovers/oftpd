@@ -66,5 +66,25 @@ main(void)
         CHECK(strcmp(oftp_printable(d, sizeof(d), ""), "") == 0,
               "an empty name stays empty");
     }
+
+    /* SHOW's line for the virtual file (#156): the date and time are the
+    ** partner's as well, and they go through the same filter */
+    {
+        char l[120];
+
+        CHECK(strcmp(oftp_vfn_line(l, sizeof(l), "PAYROLL.DATA", "20261012",
+                                   "1200000001", 'F', 80),
+                     "100 virtual file PAYROLL.DATA 20261012 1200000001, "
+                     "format F, LRECL 80") == 0,
+              "a clean virtual file line is unchanged");
+        CHECK(strcmp(oftp_vfn_line(l, sizeof(l), "PAY\x01ROLL", "2026\x1b" "012",
+                                   "12\xe9" "0000\x02" "01", 'F', 80),
+                     "100 virtual file PAY.ROLL 2026.012 12.0000.01, "
+                     "format F, LRECL 80") == 0,
+              "control characters in name, date and time become dots");
+        CHECK(strcmp(oftp_vfn_line(l, sizeof(l), "A", "", "", 0, 0),
+                     "100 virtual file A  , format -, LRECL 0") == 0,
+              "empty date and time, no format");
+    }
     return mbt_test_summary("TSTOPR");
 }

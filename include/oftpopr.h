@@ -26,4 +26,13 @@ extern int  oftp_opr_extra(const char *verb, const char *arg2)
 extern const char *oftp_printable(char *d, size_t sz, const char *s)
                                                         asm("OFTPPRNT");
 
+/* The reply line of SHOW for the virtual file, "100 virtual file ...", into
+** out (sz bytes, always terminated), and out returned. The name, the date
+** and the time came from the partner; all three go through oftp_printable().
+*/
+extern const char *oftp_vfn_line(char *out, size_t sz, const char *dsn,
+                                 const char *date, const char *time,
+                                 char fmt, unsigned lrecl)
+                                                        asm("OFTPVFNL");
+
 #endif
