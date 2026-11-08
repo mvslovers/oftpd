@@ -63,7 +63,9 @@ is not running.
   `docs/books/guide/ug-install.typ`, `ug-remove.typ`, #210): measured on the
   package that mbt 3.0.1 builds from the 1.0.0 source (`version = "1.0.0"` set
   temporarily), not on the file the CI release run publishes. At the release
-  acceptance, run the three jobs against the CI package and compare. Not
+  acceptance, run the three jobs against the CI package and compare. The
+  captures `ex/ug-install/apply.txt` and `accept.txt` were checked against a
+  second first install on that package (2026-11-08) and are identical. Not
   measured: `PURGE=NO` systems, a second run of the allocation job, the accept
   job when `TOFT100` is not applied (`NOTAPPL`) and after a `NOT SEL` apply,
   a system on which `RECEIVE` needs a `VOLUME`, the dummy function on an

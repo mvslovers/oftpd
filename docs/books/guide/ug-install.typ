@@ -145,6 +145,15 @@ for each of the four modules, and for the status #cmd("APPLIED").
 
 #screen(raw(read("../ex/ug-install/apply.txt")))
 
+The capture is from the first install on a TK5 container, with the package that
+mbt 3.0.1 builds from the tree of 1.0.0. Its status report lists #cmd("TOFT010")
+as #cmd("DELETED"), although this system never had it\: #cmd("TOFT100") carries
+#cmd("++VER(Z038) DELETE(TOFT010)"), the id of the prerelease 0.1.0-dev that it
+replaces, and SMP names that id whether or not the system has seen it. After
+both jobs, #cmd("LIST CDS SYSMOD(TOFT010)") and the same for the ACDS printed an
+entry of type #cmd("FUNCTION") with #cmd("DELBY = TOFT100") and nothing else, on
+that container. The row is no cause for concern.
+
 Then list the libraries from TSO. All four modules have to be in
 #cmd("OFTPD.LINKLIB"), and the sample members and the panels in the other two.
 
@@ -188,6 +197,9 @@ same for the distribution library as the step #cmd("APPLY") does for the target
 library, with the status #cmd("ACCEPTED").
 
 #screen(raw(read("../ex/ug-install/accept.txt")))
+
+This capture is from the same run as the one above, and shows the same
+#cmd("TOFT010") row for the same reason.
 
 Submitted a second time, the job ends with #cmd("JCL ERROR") and the message
 #cmd("IEF212I ... OFTPLOAD - DATA SET NOT FOUND"), because the first run scratched

@@ -177,12 +177,19 @@ for good.
 
 *An applied, not accepted system gives a different output*, and the job removes
 OFTPD there as well. Measured on a TK5 container after the install job of the
-1.0.0 package as a new install\: the receive ends with return code 04 as above\;
-the apply ends with return code 00, and the message #cmd("HMA2461") of the accepted case does not appear\; it
-prints the four #cmd("HMA2240") lines for #cmd("LINKLIB")\; and the accept ends
-with return code 00 without any #cmd("HMA2240") line, because
-#cmd("OFTPD.AOFTPLOD") holds nothing to delete. The job ends with condition code
-0004, from the receive. Both libraries list no member, and #cmd("OFTPD.OFTPLOAD")
+1.0.0 package as a new install, the steps of the job above ended like this\:
+
+- #cmd("RECV") (the #cmd("RECEIVE") of #cmd("TOFTDEL"))\: return code 04, as
+  above.
+- #cmd("APPLY") (the #cmd("APPLY") of #cmd("TOFTDEL"))\: return code 00. The
+  message #cmd("HMA2461") of the accepted case does not appear\; the step prints
+  the four #cmd("HMA2240") lines for #cmd("LINKLIB").
+- #cmd("ACCEPT") (the #cmd("ACCEPT") of #cmd("TOFTDEL"))\: return code 00,
+  without any #cmd("HMA2240") line, because #cmd("OFTPD.AOFTPLOD") holds nothing
+  to delete.
+
+The job ends with condition code 0004, from #cmd("RECV"). Both libraries list no
+member, and #cmd("OFTPD.OFTPLOAD")
 is still there (step 5 removes it). Steps 3 and 4 gave the same as in this
 chapter. This state after an upgrade from the prerelease, where the distribution
 library holds the three modules of 0.1.0, was not run through this job.
@@ -286,7 +293,8 @@ After step 2 the two libraries are empty, but they still exist. The allocation
 job of the installation creates both with #cmd("DISP=(NEW,CATLG,DELETE)"). The
 job of 1.0.0 looks in the catalog first, and its header says that it ends with
 return code 8 and allocates nothing when a library is cataloged (that was not
-run here). An allocation job without that look, run against libraries that still existed, ended with return code 00, reported
+run here). An allocation job without that look, run against libraries that
+still existed, ended with return code 00, reported
 #cmd("IEF287I") with #cmd("NOT CATLGD") for both, and left uncataloged
 duplicates behind. Delete the libraries in a job of your own before you install
 again:
@@ -453,7 +461,8 @@ the text #cmd("DELETES SYSMODS"), return code 12.
 
 *Before the accept job, RESTORE works.* On a new install that had only the
 install job behind it, this job ended with return code 00, deleted the four load
-modules from #cmd("OFTPD.LINKLIB") and took #cmd("TOFT100") out of the target zone (it was never in the distribution zone)\:
+modules from #cmd("OFTPD.LINKLIB") and took #cmd("TOFT100") out of the target
+zone (it was never in the distribution zone)\:
 
 #screen(```
 //OFTPDRST JOB (SYS),'OFTPD RESTORE',CLASS=A,MSGCLASS=H,MSGLEVEL=(1,1),

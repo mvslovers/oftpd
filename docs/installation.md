@@ -146,6 +146,14 @@ an install job whose APPLY CHECK and APPLY ended RC 0, or RC 4 for `HMA2461`
 `ACCEPT` step prints `HMA2380 COPY SUCCESSFUL` for each of the four modules,
 with `LIBRARY=AOFTPLOD`.
 
+**`TOFT010` in the status report of a first install.** The status reports of
+the `APPLY` and the `ACCEPT` list `TOFT010` as `DELETED`, although a first
+install has never had it. `TOFT100` carries `++VER(Z038) DELETE(TOFT010)`, the
+id of the prerelease it replaces, and SMP names that id whether or not the
+system has seen it. Measured on the TK5 test container of a first install, after
+both jobs: `LIST CDS SYSMOD(TOFT010)` and `LIST ACDS SYSMOD(TOFT010)` each
+printed an entry of type `FUNCTION` with `DELBY = TOFT100` and nothing else.
+
 **Submitting the accept job a second time** ends the job with `JCL ERROR`:
 `IEF212I ... OFTPLOAD - DATA SET NOT FOUND`, because the first run scratched
 the staging library. `GUARD` ends RC 00 and no step after it runs, so the
@@ -829,9 +837,9 @@ alone is the fallback.
 
 Before the accept job has run, `RESTORE` works: `TOFT100` is applied and not
 accepted, and `RESTORE` deletes its four load modules from `OFTPD.LINKLIB` and
-takes it out of the target zone (it was never in the distribution zone; measured on a fresh install on a TK5 test
-container). In that state `OFTPD.OFTPLOAD` is still there and stays until you
-scratch it yourself.
+takes it out of the target zone (it was never in the distribution zone;
+measured on a fresh install on a TK5 test container). In that state
+`OFTPD.OFTPLOAD` is still there and stays until you scratch it yourself.
 
 After the accept job, `RESTORE` and `REJECT` do not remove OFTPD. `RESTORE`
 refuses an accepted SYSMOD (`HMA2452`, RC 12); `REJECT` fails with `HMA2462`
