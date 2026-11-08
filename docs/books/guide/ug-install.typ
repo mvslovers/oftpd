@@ -8,7 +8,10 @@ to start. The steps are those of the file #cmd("docs/installation.md") in the
 oftpd repository, which also comes with every release\; the screens in this
 chapter are the output of a real installation of the release described in
 @intro-examples, on a TK5 system. Where your system differs from TK5, the text
-says so.
+says so. The installation was run on throwaway TK5 containers with the package
+that mbt 3.0.1 builds from the 1.0.0 source, and once more on an MVS/CE
+container\; it is not the file that a release publishes, which has to be
+compared with this text.
 
 When you are done, you have
 
@@ -40,7 +43,7 @@ of OFTPD is opened there.
 
 == The Files of a Release <inst-files>
 
-A release has five files. The name of each has the version in it.
+A release has six files. The name of each has the version in it.
 
 #tab(caption: [The files of a release])[
   #table(columns: (2.3in, 1fr),
@@ -52,8 +55,10 @@ A release has five files. The name of each has the version in it.
     [#cmd("oftpd-<v>-ispplib.xmit")], [#cmd("OFTPD.ISPPLIB"): the panels of the
       dialog.],
     [#cmd("oftpd-<v>-alloc.jcl")], [Allocates the SMP libraries once.],
-    [#cmd("oftpd-<v>-inst.jcl")], [Receives the three files and installs the
-      SYSMOD.],
+    [#cmd("oftpd-<v>-inst.jcl")], [Receives the three files and applies the
+      SYSMOD. It ends after the #cmd("APPLY").],
+    [#cmd("oftpd-<v>-accept.jcl")], [Accepts the SYSMOD and scratches the
+      staging library. You submit it when you have tried the product.],
   )
 ]
 
@@ -90,24 +95,47 @@ have removed, @ug-remove shows how to free it.
   #cmd("HERC01.OFTPD.ISPPLIB.XMIT"). Use IND\$FILE, FTP in binary mode, or the
   mvsMF REST API.
 + Submit #cmd("oftpd-<v>-alloc.jcl") once. It allocates #cmd("OFTPD.LINKLIB")
-  and #cmd("OFTPD.AOFTPLOD"). Edit #cmd("UNIT=") or add a #cmd("VOL=SER=") if
-  #cmd("SYSDA") is not what you want.
+  and #cmd("OFTPD.AOFTPLOD") on volumes that you name\: the procedure
+  #cmd("SMPALLOC") has the parameters #cmd("TGTVOL") (default #cmd("MVSRES"))
+  and #cmd("DLBVOL") (default #cmd("SMP000")), the volumes of an MVS/CE system.
+  On TK5 write
+  #cmd("//ALLOC   EXEC SMPALLOC,TGTVOL=TK5RES,DLBVOL=TK5DLB,COND=(0,NE,CHECK)").
 + In #cmd("oftpd-<v>-inst.jcl") replace the three names that start with
   #cmd("CHANGE.ME") by the names of step 1, and submit it.
 
-On MVS/CE, TSO #cmd("RECEIVE") needs a volume\; add #cmd("VOLUME('PUB000')"),
-or another volume of yours, to each of the three #cmd("RECEIVE") commands. TK5
-does not need it.
+A volume that is not mounted does not fail the allocation job, it holds it\: the
+console shows #cmd("IEF238D ... REPLY DEVICE NAME OR 'CANCEL'"). That is what
+the defaults did on TK5\; reply #cmd("CANCEL"), correct the volumes and submit the
+job again. The step #cmd("CHECK") looks in the catalog first\; on a first run it
+prints #cmd("IDC3012I ENTRY ... NOT FOUND") for both libraries and ends with
+return code 0. According to the header of the job, a second run ends with return
+code 8 and allocates nothing\; that was not run.
 
-The job receives the three files, then receives, applies and accepts the
-SYSMOD. This is what the first #cmd("RECEIVE") says.
+The install job ran as shipped, with the three names changed, on a TK5 and on an
+MVS/CE test container. Each of its three #cmd("RECEIVE") commands carries a line
+#cmd("/* VOLUME('CHANGE.ME') */"). If your system asks for a volume, remove the
+comment marks and name the volume (#cmd("PUB000") on a stock MVS/CE system). The
+MVS/CE container accepted #cmd("VOLUME('PUB000')") on the three commands\; what a
+system says that needs the volume and does not get it was not seen.
+
+The job receives the three files, then receives and applies the SYSMOD. This is
+what the first #cmd("RECEIVE") says.
 
 #screen(raw(read("../ex/ug-install/receive-load.txt")))
 
-The job deletes and receives #cmd("OFTPD.SAMPLIB") and #cmd("OFTPD.ISPPLIB")
-again each time it runs. Copy members out of them, and never edit them in
-place\; the copies that you make in the following sections are not touched by a
-new installation.
+The job deletes and receives #cmd("OFTPD.OFTPLOAD"), #cmd("OFTPD.SAMPLIB") and
+#cmd("OFTPD.ISPPLIB") again each time it runs. Copy members out of the last two,
+and never edit them in place\; the copies that you make in the following sections
+are not touched by a new installation.
+
+*The install job ends after the APPLY, on purpose.* Accepting is the step without
+a way back\: once the SYSMOD is accepted, SMP refuses #cmd("RESTORE") and
+#cmd("REJECT") for it (@ug-remove-why). Until you submit the accept job,
+#cmd("TOFT100") is applied and not accepted, the staging library
+#cmd("OFTPD.OFTPLOAD") is still there, and a #cmd("RESTORE") takes OFTPD out
+again. Try the product first, then submit #cmd("oftpd-<v>-accept.jcl") (job
+#cmd("OFTPDACC"), steps #cmd("GUARD"), #cmd("NOTAPPL"), #cmd("ACCEPT") and
+#cmd("CLEANUP")).
 
 === Check the Result <inst-check>
 
@@ -117,10 +145,14 @@ for each of the four modules, and for the status #cmd("APPLIED").
 
 #screen(raw(read("../ex/ug-install/apply.txt")))
 
-The step #cmd("ACCEPT") says the same for the distribution library, with the
-status #cmd("ACCEPTED").
-
-#screen(raw(read("../ex/ug-install/accept.txt")))
+The capture is from the first install on a TK5 container, with the package that
+mbt 3.0.1 builds from the tree of 1.0.0. Its status report lists #cmd("TOFT010")
+as #cmd("DELETED"), although this system never had it\: #cmd("TOFT100") carries
+#cmd("++VER(Z038) DELETE(TOFT010)"), the id of the prerelease 0.1.0-dev that it
+replaces, and SMP names that id whether or not the system has seen it. After
+both jobs, #cmd("LIST CDS SYSMOD(TOFT010)") and the same for the ACDS printed an
+entry of type #cmd("FUNCTION") with #cmd("DELBY = TOFT100") and nothing else, on
+that container. The row is no cause for concern.
 
 Then list the libraries from TSO. All four modules have to be in
 #cmd("OFTPD.LINKLIB"), and the sample members and the panels in the other two.
@@ -134,6 +166,50 @@ cross-memory service that the monitor loads, and nobody runs it.
 (the monitor as a batch job), #cmd("OFTPBAT") (the utility in batch and under
 TSO), #cmd("OFTPSPL") (the job that defines the spool) and the three sample
 members of the settings, the partner table and the receive rules.
+
+== Accept the SYSMOD <inst-accept>
+
+#idx("accept job")
+After the install job, #cmd("TOFT100") is applied and not accepted. Measured on a
+TK5 container as a first install, the two jobs leave this behind\:
+
+#tab(caption: [The state after each job])[
+  #table(columns: (2.2in, 1fr, 1fr),
+    [], [After #cmd("OFTPDINS")], [After #cmd("OFTPDACC")],
+    [Job end], [CC 0000], [CC 0000],
+    [#cmd("TOFT100") in the target zone], [#cmd("REC APP")],
+      [#cmd("REC APP ACC")],
+    [#cmd("TOFT100") in the distribution zone], [not found],
+      [#cmd("REC APP ACC RGN")],
+    [#cmd("OFTPD.LINKLIB")], [four members], [the same],
+    [#cmd("OFTPD.AOFTPLOD")], [empty], [four members],
+    [#cmd("OFTPD.OFTPLOAD")], [present, four members], [scratched],
+  )
+]
+
+Submit #cmd("oftpd-<v>-accept.jcl") when you have tried the product. Nothing in it
+needs editing. The step #cmd("GUARD") runs #cmd("LIST CDS SYSMOD(TOFT100)")\; only
+when it ends with return code 0 does #cmd("ACCEPT") run, and #cmd("CLEANUP")
+scratches #cmd("OFTPD.OFTPLOAD") only when #cmd("GUARD") and #cmd("ACCEPT") both
+ended with return code 0. The gate is the entry of #cmd("TOFT100") in the target
+zone, not the return code of the install job. The step #cmd("ACCEPT") says the
+same for the distribution library as the step #cmd("APPLY") does for the target
+library, with the status #cmd("ACCEPTED").
+
+#screen(raw(read("../ex/ug-install/accept.txt")))
+
+This capture is from the same run as the one above, and shows the same
+#cmd("TOFT010") row for the same reason.
+
+Submitted a second time, the job ends with #cmd("JCL ERROR") and the message
+#cmd("IEF212I ... OFTPLOAD - DATA SET NOT FOUND"), because the first run scratched
+the staging library\; #cmd("GUARD") ends with return code 0 and nothing after it
+runs. Not measured\: the accept job on a system where #cmd("TOFT100") is not
+applied (the header of the job says it ends with return code 8 in the step
+#cmd("NOTAPPL")), and the accept job after an #cmd("APPLY") that printed
+#cmd("NOT SEL") for the elements of #cmd("TOFT100") itself, with nothing copied.
+(#cmd("NOT SEL") rows for #cmd("TOFT010") in the status report did appear in the
+upgrade, and the accept job ran through with condition code 0.)
 
 == Authorize the Load Library <inst-apf>
 
@@ -250,13 +326,30 @@ how, with the entry for the menu.
 == Upgrading <inst-upgrade>
 
 #idx("upgrading")
-*From 0.1.0.* This is not a drop-in. Release 0.1.0 was a prerelease, and no way
-of upgrading from it has been tested. #cmd("TOFT100") deletes #cmd("TOFT010"), so
-the SYSMOD installs over the prerelease, but it brings no configuration with it\:
-set the system up again as in this chapter. Do not run the allocation job a
-second time, since it allocates #cmd("OFTPD.LINKLIB") and
+*From 0.1.0.* This is not a drop-in, and it takes two jobs. #cmd("TOFT100")
+deletes #cmd("TOFT010"), so the SYSMOD installs over the prerelease, but it
+brings no configuration with it\: set the system up again as in this chapter.
+Do not run the allocation job, since it allocates #cmd("OFTPD.LINKLIB") and
 #cmd("OFTPD.AOFTPLOD") with #cmd("DISP=(NEW,CATLG,DELETE)"), and the prerelease
-created both. Stop the monitor before you run the install job.
+created both (according to its header the step #cmd("CHECK") then ends with
+return code 8 and allocates nothing\; that was not run). Stop the monitor, run
+the install job, and the accept job after it when you have tried the product.
+
+Measured on a TK5 container that had the published 0.1.0-dev package installed
+and accepted\: the install job ended with condition code 4. Every step ended
+with return code 0 except the #cmd("APPLY"), which ended with return code 4 on
+#cmd("HMA2461 SYSMOD TOFT010 NOT FOUND ON SMPSCDS LIBRARY"). That is the normal
+end of an upgrade, and the accept job runs after it\: it looks for #cmd("TOFT100")
+in the target zone and does not read the return code of the install job. The
+#cmd("APPLY") deleted the load modules #cmd("OFTP"), #cmd("OFTPD") and
+#cmd("OFTPI") of 0.1.0 from #cmd("OFTPD.LINKLIB") and copied the four of
+#cmd("TOFT100"). After the install job #cmd("OFTPD.AOFTPLOD") still held the three
+modules of 0.1.0, and #cmd("TOFT010") was still accepted in the distribution
+zone. After the accept job #cmd("OFTPD.AOFTPLOD") held the four modules,
+#cmd("OFTPD.OFTPLOAD") was gone, #cmd("TOFT100") was #cmd("REC APP ACC") in the
+target zone and #cmd("REC APP ACC RGN") in the distribution zone, and
+#cmd("TOFT010") was a mark with #cmd("DELBY = TOFT100") in both. The job ended
+with condition code 0.
 
 The TCP control port is gone. Remove the keyword #cmd("CONTROLPORT") from
 #cmd("OFTPPRM0")\; OFTPD reports it as an unknown keyword with
@@ -275,5 +368,5 @@ missing member.
 To take OFTPD off a system, use the steps of @ug-remove. They free the FMID, so
 that OFTPD can be installed again. Do not remove OFTPD to move to a newer
 release: the release deletes its predecessor itself. #cmd("RESTORE") and
-#cmd("REJECT") do not remove OFTPD, because the install job accepts it (see
+#cmd("REJECT") do not remove OFTPD once the accept job has run (see
 @ug-remove-why).
