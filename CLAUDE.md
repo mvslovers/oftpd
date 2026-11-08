@@ -82,3 +82,10 @@ carry no `#`. `[distribution]`/`[smp]` carry the FMID prefix `TOFT`: 0.1.0-dev i
   blocking `connect()` gives up after about 1 s, a blocking `recv()` waits
   for all `len` bytes, socket numbers are system-wide and survive the
   program. ftpd is the worked example for the started task as a whole.
+
+## Releasing
+
+The release acceptance runs on the package the CI builds, never on a local
+`mbt package`; the rule is in `internals/releasing.md`. Read it, and
+`~/repos/mvs/.workspace/context/smp.md` (the OFTPD FMID row), before cutting
+a release.
