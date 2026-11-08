@@ -29,7 +29,18 @@ last step below would scratch the libraries that the new release installs into.
 The prerelease 0.1.0-dev put #cmd("TOFT010") on the system, with the three load
 modules #cmd("OFTPD"), #cmd("OFTP") and #cmd("OFTPI"), into the same libraries.
 The staging library #cmd("OFTPD.OFTPLOAD") is not on the list, because the
-cleanup step of the install job scratched it.
+accept job scratches it. Until the accept job has run it is there, with the four
+load modules in it, and step 5 scratches it too.
+
+*The install job ends after the APPLY, and the accept job follows it.* That
+gives the system two states, and this chapter works in both. In the first,
+applied and not accepted, the install job has run and the accept job has not\:
+#cmd("TOFT100") is #cmd("REC APP") in the target zone (CDS) and not in the
+distribution zone (ACDS), and #cmd("OFTPD.AOFTPLOD") is empty. In the second,
+accepted, the accept job has run\: #cmd("TOFT100") is #cmd("REC APP ACC") in the
+CDS and #cmd("REC APP ACC RGN") in the ACDS, and #cmd("OFTPD.AOFTPLOD") holds the
+four modules. A #cmd("RESTORE") is possible in the first state and not in the
+second (@ug-remove-why).
 
 *An earlier release leaves its FMID behind.* Release 1.0.0 deletes
 #cmd("TOFT010") (its #cmd("++VER") reads #cmd("DELETE(TOFT010)")), and SMP
@@ -164,11 +175,25 @@ first module stays as well. That return code 00 does not mean the library is
 empty: list it as shown above. Scratch the library with step 5 if OFTPD goes
 for good.
 
+*An applied, not accepted system gives a different output*, and the job removes
+OFTPD there as well. Measured on a TK5 container after the install job of the
+1.0.0 package as a new install\: the receive ends with return code 04 as above\;
+the apply ends with return code 00, and the message #cmd("HMA2461") of the accepted case does not appear\; it
+prints the four #cmd("HMA2240") lines for #cmd("LINKLIB")\; and the accept ends
+with return code 00 without any #cmd("HMA2240") line, because
+#cmd("OFTPD.AOFTPLOD") holds nothing to delete. The job ends with condition code
+0004, from the receive. Both libraries list no member, and #cmd("OFTPD.OFTPLOAD")
+is still there (step 5 removes it). Steps 3 and 4 gave the same as in this
+chapter. This state after an upgrade from the prerelease, where the distribution
+library holds the three modules of 0.1.0, was not run through this job.
+
 *What has been measured.* The job was run on test systems (MVS/CE) in two
 states: with the prerelease 0.1.0-dev alone, and after the upgrade from the
 prerelease to 1.0.0-dev, the build of the tree before the release. The recovery
 after a failed #cmd("ACCEPT") was measured on the prerelease and on a new
-install of the 1.0.0-dev package. A system with more than one product in the
+install of the 1.0.0-dev package. On TK5 containers it was run again with the
+1.0.0 package that mbt 3.0.1 builds, as a new install, in the applied-only
+state above and after the accept job. A system with more than one product in the
 same zones, a system with other service on it, and a dummy function with a
 #cmd("++MAC") element instead of none have not been measured. Whatever the
 system, the #cmd("LIST") in step 4 is the proof.
@@ -258,11 +283,13 @@ not #cmd("DELBY = TOFTDEL"). The #cmd("DEL") of step 3 clears it all the same.
 == Step 5: Scratch the Libraries <ug-remove-scratch>
 
 After step 2 the two libraries are empty, but they still exist. The allocation
-job of the installation creates both with #cmd("DISP=(NEW,CATLG,DELETE)"). Run
-against libraries that still exist, it does not fail: it ends with return code
-00, reports #cmd("IEF287I") with #cmd("NOT CATLGD") for both, and leaves
-uncataloged duplicates behind. Delete the libraries in a job of your own before
-you install again:
+job of the installation creates both with #cmd("DISP=(NEW,CATLG,DELETE)"). The
+job of 1.0.0 looks in the catalog first, and its header says that it ends with
+return code 8 and allocates nothing when a library is cataloged (that was not
+run here). An allocation job without that look, run against libraries that still existed, ended with return code 00, reported
+#cmd("IEF287I") with #cmd("NOT CATLGD") for both, and left uncataloged
+duplicates behind. Delete the libraries in a job of your own before you install
+again:
 
 #screen(```
   DELETE OFTPD.LINKLIB  NONVSAM SCRATCH PURGE
@@ -273,6 +300,21 @@ Do this only when you remove OFTPD for good. After an upgrade, these are the
 data sets that the next release installs into; leave them.
 #cmd("OFTPD.SAMPLIB") and #cmd("OFTPD.ISPPLIB") may stay. The install job
 scratches and receives them again the next time.
+
+If the accept job has not run, the staging library #cmd("OFTPD.OFTPLOAD") is
+still there, and neither the dummy function nor #cmd("UCLIN") removes it\: SMP
+does not own it. Scratch it too when OFTPD goes for good\:
+
+#screen(```
+  DELETE OFTPD.OFTPLOAD NONVSAM SCRATCH PURGE
+```)
+
+Measured on a TK5 container after the dummy function on an applied, not
+accepted system\: IDCAMS ends with return code 0 and the library is gone. After
+the accept job the same #cmd("DELETE") ends with return code 8, because the
+accept job has scratched the library already, so you do not need it then. The
+install job scratches the library itself when it runs again (step
+#cmd("DELOLD")).
 
 == The Fallback: UCLIN Alone <ug-remove-uclin>
 
@@ -384,15 +426,16 @@ SMP never owned these, so you have to take care of them:
 
 == Why RESTORE and REJECT Do Not Work <ug-remove-why>
 
-The install job accepts the FMID in the same run in which it applies it. That
-closes both of the usual ways back:
+This applies once the accept job has run. The install job ends after the
+APPLY, and in that state the way back is open, see below. The accept job
+accepts the FMID, and that closes both of the usual ways back:
 
 #screen(raw(read("../ex/ug-remove/restore-reject.txt")))
 
 #cmd("RESTORE") refuses a SYSMOD that has been accepted (#cmd("HMA2452"), return
 code 12). #cmd("REJECT") then fails for a reason that looks unrelated:
 #cmd("HMA2462") says that the SYSMOD is not on the #cmd("SMPPTS") data set,
-although the job received it from there.
+although the install job received it from there.
 
 The cause, on the system where this was measured, is the option #cmd("PURGE=YES")
 in the system entry of the #cmd("SMPPTS"). With it, SMP deletes a SYSMOD from
@@ -401,11 +444,52 @@ the PTS as soon as it has accepted it. The entry shows with
 
 #screen(raw(read("../ex/ug-remove/pts-system.txt")))
 
+Measured on TK5 containers with the 1.0.0 package that mbt 3.0.1 builds, as a
+new install\: after the accept job, #cmd("RESTORE") gave #cmd("HMA2452"),
+#cmd("REJECT") gave #cmd("HMA2462"), both with return code 12, and
+#cmd("LIST PTS .") showed no entry for #cmd("TOFT100"). After an upgrade from
+the prerelease the #cmd("RESTORE") was refused as well, with #cmd("HMA2452") and
+the text #cmd("DELETES SYSMODS"), return code 12.
+
+*Before the accept job, RESTORE works.* On a new install that had only the
+install job behind it, this job ended with return code 00, deleted the four load
+modules from #cmd("OFTPD.LINKLIB") and took #cmd("TOFT100") out of the target zone (it was never in the distribution zone)\:
+
+#screen(```
+//OFTPDRST JOB (SYS),'OFTPD RESTORE',CLASS=A,MSGCLASS=H,MSGLEVEL=(1,1),
+//             REGION=4096K
+//RESTORE EXEC SMPAPP
+//HMASMP.LINKLIB  DD  DISP=SHR,DSN=OFTPD.LINKLIB
+//HMASMP.OFTPLOAD DD  DISP=SHR,DSN=OFTPD.OFTPLOAD
+//HMASMP.AOFTPLOD DD  DISP=SHR,DSN=OFTPD.AOFTPLOD
+//SMPCNTL  DD  *
+ RESTORE S(TOFT100) .
+/*
+//
+```)
+
+The #cmd("HMASMP.OFTPLOAD") statement is for the staging library, which exists
+only in this state\: after the accept job, a job with that statement ends with a
+#cmd("JCL ERROR") because the data set is gone. A #cmd("REJECT") instead ended
+with return code 04 (#cmd("HMA4081"), then #cmd("HMA2270"))\: the PTS entry of
+#cmd("TOFT100") was gone, and the status in the CDS stayed #cmd("REC APP"), so it
+did not take the function out of the target zone. A #cmd("RESTORE") after that
+#cmd("REJECT") still worked on a new install. A #cmd("REJECT") after a
+#cmd("RESTORE") ended with return code 12 and #cmd("HMA2462"). Use
+#cmd("RESTORE"), not #cmd("REJECT"). On a system that has had several installs
+of the same FMID, a #cmd("RESTORE") was seen to end with #cmd("HMA2452") and
+#cmd("DELETES SYSMODS") as well, so this holds for the new install only.
+#cmd("OFTPD.OFTPLOAD") is not touched by a #cmd("RESTORE") and stays until you
+scratch it (step 5).
+
 Two things have not been measured: a system with #cmd("PURGE=NO"), and a
 #cmd("REJECT") after the #cmd("ACCEPT") there. No #cmd("UCLIN") statement was
 found that changes the system entry, so this book does not change it. It removes
 the FMID in ways that do not need the PTS.
 
-The price of the accept is that a later #cmd("RESTORE") of a PTF can return to
-the distribution library, and without the accept it would delete the module
-instead of reverting it.
+The accept is a job of its own for a reason. It fills the distribution library,
+which is the base a later #cmd("RESTORE") of a PTF returns to\; without it
+the #cmd("RESTORE") would delete the module instead of reverting it. The price is
+that once the accept job has run the FMID itself cannot be taken back with
+#cmd("RESTORE") or #cmd("REJECT"), and that is why the install job stops before
+it.

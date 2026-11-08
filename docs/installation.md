@@ -34,10 +34,19 @@ This package installs it through SMP 4, the SMP that comes with MVS 3.8j.
 | `oftpd-<v>-samplib.xmit` | `OFTPD.SAMPLIB`: the procedure, sample settings and jobs |
 | `oftpd-<v>-ispplib.xmit` | `OFTPD.ISPPLIB`: the dialog's panels |
 | `oftpd-<v>-alloc.jcl` | allocates the SMP target and distribution libraries, once |
-| `oftpd-<v>-inst.jcl` | receives the three files and installs the SYSMOD |
+| `oftpd-<v>-inst.jcl` | receives the three files and applies the SYSMOD. It **ends after the APPLY** |
+| `oftpd-<v>-accept.jcl` | accepts the SYSMOD and scratches the staging library. Submit it when you have tried the product |
+
+The package holds seven files: these six and this guide as `README.md`.
 
 The SYSMOD is a `++FUNCTION` with the FMID `TOFT` + version digits:
 1.0.0 is `TOFT100`.
+
+**How this guide was measured.** The jobs, return codes and messages in this
+guide were measured on throwaway test containers (TK5 for every job, MVS/CE for
+the three jobs of a first install) with a package that `mbt package` 3.0.1
+built from the source of 1.0.0, not with the file that the release publishes.
+Where a statement was not measured, it says so.
 
 ## 1. Check that the FMID is free
 
@@ -64,25 +73,94 @@ REST API).
 
 ## 3. Allocate and install
 
+The package has three jobs. Run them in this order, the third one later:
+
+| Job | File | What it does |
+|---|---|---|
+| `OFTPDALC` | `oftpd-<v>-alloc.jcl` | Steps `CHECK` and `ALLOC`. Allocates `OFTPD.LINKLIB` and `OFTPD.AOFTPLOD`. Run it once, for the first install; not for an upgrade |
+| `OFTPDINS` | `oftpd-<v>-inst.jcl` | Steps `DELOLD`, `RECV1`, `RECV2`, `RECV3`, `RECV` (RECEIVE), `APPLYCHK` (APPLY CHECK) and `APPLY`. It **ends after the APPLY**: the function is applied, not accepted |
+| `OFTPDACC` | `oftpd-<v>-accept.jcl` | Steps `GUARD`, `NOTAPPL`, `ACCEPT` and `CLEANUP`. Submit it when you have tried the product |
+
 1. Submit `oftpd-<v>-alloc.jcl` once (not on an upgrade from 0.1.0, see
-   "Upgrading"). It allocates `OFTPD.LINKLIB` and
-   `OFTPD.AOFTPLOD`; edit `UNIT=` or add a `VOL=SER=` if `SYSDA` is not
-   what you want.
+   "Upgrading"). Every library goes on a volume you name. The proc
+   `SMPALLOC` has two parameters: `TGTVOL`, the volume of `OFTPD.LINKLIB`,
+   and `DLBVOL`, the volume of `OFTPD.AOFTPLOD`. Their defaults,
+   `MVSRES` and `SMP000`, are the volumes of an MVS/CE system. On TK5 write
+   the volumes on the `EXEC` statement of the step `ALLOC`:
+
+   ```
+   //ALLOC   EXEC SMPALLOC,TGTVOL=TK5RES,DLBVOL=TK5DLB,COND=(0,NE,CHECK)
+   ```
+
+   A volume that is not mounted does not fail the job, it holds it: the
+   console shows `IEF238D ... REPLY DEVICE NAME OR 'CANCEL'`. That is what
+   the defaults did on TK5 (reply `CANCEL`, correct the volume, submit
+   again). The step `CHECK` looks in the catalog first; on a first run it
+   prints `IDC3012I ENTRY ... NOT FOUND` for both libraries and ends RC 0.
+   A second run of the job, with the libraries cataloged, was not run. The
+   job's header says that `CHECK` then ends RC 8 and nothing is allocated.
 2. In `oftpd-<v>-inst.jcl`, replace the three `CHANGE.ME...` names with
-   the data sets of step 2, then submit it. On MVS/CE, TSO `RECEIVE`
-   needs a volume: add `VOLUME('PUB000')` (or another volume of yours)
-   to each of the three `RECEIVE` commands, as in
+   the data sets of step 2, then submit it. That is the only edit the job
+   needed on a TK5 and on an MVS/CE test container: it ran there as shipped,
+   CC 0000. The header of the job says that MVS/CE may need a volume on each
+   of the three `RECEIVE` commands. Each carries a line
+   `/* VOLUME('CHANGE.ME') */`. If your system asks for one, take the comment
+   marks off and name the volume (`PUB000` on a stock MVS/CE):
 
    ```
      RECEIVE INDSN('IBMUSER.OFTPD.LOAD.XMIT') -
-       DATASET('OFTPD.OFTPLOAD') -
-       VOLUME('PUB000')
+       VOLUME('PUB000') -
+       DATASET('OFTPD.OFTPLOAD')
    ```
 
-The job deletes and re-receives `OFTPD.SAMPLIB` and `OFTPD.ISPPLIB`, so
-copy members out of them before you change them, and never edit them in
-place. The copies you make in steps 5 to 7 (`SYS2.PARMLIB`,
-`SYS2.PROCLIB`) are not touched by a re-install.
+   The `RECEIVE` took `VOLUME('PUB000')` on the MVS/CE container. Which
+   message a system gives that needs the volume and does not get it was not
+   seen: the container measured here did not need it.
+
+**The install job stops after the APPLY, on purpose.** ACCEPT is the point
+without a way back: once the SYSMOD is accepted, SMP refuses `RESTORE` and
+`REJECT` for it (see [Removing it](#removing-it)). Until the accept job has
+run, `TOFT100` is applied and not accepted, and a `RESTORE` takes it out
+again. So the install job does not make that decision for you. Try the
+product first, then submit `OFTPDACC`.
+
+What the two jobs leave behind, measured on a TK5 test container as a first
+install:
+
+| | After `OFTPDINS` | After `OFTPDACC` |
+|---|---|---|
+| Job end | CC 0000: every step RC 00 | CC 0000: `GUARD`, `ACCEPT`, `CLEANUP` end RC 00, `NOTAPPL` does not run |
+| `TOFT100` in the target zone (CDS) | `REC APP` | `REC APP ACC` |
+| `TOFT100` in the distribution zone (ACDS) | not found | `REC APP ACC RGN` |
+| `OFTPD.LINKLIB` | `OFTP`, `OFTPD`, `OFTPI`, `OFTPSVC` | the same |
+| `OFTPD.AOFTPLOD` | empty | the same four members |
+| `OFTPD.OFTPLOAD` (staging library) | present, the same four members | scratched |
+
+**The accept job.** Nothing in it needs editing. `GUARD` runs
+`LIST CDS SYSMOD(TOFT100)`. Only when it ends RC 00 does `ACCEPT` run, and
+`CLEANUP` scratches `OFTPD.OFTPLOAD` only when `GUARD` and `ACCEPT` both ended
+RC 00. The gate is the entry of `TOFT100` in the target zone, not the return
+code of the install job. The header of the accept job says to submit it after
+an install job whose APPLY CHECK and APPLY ended RC 0, or RC 4 for `HMA2461`
+(a predecessor in delete) or `HMA4441` alone, and not after RC 8 or 12. The
+`ACCEPT` step prints `HMA2380 COPY SUCCESSFUL` for each of the four modules,
+with `LIBRARY=AOFTPLOD`.
+
+**Submitting the accept job a second time** ends the job with `JCL ERROR`:
+`IEF212I ... OFTPLOAD - DATA SET NOT FOUND`, because the first run scratched
+the staging library. `GUARD` ends RC 00 and no step after it runs, so the
+second run changes nothing.
+
+**Not measured:** the accept job on a system where `TOFT100` is not applied
+(the header says it ends RC 8 in the step `NOTAPPL` and nothing is accepted),
+and the accept job after an APPLY in which the elements of `TOFT100` itself
+printed `NOT SEL` and nothing was copied. (`NOT SEL` rows for `TOFT010` in the
+status report did appear in the upgrade, and the accept job ran through, CC 0000.)
+
+The job deletes and re-receives `OFTPD.OFTPLOAD`, `OFTPD.SAMPLIB` and
+`OFTPD.ISPPLIB` (step `DELOLD`), so copy members out of the last two before
+you change them, and never edit them in place. The copies you make in
+steps 5 to 7 (`SYS2.PARMLIB`, `SYS2.PROCLIB`) are not touched by a re-install.
 
 **Check the result by the libraries, not by the condition codes.** SMP
 can end with condition code 0 and have copied nothing. In the job output
@@ -93,7 +171,9 @@ HMA2380 COPY SUCCESSFUL - MOD=OFTPD ...
 ```
 
 for each of `OFTP`, `OFTPD`, `OFTPI` and `OFTPSVC`, and list the members of
-`OFTPD.LINKLIB`: all four must be there.
+`OFTPD.LINKLIB`: all four must be there. After the accept job, the same
+messages with `LIBRARY=AOFTPLOD` are in its `ACCEPT` step, and
+`OFTPD.AOFTPLOD` holds the four members, and `OFTPD.OFTPLOAD` is gone.
 
 ## 4. Authorization
 
@@ -610,19 +690,43 @@ system without a security product nobody is one, and OFTPD refuses it
 
 ## Upgrading
 
-**From 0.1.0: this is not a drop-in.** 0.1.0 was a prerelease, and no
-upgrade path has been tested. `TOFT100` deletes `TOFT010`
-(`++VER(Z038) DELETE(TOFT010)`), so the SYSMOD installs over the prerelease,
-but it takes no configuration with it: set an existing 0.1.0 installation up
-again: the authorization (section 4), a spool of its own (section 5), the
-settings (section 6) and the procedure (section 7). Section 1 still applies
-to `TOFT100`. Skip the allocation job: it allocates `OFTPD.LINKLIB` and
-`OFTPD.AOFTPLOD` with `DISP=(NEW,CATLG,DELETE)`, and the prerelease
-already created both, so a second run fails. Stop OFTPD, then run the
-install job. The TCP control port is gone. Remove `CONTROLPORT=` from
-`OFTPPRM0` (OFTPD reports it as an unknown keyword with `OFTP010W`) and add
-`SVC=237`, without which the utilities and the dialog cannot reach OFTPD at
-all.
+**From 0.1.0: this is not a drop-in, and it takes two jobs.** `TOFT100`
+deletes `TOFT010` (`++VER(Z038) DELETE(TOFT010)`), so the SYSMOD installs over
+the prerelease, but it takes no configuration with it: set an existing 0.1.0
+installation up again: the authorization (section 4), a spool of its own
+(section 5), the settings (section 6) and the procedure (section 7). Section 1
+still applies to `TOFT100`. Skip the allocation job: it allocates
+`OFTPD.LINKLIB` and `OFTPD.AOFTPLOD` with `DISP=(NEW,CATLG,DELETE)`, and the
+prerelease already created both (the header of the job says that `CHECK` then
+ends RC 8 and nothing is allocated; this was not run). Stop OFTPD, then run the
+install job, and the accept job after it when you have tried the product. The
+TCP control port is gone. Remove `CONTROLPORT=` from `OFTPPRM0` (OFTPD reports
+it as an unknown keyword with `OFTP010W`) and add `SVC=237`, without which the
+utilities and the dialog cannot reach OFTPD at all.
+
+**What the two jobs do to a system at 0.1.0**, measured on a TK5 test
+container. The prerelease was installed with the published 0.1.0-dev package
+(its own allocation job and its install job, which also accepted `TOFT010`).
+Then the install job and the accept job of the 1.0.0 package ran, without the
+allocation job:
+
+| | After `OFTPDINS` | After `OFTPDACC` |
+|---|---|---|
+| Job end | CC 0004: every step RC 00 except `APPLY`, which ends RC 04 on `HMA2461 SYSMOD TOFT010 NOT FOUND ON SMPSCDS LIBRARY` | CC 0000 |
+| `TOFT100` in the target zone (CDS) | `REC APP` | `REC APP ACC` |
+| `TOFT100` in the distribution zone (ACDS) | not found | `REC APP ACC RGN` |
+| `TOFT010` | CDS: only the mark `DELBY = TOFT100`. ACDS: still `REC APP ACC RGN` | the mark `DELBY = TOFT100` in both zones |
+| `OFTPD.LINKLIB` | `OFTP`, `OFTPD`, `OFTPI` and `OFTPSVC` | the same |
+| `OFTPD.AOFTPLOD` | still the three modules of 0.1.0 | `OFTP`, `OFTPD`, `OFTPI` and `OFTPSVC` |
+| `OFTPD.OFTPLOAD` | present | scratched |
+
+The `APPLY` ends RC 04 because a SYSMOD that is deleted has no backup entry.
+That is the normal end of an upgrade, and the accept job runs after it: its
+`GUARD` looks for `TOFT100` in the target zone and does not read the return
+code of the install job. In the `APPLY` the load modules `OFTP`, `OFTPD` and
+`OFTPI` of 0.1.0 are deleted from `OFTPD.LINKLIB` (`HMA2240`), and the four of
+`TOFT100` are copied (`HMA2380`), which is why OFTPD has to be stopped
+before the install job.
 
 **The procedure:** the sample procedure now has an `OFTPRCV` DD for the
 receive rules (section 6). If you take the new procedure over your old one,
@@ -723,11 +827,20 @@ way. A `UCLIN` job then deletes `TOFTDEL` and the ids it marked from both
 zones, and a `LIST` of all ids shows that they are gone. A route with `UCLIN`
 alone is the fallback.
 
-`RESTORE` and `REJECT` do not remove OFTPD. The install job accepts the
-SYSMOD, and `RESTORE` refuses an accepted one (`HMA2452`); `REJECT` then fails
-with `HMA2462`, because the system entry of the `SMPPTS` has `PURGE=YES` on
-the systems measured, and SMP has dropped the SYSMOD from the PTS at the
-accept. The same holds for the prerelease `TOFT010`.
+Before the accept job has run, `RESTORE` works: `TOFT100` is applied and not
+accepted, and `RESTORE` deletes its four load modules from `OFTPD.LINKLIB` and
+takes it out of the target zone (it was never in the distribution zone; measured on a fresh install on a TK5 test
+container). In that state `OFTPD.OFTPLOAD` is still there and stays until you
+scratch it yourself.
+
+After the accept job, `RESTORE` and `REJECT` do not remove OFTPD. `RESTORE`
+refuses an accepted SYSMOD (`HMA2452`, RC 12); `REJECT` fails with `HMA2462`
+(RC 12), because the system entry of the `SMPPTS` has `PURGE=YES` on the
+systems measured, and SMP has dropped the SYSMOD from the PTS at the accept.
+The same holds for the prerelease `TOFT010`. After an upgrade from 0.1.0 the
+`RESTORE` of `TOFT100` was also refused, with `HMA2452` and the text
+`DELETES SYSMODS`, the same RC 12. A system whose entry has `PURGE=NO` was not
+measured.
 
 The procedure, the parmlib members, the `IEAAPF00` entry, the ISPF
 allocations and the spool are not SMP's and stay until you delete them
